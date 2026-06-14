@@ -85,7 +85,7 @@ func (h *Handler) List(c *gin.Context) {
 func parseBudgetID(c *gin.Context) (int64, bool) {
 	budgetID, err := strconv.ParseInt(c.Param("budget_id"), 10, 64)
 	if err != nil || budgetID <= 0 {
-		httpresponse.JSONError(c, http.StatusBadRequest, "invalid budget_id")
+		httpresponse.JSONError(c, http.StatusBadRequest, "budget_id invalido")
 		return 0, false
 	}
 

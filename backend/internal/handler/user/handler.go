@@ -142,7 +142,7 @@ func parseUserID(c *gin.Context) (int64, bool) {
 	rawID := c.Param("user_id")
 	userID, err := strconv.ParseInt(rawID, 10, 64)
 	if err != nil || userID <= 0 {
-		httpresponse.JSONError(c, http.StatusBadRequest, "user_id must be a valid integer")
+		httpresponse.JSONError(c, http.StatusBadRequest, "user_id deve ser um inteiro valido")
 		return 0, false
 	}
 

@@ -207,7 +207,7 @@ func parseListFilters(c *gin.Context) (*dto.ListBudgetsFilters, error) {
 func parseBudgetID(c *gin.Context) (int64, bool) {
 	budgetID, err := strconv.ParseInt(c.Param("budget_id"), 10, 64)
 	if err != nil || budgetID <= 0 {
-		httpresponse.JSONError(c, http.StatusBadRequest, "invalid budget_id")
+		httpresponse.JSONError(c, http.StatusBadRequest, "budget_id invalido")
 		return 0, false
 	}
 
@@ -221,7 +221,7 @@ func parseOptionalInt(value string) (*int, error) {
 
 	parsedValue, err := strconv.Atoi(value)
 	if err != nil {
-		return nil, httpError("invalid integer value")
+		return nil, httpError("Valor inteiro invalido")
 	}
 
 	return &parsedValue, nil
@@ -234,7 +234,7 @@ func parseOptionalIntValue(value string, defaultValue int) (int, error) {
 
 	parsedValue, err := strconv.Atoi(value)
 	if err != nil {
-		return 0, httpError("invalid integer value")
+		return 0, httpError("Valor inteiro invalido")
 	}
 
 	return parsedValue, nil
@@ -247,7 +247,7 @@ func parseOptionalInt64(value string) (*int64, error) {
 
 	parsedValue, err := strconv.ParseInt(value, 10, 64)
 	if err != nil {
-		return nil, httpError("invalid integer value")
+		return nil, httpError("Valor inteiro invalido")
 	}
 
 	return &parsedValue, nil
@@ -260,7 +260,7 @@ func parseOptionalFloat64(value string) (*float64, error) {
 
 	parsedValue, err := strconv.ParseFloat(value, 64)
 	if err != nil {
-		return nil, httpError("invalid numeric value")
+		return nil, httpError("Valor numerico invalido")
 	}
 
 	return &parsedValue, nil
@@ -279,7 +279,7 @@ func parseOptionalTime(value string) (*time.Time, error) {
 		}
 	}
 
-	return nil, httpError("invalid date value")
+	return nil, httpError("Data invalida")
 }
 
 func httpError(message string) error {

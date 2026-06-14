@@ -34,6 +34,9 @@ function mapBudgetListItem(item: BudgetApiItem) {
     designerName: item.designer_name,
     competitorName: item.competitor_name,
     competitorPrice: item.competitor_price ?? null,
+    projectName: item.project_name ?? null,
+    salespersonName: item.salesperson_name ?? null,
+    contactName: item.contact_name ?? null,
     specificationDetails: item.specification_details,
     currentFollowUp: item.current_follow_up,
     createdAt: item.created_at,
@@ -313,6 +316,30 @@ export async function getBudgetCatalogsRequest(): Promise<BudgetCatalogsResult> 
     projects: projectsResponse.data.map(mapNamedCatalogItem),
     salespeople: salespeopleResponse.data.map(mapNamedCatalogItem),
     contacts: contactsResponse.data.map(mapNamedCatalogItem),
+    lossReasons: lossReasonsResponse.data.map(mapNamedCatalogItem),
+  };
+}
+
+export async function getBudgetListCatalogsRequest(): Promise<BudgetCatalogsResult> {
+  const [
+    statusesResponse,
+    prioritiesResponse,
+    installersResponse,
+    lossReasonsResponse,
+  ] = await Promise.all([
+    api.get<NamedCatalogApiItem[]>("/budget-statuses"),
+    api.get<NamedCatalogApiItem[]>("/priorities"),
+    api.get<NamedCatalogApiItem[]>("/installers"),
+    api.get<NamedCatalogApiItem[]>("/loss-reasons"),
+  ]);
+
+  return {
+    statuses: statusesResponse.data.map(mapNamedCatalogItem),
+    priorities: prioritiesResponse.data.map(mapNamedCatalogItem),
+    installers: installersResponse.data.map(mapNamedCatalogItem),
+    projects: [],
+    salespeople: [],
+    contacts: [],
     lossReasons: lossReasonsResponse.data.map(mapNamedCatalogItem),
   };
 }

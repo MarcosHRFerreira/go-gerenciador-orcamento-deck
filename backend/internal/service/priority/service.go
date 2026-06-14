@@ -38,7 +38,7 @@ func (s *service) Create(ctx context.Context, req *dto.CreatePriorityRequest) (i
 		return 0, apperror.Internal("failed to check existing priority", err)
 	}
 	if existingItem != nil {
-		return 0, apperror.Conflict("priority already exists")
+		return 0, apperror.Conflict("Prioridade ja existe")
 	}
 
 	now := time.Now()
@@ -72,7 +72,7 @@ func (s *service) List(ctx context.Context) ([]dto.PriorityResponse, error) {
 
 func (s *service) GetByID(ctx context.Context, priorityID int64) (*dto.PriorityResponse, error) {
 	if priorityID <= 0 {
-		return nil, apperror.BadRequest("priority_id is required")
+		return nil, apperror.BadRequest("priority_id e obrigatorio")
 	}
 
 	item, err := s.repo.GetByID(ctx, priorityID)
@@ -80,7 +80,7 @@ func (s *service) GetByID(ctx context.Context, priorityID int64) (*dto.PriorityR
 		return nil, apperror.Internal("failed to get priority", err)
 	}
 	if item == nil {
-		return nil, apperror.NotFound("priority not found")
+		return nil, apperror.NotFound("Prioridade nao encontrada")
 	}
 
 	response := toResponse(*item)
@@ -89,7 +89,7 @@ func (s *service) GetByID(ctx context.Context, priorityID int64) (*dto.PriorityR
 
 func (s *service) Update(ctx context.Context, priorityID int64, req *dto.UpdatePriorityRequest) error {
 	if priorityID <= 0 {
-		return apperror.BadRequest("priority_id is required")
+		return apperror.BadRequest("priority_id e obrigatorio")
 	}
 
 	currentItem, err := s.repo.GetByID(ctx, priorityID)
@@ -97,17 +97,17 @@ func (s *service) Update(ctx context.Context, priorityID int64, req *dto.UpdateP
 		return apperror.Internal("failed to check priority", err)
 	}
 	if currentItem == nil {
-		return apperror.NotFound("priority not found")
+		return apperror.NotFound("Prioridade nao encontrada")
 	}
 
 	code := strings.TrimSpace(req.Code)
 	if code == "" {
-		return apperror.BadRequest("code is required")
+		return apperror.BadRequest("code e obrigatorio")
 	}
 
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
-		return apperror.BadRequest("name is required")
+		return apperror.BadRequest("name e obrigatorio")
 	}
 
 	existingItem, err := s.repo.GetByCodeOrName(ctx, code, name)
@@ -115,7 +115,7 @@ func (s *service) Update(ctx context.Context, priorityID int64, req *dto.UpdateP
 		return apperror.Internal("failed to check existing priority", err)
 	}
 	if existingItem != nil && existingItem.ID != priorityID {
-		return apperror.Conflict("priority already exists")
+		return apperror.Conflict("Prioridade ja existe")
 	}
 
 	err = s.repo.Update(ctx, &model.PriorityModel{
@@ -134,7 +134,7 @@ func (s *service) Update(ctx context.Context, priorityID int64, req *dto.UpdateP
 
 func (s *service) Delete(ctx context.Context, priorityID int64) error {
 	if priorityID <= 0 {
-		return apperror.BadRequest("priority_id is required")
+		return apperror.BadRequest("priority_id e obrigatorio")
 	}
 
 	item, err := s.repo.GetByID(ctx, priorityID)
@@ -142,7 +142,7 @@ func (s *service) Delete(ctx context.Context, priorityID int64) error {
 		return apperror.Internal("failed to check priority", err)
 	}
 	if item == nil {
-		return apperror.NotFound("priority not found")
+		return apperror.NotFound("Prioridade nao encontrada")
 	}
 
 	if err := s.repo.Delete(ctx, priorityID); err != nil {
@@ -168,11 +168,11 @@ func mapPriorityPersistenceError(action string, err error) error {
 	if errors.As(err, &pgError) {
 		switch pgError.ConstraintName {
 		case "priorities_code_key", "priorities_name_key":
-			return apperror.Conflict("priority already exists")
+			return apperror.Conflict("Prioridade ja existe")
 		}
 
 		if pgError.Code == "23505" {
-			return apperror.Conflict("priority already exists")
+			return apperror.Conflict("Prioridade ja existe")
 		}
 	}
 

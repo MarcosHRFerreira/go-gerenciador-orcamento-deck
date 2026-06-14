@@ -3,7 +3,8 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/config"
+	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/logger"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/server"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/pkg/internalsql"
 	"github.com/go-playground/validator/v10"
@@ -29,16 +31,25 @@ func main() {
 
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("failed to load configuration: %v", err)
+		_, _ = fmt.Fprintf(os.Stderr, "falha ao carregar configuracao: %v\n", err)
+		os.Exit(1)
 	}
+
+	appLogger, err := logger.New(cfg.AppEnv, cfg.LogLevel)
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "falha ao inicializar logger: %v\n", err)
+		os.Exit(1)
+	}
+	slog.SetDefault(appLogger)
 
 	db, err := internalsql.ConnectPostgres(cfg)
 	if err != nil {
-		log.Fatalf("failed to connect database: %v", err)
+		appLogger.Error("falha ao conectar ao banco de dados", slog.Any("error", err))
+		os.Exit(1)
 	}
 	defer func() {
 		if err := db.Close(); err != nil {
-			log.Printf("failed to close database connection: %v", err)
+			appLogger.Warn("falha ao fechar conexao com banco de dados", slog.Any("error", err))
 		}
 	}()
 
@@ -59,7 +70,7 @@ func main() {
 
 	serverErrors := make(chan error, 1)
 	go func() {
-		log.Printf("starting http server on %s", cfg.ServerAddress())
+		appLogger.Info("iniciando servidor http", slog.String("address", cfg.ServerAddress()))
 		err := httpServer.ListenAndServe()
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErrors <- err
@@ -75,18 +86,20 @@ func main() {
 	select {
 	case err := <-serverErrors:
 		if err != nil {
-			log.Fatalf("http server stopped unexpectedly: %v", err)
+			appLogger.Error("servidor http finalizado de forma inesperada", slog.Any("error", err))
+			os.Exit(1)
 		}
 	case <-shutdownSignal.Done():
-		log.Print("shutdown signal received")
+		appLogger.Info("sinal de encerramento recebido")
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("failed to shutdown http server: %v", err)
+		appLogger.Error("falha ao encerrar servidor http", slog.Any("error", err))
+		os.Exit(1)
 	}
 
-	log.Print("server stopped gracefully")
+	appLogger.Info("servidor encerrado com sucesso")
 }

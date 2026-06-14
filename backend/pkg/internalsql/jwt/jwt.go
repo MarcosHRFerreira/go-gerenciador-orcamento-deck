@@ -50,17 +50,17 @@ func ValidateToken(tokenStr string, secretKey string, validateClaims bool) (int6
 	}
 
 	if !token.Valid {
-		return 0, "", "", false, errors.New("token is not valid")
+		return 0, "", "", false, errors.New("token invalido")
 	}
 
 	if claims.UserID == 0 {
-		return 0, "", "", false, errors.New("invalid token user_id")
+		return 0, "", "", false, errors.New("user_id do token invalido")
 	}
 	if claims.Username == "" {
-		return 0, "", "", false, errors.New("invalid token username")
+		return 0, "", "", false, errors.New("username do token invalido")
 	}
 	if claims.Role == "" {
-		return 0, "", "", false, errors.New("invalid token role")
+		return 0, "", "", false, errors.New("role do token invalido")
 	}
 
 	return claims.UserID, claims.Username, claims.Role, claims.MustChangePassword, nil

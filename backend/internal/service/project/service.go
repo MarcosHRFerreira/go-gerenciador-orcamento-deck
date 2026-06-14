@@ -72,7 +72,7 @@ func (s *service) List(ctx context.Context) ([]dto.ProjectResponse, error) {
 
 func (s *service) GetByID(ctx context.Context, projectID int64) (*dto.ProjectResponse, error) {
 	if projectID <= 0 {
-		return nil, apperror.BadRequest("project_id is required")
+		return nil, apperror.BadRequest("project_id e obrigatorio")
 	}
 
 	item, err := s.repo.GetByID(ctx, projectID)
@@ -80,7 +80,7 @@ func (s *service) GetByID(ctx context.Context, projectID int64) (*dto.ProjectRes
 		return nil, apperror.Internal("failed to get project", err)
 	}
 	if item == nil {
-		return nil, apperror.NotFound("project not found")
+		return nil, apperror.NotFound("Projeto nao encontrado")
 	}
 
 	response := toResponse(*item)
@@ -89,7 +89,7 @@ func (s *service) GetByID(ctx context.Context, projectID int64) (*dto.ProjectRes
 
 func (s *service) Update(ctx context.Context, projectID int64, req *dto.UpdateProjectRequest) error {
 	if projectID <= 0 {
-		return apperror.BadRequest("project_id is required")
+		return apperror.BadRequest("project_id e obrigatorio")
 	}
 
 	currentItem, err := s.repo.GetByID(ctx, projectID)
@@ -97,7 +97,7 @@ func (s *service) Update(ctx context.Context, projectID int64, req *dto.UpdatePr
 		return apperror.Internal("failed to check project", err)
 	}
 	if currentItem == nil {
-		return apperror.NotFound("project not found")
+		return apperror.NotFound("Projeto nao encontrado")
 	}
 
 	projectTypeID, err := s.normalizeProjectTypeID(ctx, req.ProjectTypeID)
@@ -123,7 +123,7 @@ func (s *service) Update(ctx context.Context, projectID int64, req *dto.UpdatePr
 
 func (s *service) Delete(ctx context.Context, projectID int64) error {
 	if projectID <= 0 {
-		return apperror.BadRequest("project_id is required")
+		return apperror.BadRequest("project_id e obrigatorio")
 	}
 
 	item, err := s.repo.GetByID(ctx, projectID)
@@ -131,7 +131,7 @@ func (s *service) Delete(ctx context.Context, projectID int64) error {
 		return apperror.Internal("failed to check project", err)
 	}
 	if item == nil {
-		return apperror.NotFound("project not found")
+		return apperror.NotFound("Projeto nao encontrado")
 	}
 
 	if err := s.repo.Delete(ctx, projectID); err != nil {
@@ -147,7 +147,7 @@ func (s *service) normalizeProjectTypeID(ctx context.Context, projectTypeID *int
 	}
 
 	if *projectTypeID <= 0 {
-		return sql.NullInt64{}, apperror.BadRequest("project_type_id must be a valid integer")
+		return sql.NullInt64{}, apperror.BadRequest("project_type_id deve ser um inteiro valido")
 	}
 
 	projectType, err := s.projectTypeRepo.GetByID(ctx, *projectTypeID)
@@ -155,7 +155,7 @@ func (s *service) normalizeProjectTypeID(ctx context.Context, projectTypeID *int
 		return sql.NullInt64{}, apperror.Internal("failed to check project type", err)
 	}
 	if projectType == nil {
-		return sql.NullInt64{}, apperror.BadRequest("project type not found")
+		return sql.NullInt64{}, apperror.BadRequest("Tipo de projeto nao encontrado")
 	}
 
 	return sql.NullInt64{

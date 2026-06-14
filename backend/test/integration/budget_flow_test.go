@@ -105,8 +105,8 @@ func TestBudgetFollowUpsShouldReturnNotFoundForMissingBudget(t *testing.T) {
 	}
 
 	errorPayload := decodeJSONResponse[httpresponse.ErrorResponse](t, response.Body)
-	if errorPayload.Message != "budget not found" {
-		t.Fatalf("expected budget not found message, got %s", errorPayload.Message)
+	if errorPayload.Message != "Orcamento nao encontrado" {
+		t.Fatalf("expected Orcamento nao encontrado message, got %s", errorPayload.Message)
 	}
 }
 
@@ -238,7 +238,7 @@ func TestBudgetStatusHistoryShouldRejectSameStatus(t *testing.T) {
 	}
 
 	errorPayload := decodeJSONResponse[httpresponse.ErrorResponse](t, changeStatusResponse.Body)
-	if errorPayload.Message != "budget already has informed status" {
+	if errorPayload.Message != "O orcamento ja possui o status informado" {
 		t.Fatalf("expected same status message, got %s", errorPayload.Message)
 	}
 }

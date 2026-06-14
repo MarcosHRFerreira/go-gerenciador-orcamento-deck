@@ -36,7 +36,7 @@ func (s *service) Create(ctx context.Context, req *dto.CreateSalespersonRequest)
 		return 0, apperror.Internal("failed to check existing salesperson", err)
 	}
 	if existingItem != nil {
-		return 0, apperror.Conflict("salesperson already exists")
+		return 0, apperror.Conflict("Vendedor ja existe")
 	}
 
 	now := time.Now()
@@ -71,7 +71,7 @@ func (s *service) List(ctx context.Context) ([]dto.SalespersonResponse, error) {
 
 func (s *service) GetByID(ctx context.Context, salespersonID int64) (*dto.SalespersonResponse, error) {
 	if salespersonID <= 0 {
-		return nil, apperror.BadRequest("salesperson_id is required")
+		return nil, apperror.BadRequest("salesperson_id e obrigatorio")
 	}
 
 	item, err := s.repo.GetByID(ctx, salespersonID)
@@ -79,7 +79,7 @@ func (s *service) GetByID(ctx context.Context, salespersonID int64) (*dto.Salesp
 		return nil, apperror.Internal("failed to get salesperson", err)
 	}
 	if item == nil {
-		return nil, apperror.NotFound("salesperson not found")
+		return nil, apperror.NotFound("Vendedor nao encontrado")
 	}
 
 	response := toResponse(*item)
@@ -88,7 +88,7 @@ func (s *service) GetByID(ctx context.Context, salespersonID int64) (*dto.Salesp
 
 func (s *service) Update(ctx context.Context, salespersonID int64, req *dto.UpdateSalespersonRequest) error {
 	if salespersonID <= 0 {
-		return apperror.BadRequest("salesperson_id is required")
+		return apperror.BadRequest("salesperson_id e obrigatorio")
 	}
 
 	currentItem, err := s.repo.GetByID(ctx, salespersonID)
@@ -96,7 +96,7 @@ func (s *service) Update(ctx context.Context, salespersonID int64, req *dto.Upda
 		return apperror.Internal("failed to check salesperson", err)
 	}
 	if currentItem == nil {
-		return apperror.NotFound("salesperson not found")
+		return apperror.NotFound("Vendedor nao encontrado")
 	}
 
 	email := strings.TrimSpace(req.Email)
@@ -105,7 +105,7 @@ func (s *service) Update(ctx context.Context, salespersonID int64, req *dto.Upda
 		return apperror.Internal("failed to check existing salesperson", err)
 	}
 	if existingItem != nil && existingItem.ID != salespersonID {
-		return apperror.Conflict("salesperson already exists")
+		return apperror.Conflict("Vendedor ja existe")
 	}
 
 	err = s.repo.Update(ctx, &model.SalespersonModel{
@@ -125,7 +125,7 @@ func (s *service) Update(ctx context.Context, salespersonID int64, req *dto.Upda
 
 func (s *service) Delete(ctx context.Context, salespersonID int64) error {
 	if salespersonID <= 0 {
-		return apperror.BadRequest("salesperson_id is required")
+		return apperror.BadRequest("salesperson_id e obrigatorio")
 	}
 
 	item, err := s.repo.GetByID(ctx, salespersonID)
@@ -133,7 +133,7 @@ func (s *service) Delete(ctx context.Context, salespersonID int64) error {
 		return apperror.Internal("failed to check salesperson", err)
 	}
 	if item == nil {
-		return apperror.NotFound("salesperson not found")
+		return apperror.NotFound("Vendedor nao encontrado")
 	}
 
 	if err := s.repo.Delete(ctx, salespersonID); err != nil {
@@ -160,11 +160,11 @@ func mapSalespersonPersistenceError(action string, err error) error {
 	if errors.As(err, &pgError) {
 		switch pgError.ConstraintName {
 		case "salespeople_email_key":
-			return apperror.Conflict("salesperson already exists")
+			return apperror.Conflict("Vendedor ja existe")
 		}
 
 		if pgError.Code == "23505" {
-			return apperror.Conflict("salesperson already exists")
+			return apperror.Conflict("Vendedor ja existe")
 		}
 	}
 

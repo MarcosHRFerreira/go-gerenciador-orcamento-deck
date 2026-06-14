@@ -11,8 +11,8 @@ import (
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/dto"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/model"
 	budgetrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budget"
-	budgetstatushistoryrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budgetstatushistory"
 	budgetstatusrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budgetstatus"
+	budgetstatushistoryrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budgetstatushistory"
 	salespersonrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/salesperson"
 )
 
@@ -44,15 +44,15 @@ func NewService(
 
 func (s *service) ChangeStatus(ctx context.Context, budgetID int64, userID int64, role model.UserRole, username string, req *dto.ChangeBudgetStatusRequest) (int64, error) {
 	if budgetID <= 0 {
-		return 0, apperror.BadRequest("budget_id is required")
+		return 0, apperror.BadRequest("budget_id e obrigatorio")
 	}
 
 	if userID <= 0 {
-		return 0, apperror.Unauthorized("authenticated user is required")
+		return 0, apperror.Unauthorized("Usuario autenticado obrigatorio")
 	}
 
 	if req.StatusID <= 0 {
-		return 0, apperror.BadRequest("status_id is required")
+		return 0, apperror.BadRequest("status_id e obrigatorio")
 	}
 
 	restrictedSalespersonID, err := accessscope.ResolveRestrictedSalespersonID(ctx, role, username, s.salespersonRepo)
@@ -65,7 +65,7 @@ func (s *service) ChangeStatus(ctx context.Context, budgetID int64, userID int64
 		return 0, apperror.Internal("failed to check budget", err)
 	}
 	if budget == nil {
-		return 0, apperror.NotFound("budget not found")
+		return 0, apperror.NotFound("Orcamento nao encontrado")
 	}
 
 	status, err := s.budgetStatusRepo.GetByID(ctx, req.StatusID)
@@ -73,11 +73,11 @@ func (s *service) ChangeStatus(ctx context.Context, budgetID int64, userID int64
 		return 0, apperror.Internal("failed to check budget status", err)
 	}
 	if status == nil {
-		return 0, apperror.BadRequest("budget status not found")
+		return 0, apperror.BadRequest("Status de orcamento nao encontrado")
 	}
 
 	if budget.StatusID == req.StatusID {
-		return 0, apperror.Conflict("budget already has informed status")
+		return 0, apperror.Conflict("O orcamento ja possui o status informado")
 	}
 
 	notes := strings.TrimSpace(req.Notes)
@@ -108,7 +108,7 @@ func (s *service) ChangeStatus(ctx context.Context, budgetID int64, userID int64
 
 func (s *service) ListByBudgetID(ctx context.Context, budgetID int64, role model.UserRole, username string) ([]dto.BudgetStatusHistoryResponse, error) {
 	if budgetID <= 0 {
-		return nil, apperror.BadRequest("budget_id is required")
+		return nil, apperror.BadRequest("budget_id e obrigatorio")
 	}
 
 	restrictedSalespersonID, err := accessscope.ResolveRestrictedSalespersonID(ctx, role, username, s.salespersonRepo)
@@ -121,7 +121,7 @@ func (s *service) ListByBudgetID(ctx context.Context, budgetID int64, role model
 		return nil, apperror.Internal("failed to check budget", err)
 	}
 	if budget == nil {
-		return nil, apperror.NotFound("budget not found")
+		return nil, apperror.NotFound("Orcamento nao encontrado")
 	}
 
 	items, err := s.repo.ListByBudgetID(ctx, budgetID)

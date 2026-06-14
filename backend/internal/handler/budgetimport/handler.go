@@ -42,7 +42,7 @@ func (h *Handler) RouteList() {
 func (h *Handler) Preview(c *gin.Context) {
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
-		httpresponse.JSONError(c, http.StatusBadRequest, "file is required")
+		httpresponse.JSONError(c, http.StatusBadRequest, "Arquivo obrigatorio")
 		return
 	}
 
@@ -97,12 +97,12 @@ func (h *Handler) ExecuteImport(c *gin.Context) {
 func parsePreviewOptions(c *gin.Context) (dto.PreviewBudgetImportOptions, error) {
 	createMissingCatalogs, err := parseBoolDefaultTrue(c.PostForm("create_missing_catalogs"))
 	if err != nil {
-		return dto.PreviewBudgetImportOptions{}, httpError("create_missing_catalogs must be a boolean")
+		return dto.PreviewBudgetImportOptions{}, httpError("create_missing_catalogs deve ser booleano")
 	}
 
 	useDefaultNotInformed, err := parseBoolDefaultTrue(c.PostForm("use_default_not_informed"))
 	if err != nil {
-		return dto.PreviewBudgetImportOptions{}, httpError("use_default_not_informed must be a boolean")
+		return dto.PreviewBudgetImportOptions{}, httpError("use_default_not_informed deve ser booleano")
 	}
 
 	return dto.PreviewBudgetImportOptions{

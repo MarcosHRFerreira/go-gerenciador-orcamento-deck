@@ -20,9 +20,10 @@ type Repository interface {
 	UpdateUserRole(ctx context.Context, userID int64, role model.UserRole, updatedAt time.Time) error
 	UpdateUserActive(ctx context.Context, userID int64, active bool, updatedAt time.Time) error
 	UpdateUserPassword(ctx context.Context, userID int64, passwordHash string, mustChangePassword bool, updatedAt time.Time) error
-	GetActiveRefreshTokenByUserID(ctx context.Context, userID int64, now time.Time) (*model.RefreshTokenModel, error)
+	GetActiveRefreshTokenByHash(ctx context.Context, refreshTokenHash string, now time.Time) (*model.RefreshTokenModel, error)
 	StoreRefreshToken(ctx context.Context, token *model.RefreshTokenModel) error
 	DeleteRefreshTokensByUserID(ctx context.Context, userID int64) error
+	DeleteRefreshTokenByHash(ctx context.Context, refreshTokenHash string) error
 }
 
 type repository struct {
@@ -208,14 +209,14 @@ func (r *repository) UpdateUserPassword(ctx context.Context, userID int64, passw
 	return err
 }
 
-func (r *repository) GetActiveRefreshTokenByUserID(ctx context.Context, userID int64, now time.Time) (*model.RefreshTokenModel, error) {
+func (r *repository) GetActiveRefreshTokenByHash(ctx context.Context, refreshTokenHash string, now time.Time) (*model.RefreshTokenModel, error) {
 	const query = `
 		SELECT id, user_id, refresh_token, expired_at, created_at, updated_at
 		FROM refresh_tokens
-		WHERE user_id = $1 AND expired_at > $2
+		WHERE refresh_token = $1 AND expired_at > $2
 	`
 
-	row := r.db.QueryRowContext(ctx, query, userID, now)
+	row := r.db.QueryRowContext(ctx, query, refreshTokenHash, now)
 
 	var token model.RefreshTokenModel
 	err := row.Scan(
@@ -265,6 +266,13 @@ func (r *repository) DeleteRefreshTokensByUserID(ctx context.Context, userID int
 	const query = `DELETE FROM refresh_tokens WHERE user_id = $1`
 
 	_, err := r.db.ExecContext(ctx, query, userID)
+	return err
+}
+
+func (r *repository) DeleteRefreshTokenByHash(ctx context.Context, refreshTokenHash string) error {
+	const query = `DELETE FROM refresh_tokens WHERE refresh_token = $1`
+
+	_, err := r.db.ExecContext(ctx, query, refreshTokenHash)
 	return err
 }
 

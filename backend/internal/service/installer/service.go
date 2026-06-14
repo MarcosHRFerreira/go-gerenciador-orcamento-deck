@@ -37,7 +37,7 @@ func (s *service) Create(ctx context.Context, req *dto.CreateInstallerRequest) (
 			return 0, apperror.Internal("failed to check existing installer", err)
 		}
 		if existingItem != nil {
-			return 0, apperror.Conflict("installer already exists")
+			return 0, apperror.Conflict("Instalador ja existe")
 		}
 	}
 
@@ -77,7 +77,7 @@ func (s *service) List(ctx context.Context) ([]dto.InstallerResponse, error) {
 
 func (s *service) GetByID(ctx context.Context, installerID int64) (*dto.InstallerResponse, error) {
 	if installerID <= 0 {
-		return nil, apperror.BadRequest("installer_id is required")
+		return nil, apperror.BadRequest("installer_id e obrigatorio")
 	}
 
 	item, err := s.repo.GetByID(ctx, installerID)
@@ -85,7 +85,7 @@ func (s *service) GetByID(ctx context.Context, installerID int64) (*dto.Installe
 		return nil, apperror.Internal("failed to get installer", err)
 	}
 	if item == nil {
-		return nil, apperror.NotFound("installer not found")
+		return nil, apperror.NotFound("Instalador nao encontrado")
 	}
 
 	response := toResponse(*item)
@@ -94,7 +94,7 @@ func (s *service) GetByID(ctx context.Context, installerID int64) (*dto.Installe
 
 func (s *service) Update(ctx context.Context, installerID int64, req *dto.UpdateInstallerRequest) error {
 	if installerID <= 0 {
-		return apperror.BadRequest("installer_id is required")
+		return apperror.BadRequest("installer_id e obrigatorio")
 	}
 
 	currentItem, err := s.repo.GetByID(ctx, installerID)
@@ -102,7 +102,7 @@ func (s *service) Update(ctx context.Context, installerID int64, req *dto.Update
 		return apperror.Internal("failed to check installer", err)
 	}
 	if currentItem == nil {
-		return apperror.NotFound("installer not found")
+		return apperror.NotFound("Instalador nao encontrado")
 	}
 
 	document := strings.TrimSpace(req.Document)
@@ -112,7 +112,7 @@ func (s *service) Update(ctx context.Context, installerID int64, req *dto.Update
 			return apperror.Internal("failed to check existing installer", existsErr)
 		}
 		if existingItem != nil && existingItem.ID != installerID {
-			return apperror.Conflict("installer already exists")
+			return apperror.Conflict("Instalador ja existe")
 		}
 	}
 
@@ -137,7 +137,7 @@ func (s *service) Update(ctx context.Context, installerID int64, req *dto.Update
 
 func (s *service) Delete(ctx context.Context, installerID int64) error {
 	if installerID <= 0 {
-		return apperror.BadRequest("installer_id is required")
+		return apperror.BadRequest("installer_id e obrigatorio")
 	}
 
 	item, err := s.repo.GetByID(ctx, installerID)
@@ -145,7 +145,7 @@ func (s *service) Delete(ctx context.Context, installerID int64) error {
 		return apperror.Internal("failed to check installer", err)
 	}
 	if item == nil {
-		return apperror.NotFound("installer not found")
+		return apperror.NotFound("Instalador nao encontrado")
 	}
 
 	if err := s.repo.Delete(ctx, installerID); err != nil {
@@ -176,11 +176,11 @@ func mapInstallerPersistenceError(action string, err error) error {
 	if errors.As(err, &pgError) {
 		switch pgError.ConstraintName {
 		case "installers_document_key":
-			return apperror.Conflict("installer already exists")
+			return apperror.Conflict("Instalador ja existe")
 		}
 
 		if pgError.Code == "23505" {
-			return apperror.Conflict("installer already exists")
+			return apperror.Conflict("Instalador ja existe")
 		}
 	}
 

@@ -118,7 +118,7 @@ func TestBudgetFollowUpServiceCreateShouldReturnNotFoundWhenBudgetDoesNotExist(t
 		Notes: "retorno",
 	})
 
-	assertAppError(t, err, 404, "budget not found")
+	assertAppError(t, err, 404, "Orcamento nao encontrado")
 }
 
 func TestBudgetFollowUpServiceCreateShouldReturnUnauthorizedWhenUserIsMissing(t *testing.T) {
@@ -128,7 +128,7 @@ func TestBudgetFollowUpServiceCreateShouldReturnUnauthorizedWhenUserIsMissing(t 
 		Notes: "retorno",
 	})
 
-	assertAppError(t, err, 401, "authenticated user is required")
+	assertAppError(t, err, 401, "Usuario autenticado obrigatorio")
 }
 
 func TestBudgetFollowUpServiceListShouldMapItems(t *testing.T) {
@@ -225,7 +225,7 @@ func TestBudgetStatusHistoryServiceChangeStatusShouldReturnConflictWhenStatusIsT
 		StatusID: 2,
 	})
 
-	assertAppError(t, err, 409, "budget already has informed status")
+	assertAppError(t, err, 409, "O orcamento ja possui o status informado")
 }
 
 func TestBudgetStatusHistoryServiceChangeStatusShouldReturnBadRequestWhenStatusDoesNotExist(t *testing.T) {
@@ -245,7 +245,7 @@ func TestBudgetStatusHistoryServiceChangeStatusShouldReturnBadRequestWhenStatusD
 		StatusID: 2,
 	})
 
-	assertAppError(t, err, 400, "budget status not found")
+	assertAppError(t, err, 400, "Status de orcamento nao encontrado")
 }
 
 func TestBudgetStatusHistoryServiceListShouldMapItems(t *testing.T) {

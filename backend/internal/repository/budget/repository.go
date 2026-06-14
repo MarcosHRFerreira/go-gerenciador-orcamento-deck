@@ -115,12 +115,17 @@ func (r *repository) List(ctx context.Context, filters *dto.ListBudgetsFilters) 
 			b.competitor_name,
 			b.competitor_price,
 			b.designer_name,
+			p.name AS project_name,
+			s.name AS salesperson_name,
+			c.name AS contact_name,
 			b.specification_details,
 			b.current_follow_up,
 			b.created_at,
 			b.updated_at
 		FROM budgets b
 		LEFT JOIN projects p ON p.id = b.project_id
+		LEFT JOIN salespeople s ON s.id = b.salesperson_id
+		LEFT JOIN contacts c ON c.id = b.contact_id
 	`
 
 	whereClause, whereArgs := buildListWhereClause(filters)
@@ -161,6 +166,9 @@ func (r *repository) List(ctx context.Context, filters *dto.ListBudgetsFilters) 
 			&item.CompetitorName,
 			&item.CompetitorPrice,
 			&item.DesignerName,
+			&item.ProjectName,
+			&item.SalespersonName,
+			&item.ContactName,
 			&item.SpecificationDetails,
 			&item.CurrentFollowUp,
 			&item.CreatedAt,
@@ -330,6 +338,9 @@ func (r *repository) GetByNumberAndYear(ctx context.Context, budgetNumber string
 			competitor_name,
 			competitor_price,
 			designer_name,
+			NULL::text AS project_name,
+			NULL::text AS salesperson_name,
+			NULL::text AS contact_name,
 			specification_details,
 			current_follow_up,
 			created_at,
@@ -360,6 +371,9 @@ func (r *repository) GetByNumberAndYear(ctx context.Context, budgetNumber string
 		&item.CompetitorName,
 		&item.CompetitorPrice,
 		&item.DesignerName,
+		&item.ProjectName,
+		&item.SalespersonName,
+		&item.ContactName,
 		&item.SpecificationDetails,
 		&item.CurrentFollowUp,
 		&item.CreatedAt,
@@ -383,30 +397,36 @@ func (r *repository) GetByID(ctx context.Context, budgetID int64) (*model.Budget
 func (r *repository) GetByIDScoped(ctx context.Context, budgetID int64, restrictedSalespersonID *int64) (*model.BudgetModel, error) {
 	const query = `
 		SELECT
-			id,
-			budget_number,
-			year_budget,
-			revision,
-			sent_at,
-			gross_value,
-			commission_value,
-			area_m2,
-			status_id,
-			priority_id,
-			installer_id,
-			project_id,
-			salesperson_id,
-			contact_id,
-			loss_reason_id,
-			competitor_name,
-			competitor_price,
-			designer_name,
-			specification_details,
-			current_follow_up,
-			created_at,
-			updated_at
-		FROM budgets
-		WHERE id = $1
+			b.id,
+			b.budget_number,
+			b.year_budget,
+			b.revision,
+			b.sent_at,
+			b.gross_value,
+			b.commission_value,
+			b.area_m2,
+			b.status_id,
+			b.priority_id,
+			b.installer_id,
+			b.project_id,
+			b.salesperson_id,
+			b.contact_id,
+			b.loss_reason_id,
+			b.competitor_name,
+			b.competitor_price,
+			b.designer_name,
+			p.name AS project_name,
+			s.name AS salesperson_name,
+			c.name AS contact_name,
+			b.specification_details,
+			b.current_follow_up,
+			b.created_at,
+			b.updated_at
+		FROM budgets b
+		LEFT JOIN projects p ON p.id = b.project_id
+		LEFT JOIN salespeople s ON s.id = b.salesperson_id
+		LEFT JOIN contacts c ON c.id = b.contact_id
+		WHERE b.id = $1
 	`
 	args := []interface{}{budgetID}
 	finalQuery := query
@@ -437,6 +457,9 @@ func (r *repository) GetByIDScoped(ctx context.Context, budgetID int64, restrict
 		&item.CompetitorName,
 		&item.CompetitorPrice,
 		&item.DesignerName,
+		&item.ProjectName,
+		&item.SalespersonName,
+		&item.ContactName,
 		&item.SpecificationDetails,
 		&item.CurrentFollowUp,
 		&item.CreatedAt,

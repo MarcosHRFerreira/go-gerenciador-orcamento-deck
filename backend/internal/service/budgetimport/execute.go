@@ -78,12 +78,12 @@ func (s *service) takePreview(previewID string) (previewSnapshot, bool) {
 
 func (s *service) ExecuteImport(ctx context.Context, req *dto.ExecuteBudgetImportRequest) (*dto.ExecuteBudgetImportResponse, error) {
 	if req == nil || strings.TrimSpace(req.PreviewID) == "" {
-		return nil, apperror.BadRequest("preview_id is required")
+		return nil, apperror.BadRequest("preview_id e obrigatorio")
 	}
 
 	snapshot, exists := s.takePreview(strings.TrimSpace(req.PreviewID))
 	if !exists {
-		return nil, apperror.NotFound("preview not found")
+		return nil, apperror.NotFound("Preview nao encontrado")
 	}
 
 	workbook, err := parseWorkbook(snapshot.fileData, previewSheetName)
@@ -92,7 +92,7 @@ func (s *service) ExecuteImport(ctx context.Context, req *dto.ExecuteBudgetImpor
 	}
 	header := workbook.rows[previewHeaderRowNumber]
 	if !isExpectedHeader(header) {
-		return nil, apperror.BadRequest("invalid header for ORCAMENTOS sheet")
+		return nil, apperror.BadRequest("Cabecalho invalido na aba ORCAMENTOS")
 	}
 
 	catalogs, err := s.loadCatalogRuntime(ctx)
@@ -413,7 +413,7 @@ func (s *service) ensureBudgetStatusID(ctx context.Context, catalogs *catalogRun
 		return id, 0, nil
 	}
 	if !options.CreateMissingCatalogs {
-		return 0, 0, apperror.BadRequest("budget status not found for import")
+		return 0, 0, apperror.BadRequest("Status de orcamento nao encontrado para importacao")
 	}
 
 	now := time.Now()
@@ -432,7 +432,7 @@ func (s *service) ensureBudgetStatusID(ctx context.Context, catalogs *catalogRun
 			catalogs.statuses[key] = existing.ID
 			return existing.ID, 0, nil
 		}
-		return 0, 0, apperror.Internal("failed to create budget status for import", err)
+		return 0, 0, apperror.Internal("Falha ao criar status de orcamento para importacao", err)
 	}
 
 	catalogs.statuses[key] = id
@@ -445,7 +445,7 @@ func (s *service) ensurePriorityID(ctx context.Context, catalogs *catalogRuntime
 		return id, 0, nil
 	}
 	if !options.CreateMissingCatalogs {
-		return 0, 0, apperror.BadRequest("priority not found for import")
+		return 0, 0, apperror.BadRequest("Prioridade nao encontrada para importacao")
 	}
 
 	now := time.Now()
@@ -462,7 +462,7 @@ func (s *service) ensurePriorityID(ctx context.Context, catalogs *catalogRuntime
 			catalogs.priorities[key] = existing.ID
 			return existing.ID, 0, nil
 		}
-		return 0, 0, apperror.Internal("failed to create priority for import", err)
+		return 0, 0, apperror.Internal("Falha ao criar prioridade para importacao", err)
 	}
 
 	catalogs.priorities[key] = id
@@ -475,7 +475,7 @@ func (s *service) ensureProjectTypeID(ctx context.Context, catalogs *catalogRunt
 		return id, 0, nil
 	}
 	if !options.CreateMissingCatalogs {
-		return 0, 0, apperror.BadRequest("project type not found for import")
+		return 0, 0, apperror.BadRequest("Tipo de projeto nao encontrado para importacao")
 	}
 
 	now := time.Now()
@@ -492,7 +492,7 @@ func (s *service) ensureProjectTypeID(ctx context.Context, catalogs *catalogRunt
 			catalogs.projectTypes[key] = existing.ID
 			return existing.ID, 0, nil
 		}
-		return 0, 0, apperror.Internal("failed to create project type for import", err)
+		return 0, 0, apperror.Internal("Falha ao criar tipo de projeto para importacao", err)
 	}
 
 	catalogs.projectTypes[key] = id
@@ -505,7 +505,7 @@ func (s *service) ensureInstallerID(ctx context.Context, catalogs *catalogRuntim
 		return id, 0, nil
 	}
 	if !options.CreateMissingCatalogs {
-		return 0, 0, apperror.BadRequest("installer not found for import")
+		return 0, 0, apperror.BadRequest("Instalador nao encontrado para importacao")
 	}
 
 	now := time.Now()
@@ -521,7 +521,7 @@ func (s *service) ensureInstallerID(ctx context.Context, catalogs *catalogRuntim
 		UpdatedAt: now,
 	})
 	if err != nil {
-		return 0, 0, apperror.Internal("failed to create installer for import", err)
+		return 0, 0, apperror.Internal("Falha ao criar instalador para importacao", err)
 	}
 
 	catalogs.installers[key] = id
@@ -534,7 +534,7 @@ func (s *service) ensureProjectID(ctx context.Context, catalogs *catalogRuntime,
 		return id, 0, nil
 	}
 	if !options.CreateMissingCatalogs {
-		return 0, 0, apperror.BadRequest("project not found for import")
+		return 0, 0, apperror.BadRequest("Projeto nao encontrado para importacao")
 	}
 
 	now := time.Now()
@@ -551,7 +551,7 @@ func (s *service) ensureProjectID(ctx context.Context, catalogs *catalogRuntime,
 		UpdatedAt: now,
 	})
 	if err != nil {
-		return 0, 0, apperror.Internal("failed to create project for import", err)
+		return 0, 0, apperror.Internal("Falha ao criar projeto para importacao", err)
 	}
 
 	catalogs.projects[key] = id
@@ -564,7 +564,7 @@ func (s *service) ensureSalespersonID(ctx context.Context, catalogs *catalogRunt
 		return id, 0, nil
 	}
 	if !options.CreateMissingCatalogs {
-		return 0, 0, apperror.BadRequest("salesperson not found for import")
+		return 0, 0, apperror.BadRequest("Vendedor nao encontrado para importacao")
 	}
 
 	now := time.Now()
@@ -577,7 +577,7 @@ func (s *service) ensureSalespersonID(ctx context.Context, catalogs *catalogRunt
 		UpdatedAt: now,
 	})
 	if err != nil {
-		return 0, 0, apperror.Internal("failed to create salesperson for import", err)
+		return 0, 0, apperror.Internal("Falha ao criar vendedor para importacao", err)
 	}
 
 	catalogs.salespeople[key] = id
@@ -590,7 +590,7 @@ func (s *service) ensureContactID(ctx context.Context, catalogs *catalogRuntime,
 		return id, 0, nil
 	}
 	if !options.CreateMissingCatalogs {
-		return 0, 0, apperror.BadRequest("contact not found for import")
+		return 0, 0, apperror.BadRequest("Contato nao encontrado para importacao")
 	}
 
 	now := time.Now()
@@ -605,7 +605,7 @@ func (s *service) ensureContactID(ctx context.Context, catalogs *catalogRuntime,
 		UpdatedAt:   now,
 	})
 	if err != nil {
-		return 0, 0, apperror.Internal("failed to create contact for import", err)
+		return 0, 0, apperror.Internal("Falha ao criar contato para importacao", err)
 	}
 
 	catalogs.contacts[key] = id
@@ -618,7 +618,7 @@ func (s *service) ensureLossReasonID(ctx context.Context, catalogs *catalogRunti
 		return id, 0, nil
 	}
 	if !options.CreateMissingCatalogs {
-		return 0, 0, apperror.BadRequest("loss reason not found for import")
+		return 0, 0, apperror.BadRequest("Motivo de perda nao encontrado para importacao")
 	}
 
 	now := time.Now()
@@ -636,7 +636,7 @@ func (s *service) ensureLossReasonID(ctx context.Context, catalogs *catalogRunti
 			catalogs.lossReasons[key] = existing.ID
 			return existing.ID, 0, nil
 		}
-		return 0, 0, apperror.Internal("failed to create loss reason for import", err)
+		return 0, 0, apperror.Internal("Falha ao criar motivo de perda para importacao", err)
 	}
 
 	catalogs.lossReasons[key] = id

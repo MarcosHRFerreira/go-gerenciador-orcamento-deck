@@ -18,37 +18,40 @@ const (
 	testStrongPassword  = "Strong@123"
 	testUpdatedPassword = "Updated@123"
 	testWeakPassword    = "12345678"
+	testSetupToken      = "unit-bootstrap-token"
 )
 
 type userRepositoryStub struct {
-	countUsersResult                 int64
-	countUsersErr                    error
-	countActiveAdminsResult          int64
-	countActiveAdminsErr             error
-	createUserID                     int64
-	createUserErr                    error
-	getUserByEmailItem               *model.UserModel
-	getUserByEmailErr                error
-	getUserByEmailOrUsernameItem     *model.UserModel
-	getUserByEmailOrUsernameErr      error
-	getUserByIDItem                  *model.UserModel
-	getUserByIDErr                   error
-	listUsersItems                   []model.UserModel
-	listUsersErr                     error
-	getActiveRefreshTokenByUserID    *model.RefreshTokenModel
-	getActiveRefreshTokenByUserIDErr error
-	storeRefreshTokenErr             error
-	deleteRefreshTokensByUserIDErr   error
-	capturedCreateUser               *model.UserModel
-	capturedStoreRefreshToken        *model.RefreshTokenModel
-	deletedRefreshTokensUserID       int64
-	updatedUserRole                  model.UserRole
-	updatedUserRoleUserID            int64
-	updatedUserActive                bool
-	updatedUserActiveUserID          int64
-	updatedUserPasswordHash          string
-	updatedUserPasswordUserID        int64
-	updatedUserMustChangePassword    bool
+	countUsersResult               int64
+	countUsersErr                  error
+	countActiveAdminsResult        int64
+	countActiveAdminsErr           error
+	createUserID                   int64
+	createUserErr                  error
+	getUserByEmailItem             *model.UserModel
+	getUserByEmailErr              error
+	getUserByEmailOrUsernameItem   *model.UserModel
+	getUserByEmailOrUsernameErr    error
+	getUserByIDItem                *model.UserModel
+	getUserByIDErr                 error
+	listUsersItems                 []model.UserModel
+	listUsersErr                   error
+	getActiveRefreshTokenByHash    *model.RefreshTokenModel
+	getActiveRefreshTokenByHashErr error
+	storeRefreshTokenErr           error
+	deleteRefreshTokensByUserIDErr error
+	deleteRefreshTokenByHashErr    error
+	capturedCreateUser             *model.UserModel
+	capturedStoreRefreshToken      *model.RefreshTokenModel
+	deletedRefreshTokensUserID     int64
+	deletedRefreshTokenHash        string
+	updatedUserRole                model.UserRole
+	updatedUserRoleUserID          int64
+	updatedUserActive              bool
+	updatedUserActiveUserID        int64
+	updatedUserPasswordHash        string
+	updatedUserPasswordUserID      int64
+	updatedUserMustChangePassword  bool
 }
 
 func (s *userRepositoryStub) CountUsers(_ context.Context) (int64, error) {
@@ -103,8 +106,8 @@ func (s *userRepositoryStub) UpdateUserPassword(_ context.Context, userID int64,
 	return nil
 }
 
-func (s *userRepositoryStub) GetActiveRefreshTokenByUserID(_ context.Context, _ int64, _ time.Time) (*model.RefreshTokenModel, error) {
-	return s.getActiveRefreshTokenByUserID, s.getActiveRefreshTokenByUserIDErr
+func (s *userRepositoryStub) GetActiveRefreshTokenByHash(_ context.Context, _ string, _ time.Time) (*model.RefreshTokenModel, error) {
+	return s.getActiveRefreshTokenByHash, s.getActiveRefreshTokenByHashErr
 }
 
 func (s *userRepositoryStub) StoreRefreshToken(_ context.Context, token *model.RefreshTokenModel) error {
@@ -117,11 +120,19 @@ func (s *userRepositoryStub) DeleteRefreshTokensByUserID(_ context.Context, user
 	return s.deleteRefreshTokensByUserIDErr
 }
 
+func (s *userRepositoryStub) DeleteRefreshTokenByHash(_ context.Context, refreshTokenHash string) error {
+	s.deletedRefreshTokenHash = refreshTokenHash
+	return s.deleteRefreshTokenByHashErr
+}
+
 func TestAuthServiceRegisterShouldCreateFirstUserAsAdmin(t *testing.T) {
 	repo := &userRepositoryStub{
 		createUserID: 11,
 	}
-	service := authservice.NewService(repo, &config.Config{SecretJWT: "local-secret"})
+	service := authservice.NewService(repo, &config.Config{
+		SecretJWT:              "local-secret",
+		InitialAdminSetupToken: testSetupToken,
+	})
 
 	userID, err := service.Register(context.Background(), &dto.RegisterRequest{
 		Name:            "Administrador",
@@ -129,7 +140,7 @@ func TestAuthServiceRegisterShouldCreateFirstUserAsAdmin(t *testing.T) {
 		Username:        "admin",
 		Password:        testStrongPassword,
 		PasswordConfirm: testStrongPassword,
-	})
+	}, testSetupToken)
 
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -155,7 +166,10 @@ func TestAuthServiceRegisterShouldCreateFirstUserAsAdmin(t *testing.T) {
 }
 
 func TestAuthServiceRegisterShouldRejectWeakPassword(t *testing.T) {
-	service := authservice.NewService(&userRepositoryStub{}, &config.Config{SecretJWT: "local-secret"})
+	service := authservice.NewService(&userRepositoryStub{}, &config.Config{
+		SecretJWT:              "local-secret",
+		InitialAdminSetupToken: testSetupToken,
+	})
 
 	_, err := service.Register(context.Background(), &dto.RegisterRequest{
 		Name:            "Administrador",
@@ -163,15 +177,18 @@ func TestAuthServiceRegisterShouldRejectWeakPassword(t *testing.T) {
 		Username:        "admin",
 		Password:        testWeakPassword,
 		PasswordConfirm: testWeakPassword,
-	})
+	}, testSetupToken)
 
-	assertAppError(t, err, 400, "password must contain at least 8 characters, uppercase letter, lowercase letter, number and special character")
+	assertAppError(t, err, 400, "A senha deve conter pelo menos 8 caracteres, letra maiuscula, letra minuscula, numero e caractere especial")
 }
 
 func TestAuthServiceRegisterShouldReturnForbiddenWhenUsersAlreadyExist(t *testing.T) {
 	service := authservice.NewService(&userRepositoryStub{
 		countUsersResult: 1,
-	}, &config.Config{SecretJWT: "local-secret"})
+	}, &config.Config{
+		SecretJWT:              "local-secret",
+		InitialAdminSetupToken: testSetupToken,
+	})
 
 	_, err := service.Register(context.Background(), &dto.RegisterRequest{
 		Name:            "Administrador",
@@ -179,9 +196,9 @@ func TestAuthServiceRegisterShouldReturnForbiddenWhenUsersAlreadyExist(t *testin
 		Username:        "admin",
 		Password:        testStrongPassword,
 		PasswordConfirm: testStrongPassword,
-	})
+	}, testSetupToken)
 
-	assertAppError(t, err, 403, "public registration is no longer available")
+	assertAppError(t, err, 403, "Cadastro publico nao esta mais disponivel")
 }
 
 func TestAuthServiceLoginShouldReturnUnauthorizedWhenPasswordIsWrong(t *testing.T) {
@@ -204,7 +221,30 @@ func TestAuthServiceLoginShouldReturnUnauthorizedWhenPasswordIsWrong(t *testing.
 		Password: "wrong-password",
 	})
 
-	assertAppError(t, loginErr, 401, "wrong email or password")
+	assertAppError(t, loginErr, 401, "E-mail ou senha invalidos")
+}
+
+func TestAuthServiceLoginShouldReturnUnauthorizedWhenUserIsInactive(t *testing.T) {
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(testStrongPassword), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatalf("failed to hash password: %v", err)
+	}
+	service := authservice.NewService(&userRepositoryStub{
+		getUserByEmailItem: &model.UserModel{
+			ID:           7,
+			Username:     "user",
+			PasswordHash: string(passwordHash),
+			Role:         model.RoleUser,
+			Active:       false,
+		},
+	}, &config.Config{SecretJWT: "local-secret"})
+
+	_, _, loginErr := service.Login(context.Background(), &dto.LoginRequest{
+		Email:    "user@example.com",
+		Password: testStrongPassword,
+	})
+
+	assertAppError(t, loginErr, 401, "Usuario desativado")
 }
 
 func TestAuthServiceLoginShouldIssueTokenAndStoreRefreshToken(t *testing.T) {
@@ -248,8 +288,11 @@ func TestAuthServiceLoginShouldIssueTokenAndStoreRefreshToken(t *testing.T) {
 	if repo.capturedStoreRefreshToken.UserID != 7 {
 		t.Fatalf("expected stored refresh token user id 7, got %d", repo.capturedStoreRefreshToken.UserID)
 	}
-	if repo.capturedStoreRefreshToken.RefreshToken != refreshToken {
-		t.Fatalf("expected stored refresh token %s, got %s", refreshToken, repo.capturedStoreRefreshToken.RefreshToken)
+	if repo.capturedStoreRefreshToken.RefreshToken == refreshToken {
+		t.Fatal("expected stored refresh token to be hashed")
+	}
+	if len(repo.capturedStoreRefreshToken.RefreshToken) != 64 {
+		t.Fatalf("expected stored refresh token hash with 64 chars, got %d", len(repo.capturedStoreRefreshToken.RefreshToken))
 	}
 	userID, username, role, mustChangePassword, validateErr := jwtutil.ValidateToken(token, "local-secret", true)
 	if validateErr != nil {
@@ -271,17 +314,11 @@ func TestAuthServiceRefreshShouldReturnUnauthorizedWhenRefreshTokenDoesNotMatch(
 			Role:     model.RoleUser,
 			Active:   true,
 		},
-		getActiveRefreshTokenByUserID: &model.RefreshTokenModel{
-			UserID:       7,
-			RefreshToken: "stored-token",
-		},
 	}, &config.Config{SecretJWT: "local-secret"})
 
-	_, _, err := service.Refresh(context.Background(), &dto.RefreshTokenRequest{
-		RefreshToken: "another-token",
-	}, 7)
+	_, _, err := service.Refresh(context.Background(), "another-token")
 
-	assertAppError(t, err, 401, "refresh token not found")
+	assertAppError(t, err, 401, "Refresh token expirado")
 }
 
 func TestAuthServiceRefreshShouldIssueNewTokens(t *testing.T) {
@@ -292,16 +329,14 @@ func TestAuthServiceRefreshShouldIssueNewTokens(t *testing.T) {
 			Role:     model.RoleUser,
 			Active:   true,
 		},
-		getActiveRefreshTokenByUserID: &model.RefreshTokenModel{
+		getActiveRefreshTokenByHash: &model.RefreshTokenModel{
 			UserID:       7,
-			RefreshToken: "stored-token",
+			RefreshToken: "hashed-refresh-token",
 		},
 	}
 	service := authservice.NewService(repo, &config.Config{SecretJWT: "local-secret"})
 
-	token, refreshToken, err := service.Refresh(context.Background(), &dto.RefreshTokenRequest{
-		RefreshToken: "stored-token",
-	}, 7)
+	token, refreshToken, err := service.Refresh(context.Background(), "stored-token")
 
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -326,7 +361,7 @@ func TestUserServiceCreateShouldReturnBadRequestWhenRoleIsInvalid(t *testing.T) 
 		Role:            "manager",
 	})
 
-	assertAppError(t, err, 400, "invalid role")
+	assertAppError(t, err, 400, "Perfil invalido")
 }
 
 func TestUserServiceCreateShouldReturnConflictWhenUserAlreadyExists(t *testing.T) {
@@ -343,7 +378,7 @@ func TestUserServiceCreateShouldReturnConflictWhenUserAlreadyExists(t *testing.T
 		Role:            "user",
 	})
 
-	assertAppError(t, err, 409, "user already exists")
+	assertAppError(t, err, 409, "Usuario ja existe")
 }
 
 func TestUserServiceCreateShouldHashPasswordAndCreateUser(t *testing.T) {
@@ -393,7 +428,7 @@ func TestUserServiceCreateShouldRejectWeakPassword(t *testing.T) {
 		Role:            "user",
 	})
 
-	assertAppError(t, err, 400, "password must contain at least 8 characters, uppercase letter, lowercase letter, number and special character")
+	assertAppError(t, err, 400, "A senha deve conter pelo menos 8 caracteres, letra maiuscula, letra minuscula, numero e caractere especial")
 }
 
 func TestUserServiceListShouldMapResponse(t *testing.T) {
@@ -431,7 +466,7 @@ func TestUserServiceGetMeShouldReturnNotFoundWhenUserDoesNotExist(t *testing.T) 
 
 	_, err := service.GetMe(context.Background(), 9)
 
-	assertAppError(t, err, 404, "user not found")
+	assertAppError(t, err, 404, "Usuario nao encontrado")
 }
 
 func TestAuthServiceChangePasswordShouldUpdatePasswordAndIssueNewTokens(t *testing.T) {
@@ -505,7 +540,7 @@ func TestAuthServiceChangePasswordShouldRejectSamePassword(t *testing.T) {
 		NewPasswordConfirm: testStrongPassword,
 	})
 
-	assertAppError(t, changeErr, 400, "new password must be different from current password")
+	assertAppError(t, changeErr, 400, "A nova senha deve ser diferente da senha atual")
 }
 
 func TestAuthServiceChangePasswordShouldRejectWeakNewPassword(t *testing.T) {
@@ -530,7 +565,7 @@ func TestAuthServiceChangePasswordShouldRejectWeakNewPassword(t *testing.T) {
 		NewPasswordConfirm: testWeakPassword,
 	})
 
-	assertAppError(t, changeErr, 400, "password must contain at least 8 characters, uppercase letter, lowercase letter, number and special character")
+	assertAppError(t, changeErr, 400, "A senha deve conter pelo menos 8 caracteres, letra maiuscula, letra minuscula, numero e caractere especial")
 }
 
 func TestUserServiceUpdateRoleShouldPreventChangingOwnRole(t *testing.T) {
@@ -546,7 +581,7 @@ func TestUserServiceUpdateRoleShouldPreventChangingOwnRole(t *testing.T) {
 		Role: "user",
 	})
 
-	assertAppError(t, err, 403, "cannot change your own role")
+	assertAppError(t, err, 403, "Nao e permitido alterar o proprio perfil")
 }
 
 func TestUserServiceUpdateRoleShouldPreventRemovingLastActiveAdmin(t *testing.T) {
@@ -563,7 +598,7 @@ func TestUserServiceUpdateRoleShouldPreventRemovingLastActiveAdmin(t *testing.T)
 		Role: "user",
 	})
 
-	assertAppError(t, err, 403, "cannot remove role from last active admin")
+	assertAppError(t, err, 403, "Nao e permitido remover o perfil do ultimo administrador ativo")
 }
 
 func TestUserServiceUpdateRoleShouldUpdateRole(t *testing.T) {
@@ -606,7 +641,7 @@ func TestUserServiceUpdateActiveShouldPreventSelfDeactivation(t *testing.T) {
 		Active: &active,
 	})
 
-	assertAppError(t, err, 403, "cannot deactivate your own user")
+	assertAppError(t, err, 403, "Nao e permitido desativar o proprio usuario")
 }
 
 func TestUserServiceUpdateActiveShouldPreventDeactivatingLastActiveAdmin(t *testing.T) {
@@ -624,7 +659,7 @@ func TestUserServiceUpdateActiveShouldPreventDeactivatingLastActiveAdmin(t *test
 		Active: &active,
 	})
 
-	assertAppError(t, err, 403, "cannot deactivate last active admin")
+	assertAppError(t, err, 403, "Nao e permitido desativar o ultimo administrador ativo")
 }
 
 func TestUserServiceUpdateActiveShouldUpdateStatus(t *testing.T) {
@@ -669,7 +704,7 @@ func TestUserServiceResetPasswordShouldPreventResettingOwnPassword(t *testing.T)
 		PasswordConfirm: testUpdatedPassword,
 	})
 
-	assertAppError(t, err, 403, "cannot reset your own password")
+	assertAppError(t, err, 403, "Nao e permitido resetar a propria senha")
 }
 
 func TestUserServiceResetPasswordShouldUpdatePasswordAndRequireChange(t *testing.T) {
@@ -717,5 +752,5 @@ func TestUserServiceResetPasswordShouldRejectWeakPassword(t *testing.T) {
 		PasswordConfirm: testWeakPassword,
 	})
 
-	assertAppError(t, err, 400, "password must contain at least 8 characters, uppercase letter, lowercase letter, number and special character")
+	assertAppError(t, err, 400, "A senha deve conter pelo menos 8 caracteres, letra maiuscula, letra minuscula, numero e caractere especial")
 }

@@ -12,7 +12,12 @@ import {
   getStoredSession,
   setStoredSession,
 } from "../../../lib/storage/sessionStorage";
-import { getCurrentUserRequest, loginRequest } from "../api/auth";
+import {
+  getCurrentUserRequest,
+  loginRequest,
+  logoutRequest,
+  refreshSessionRequest,
+} from "../api/auth";
 import type { AuthSession, LoginPayload } from "../types/auth";
 import { AuthContext, type AuthContextValue } from "./auth-context";
 
@@ -23,6 +28,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [session, setSession] = useState<AuthSession | null>(() =>
     getStoredSession(),
   );
+  const [isBootstrapping, setIsBootstrapping] = useState(true);
 
   const resetApplicationSession = useCallback(async () => {
     await queryClient.cancelQueries();
@@ -58,10 +64,43 @@ export function AuthProvider({ children }: PropsWithChildren) {
     });
   }, [clearAuthState]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const bootstrapSession = async () => {
+      try {
+        const nextSession = await refreshSessionRequest();
+        if (!isMounted) {
+          return;
+        }
+
+        setStoredSession(nextSession);
+        setSession(nextSession);
+      } catch {
+        if (!isMounted) {
+          return;
+        }
+
+        clearStoredSession();
+        setSession(null);
+      } finally {
+        if (isMounted) {
+          setIsBootstrapping(false);
+        }
+      }
+    };
+
+    void bootstrapSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const currentUserQuery = useQuery({
     queryKey: currentUserQueryKey,
     queryFn: getCurrentUserRequest,
-    enabled: Boolean(session?.token),
+    enabled: Boolean(session?.token) && !isBootstrapping,
     retry: false,
   });
 
@@ -74,13 +113,21 @@ export function AuthProvider({ children }: PropsWithChildren) {
   );
 
   const logout = useCallback(() => {
-    void clearAuthState();
+    void (async () => {
+      try {
+        await logoutRequest();
+      } finally {
+        await clearAuthState();
+      }
+    })();
   }, [clearAuthState]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       isAuthenticated: Boolean(session?.token),
-      isLoading: Boolean(session?.token) && currentUserQuery.isLoading,
+      isLoading:
+        isBootstrapping ||
+        (Boolean(session?.token) && currentUserQuery.isLoading),
       session,
       user: currentUserQuery.data ?? null,
       login,
@@ -91,6 +138,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     [
       currentUserQuery.data,
       currentUserQuery.isLoading,
+      isBootstrapping,
       login,
       logout,
       refreshCurrentUser,

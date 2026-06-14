@@ -38,7 +38,7 @@ func (s *service) Create(ctx context.Context, req *dto.CreateLossReasonRequest) 
 		return 0, apperror.Internal("failed to check existing loss reason", err)
 	}
 	if existingItem != nil {
-		return 0, apperror.Conflict("loss reason already exists")
+		return 0, apperror.Conflict("Motivo de perda ja existe")
 	}
 
 	now := time.Now()
@@ -73,7 +73,7 @@ func (s *service) List(ctx context.Context) ([]dto.LossReasonResponse, error) {
 
 func (s *service) GetByID(ctx context.Context, reasonID int64) (*dto.LossReasonResponse, error) {
 	if reasonID <= 0 {
-		return nil, apperror.BadRequest("reason_id is required")
+		return nil, apperror.BadRequest("reason_id e obrigatorio")
 	}
 
 	item, err := s.repo.GetByID(ctx, reasonID)
@@ -81,7 +81,7 @@ func (s *service) GetByID(ctx context.Context, reasonID int64) (*dto.LossReasonR
 		return nil, apperror.Internal("failed to get loss reason", err)
 	}
 	if item == nil {
-		return nil, apperror.NotFound("loss reason not found")
+		return nil, apperror.NotFound("Motivo de perda nao encontrado")
 	}
 
 	response := toResponse(*item)
@@ -90,7 +90,7 @@ func (s *service) GetByID(ctx context.Context, reasonID int64) (*dto.LossReasonR
 
 func (s *service) Update(ctx context.Context, reasonID int64, req *dto.UpdateLossReasonRequest) error {
 	if reasonID <= 0 {
-		return apperror.BadRequest("reason_id is required")
+		return apperror.BadRequest("reason_id e obrigatorio")
 	}
 
 	currentItem, err := s.repo.GetByID(ctx, reasonID)
@@ -98,17 +98,17 @@ func (s *service) Update(ctx context.Context, reasonID int64, req *dto.UpdateLos
 		return apperror.Internal("failed to check loss reason", err)
 	}
 	if currentItem == nil {
-		return apperror.NotFound("loss reason not found")
+		return apperror.NotFound("Motivo de perda nao encontrado")
 	}
 
 	code := strings.TrimSpace(req.Code)
 	if code == "" {
-		return apperror.BadRequest("code is required")
+		return apperror.BadRequest("code e obrigatorio")
 	}
 
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
-		return apperror.BadRequest("name is required")
+		return apperror.BadRequest("name e obrigatorio")
 	}
 
 	existingItem, err := s.repo.GetByCodeOrName(ctx, code, name)
@@ -116,7 +116,7 @@ func (s *service) Update(ctx context.Context, reasonID int64, req *dto.UpdateLos
 		return apperror.Internal("failed to check existing loss reason", err)
 	}
 	if existingItem != nil && existingItem.ID != reasonID {
-		return apperror.Conflict("loss reason already exists")
+		return apperror.Conflict("Motivo de perda ja existe")
 	}
 
 	err = s.repo.Update(ctx, &model.LossReasonModel{
@@ -136,7 +136,7 @@ func (s *service) Update(ctx context.Context, reasonID int64, req *dto.UpdateLos
 
 func (s *service) Delete(ctx context.Context, reasonID int64) error {
 	if reasonID <= 0 {
-		return apperror.BadRequest("reason_id is required")
+		return apperror.BadRequest("reason_id e obrigatorio")
 	}
 
 	item, err := s.repo.GetByID(ctx, reasonID)
@@ -144,7 +144,7 @@ func (s *service) Delete(ctx context.Context, reasonID int64) error {
 		return apperror.Internal("failed to check loss reason", err)
 	}
 	if item == nil {
-		return apperror.NotFound("loss reason not found")
+		return apperror.NotFound("Motivo de perda nao encontrado")
 	}
 
 	if err := s.repo.Delete(ctx, reasonID); err != nil {
@@ -171,11 +171,11 @@ func mapLossReasonPersistenceError(action string, err error) error {
 	if errors.As(err, &pgError) {
 		switch pgError.ConstraintName {
 		case "loss_reasons_code_key", "loss_reasons_name_key":
-			return apperror.Conflict("loss reason already exists")
+			return apperror.Conflict("Motivo de perda ja existe")
 		}
 
 		if pgError.Code == "23505" {
-			return apperror.Conflict("loss reason already exists")
+			return apperror.Conflict("Motivo de perda ja existe")
 		}
 	}
 

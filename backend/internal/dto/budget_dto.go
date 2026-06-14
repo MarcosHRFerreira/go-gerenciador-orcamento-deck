@@ -47,24 +47,24 @@ type UpdateBudgetRequest struct {
 }
 
 type ListBudgetsFilters struct {
-	BudgetNumber   string
-	YearBudget     *int
-	StatusID       *int64
-	SalespersonID  *int64
+	BudgetNumber            string
+	YearBudget              *int
+	StatusID                *int64
+	SalespersonID           *int64
 	RestrictedSalespersonID *int64
-	InstallerID    *int64
-	PriorityID     *int64
-	ProjectTypeID  *int64
-	DesignerName   string
-	CompetitorName string
-	SentAtFrom     *time.Time
-	SentAtTo       *time.Time
-	GrossValueMin  *float64
-	GrossValueMax  *float64
-	Page           int
-	PageSize       int
-	SortBy         string
-	SortOrder      string
+	InstallerID             *int64
+	PriorityID              *int64
+	ProjectTypeID           *int64
+	DesignerName            string
+	CompetitorName          string
+	SentAtFrom              *time.Time
+	SentAtTo                *time.Time
+	GrossValueMin           *float64
+	GrossValueMax           *float64
+	Page                    int
+	PageSize                int
+	SortBy                  string
+	SortOrder               string
 }
 
 type BudgetResponse struct {
@@ -86,6 +86,9 @@ type BudgetResponse struct {
 	CompetitorName       string    `json:"competitor_name"`
 	CompetitorPrice      *float64  `json:"competitor_price,omitempty"`
 	DesignerName         string    `json:"designer_name"`
+	ProjectName          *string   `json:"project_name,omitempty"`
+	SalespersonName      *string   `json:"salesperson_name,omitempty"`
+	ContactName          *string   `json:"contact_name,omitempty"`
 	SpecificationDetails string    `json:"specification_details"`
 	CurrentFollowUp      string    `json:"current_follow_up"`
 	CreatedAt            time.Time `json:"created_at"`

@@ -120,7 +120,7 @@ func parsePriorityID(c *gin.Context) (int64, bool) {
 	rawID := c.Param("priority_id")
 	priorityID, err := strconv.ParseInt(rawID, 10, 64)
 	if err != nil || priorityID <= 0 {
-		httpresponse.JSONError(c, http.StatusBadRequest, "priority_id must be a valid integer")
+		httpresponse.JSONError(c, http.StatusBadRequest, "priority_id deve ser um inteiro valido")
 		return 0, false
 	}
 

@@ -46,6 +46,7 @@ import { useAuth } from "../../auth/hooks/useAuth";
 import {
   deleteBudgetRequest,
   getBudgetCatalogsRequest,
+  getBudgetListCatalogsRequest,
   getBudgetListRequest,
 } from "../api/budgets";
 import type {
@@ -220,6 +221,19 @@ function formatCatalogName(
   return catalogMap.get(value) ?? `ID ${value}`;
 }
 
+function formatResolvedCatalogName(
+  value: number | null,
+  explicitName: string | null,
+  catalogMap: Map<number, string>,
+  fallbackWhenMissing = "Nao informado",
+) {
+  if (explicitName !== null && explicitName.trim()) {
+    return explicitName;
+  }
+
+  return formatCatalogName(value, catalogMap, fallbackWhenMissing);
+}
+
 const tableHeadCellSx = {
   backgroundColor: "rgba(37, 99, 235, 0.08)",
   borderBottomColor: "primary.main",
@@ -324,7 +338,7 @@ export function BudgetListPage() {
   });
   const budgetCatalogsQuery = useQuery({
     queryKey: ["budget-catalogs", user?.id ?? "anonymous"],
-    queryFn: getBudgetCatalogsRequest,
+    queryFn: isAdmin ? getBudgetCatalogsRequest : getBudgetListCatalogsRequest,
     staleTime: 1000 * 60 * 5,
   });
   const deleteBudgetMutation = useMutation({
@@ -1034,20 +1048,29 @@ export function BudgetListPage() {
                           <TableCell
                             sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
                           >
-                            {formatCatalogName(budget.projectId, projectMap)}
+                            {formatResolvedCatalogName(
+                              budget.projectId,
+                              budget.projectName,
+                              projectMap,
+                            )}
                           </TableCell>
                           <TableCell
                             sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
                           >
-                            {formatCatalogName(
+                            {formatResolvedCatalogName(
                               budget.salespersonId,
+                              budget.salespersonName,
                               salespersonMap,
                             )}
                           </TableCell>
                           <TableCell
                             sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
                           >
-                            {formatCatalogName(budget.contactId, contactMap)}
+                            {formatResolvedCatalogName(
+                              budget.contactId,
+                              budget.contactName,
+                              contactMap,
+                            )}
                           </TableCell>
                           <TableCell
                             sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}

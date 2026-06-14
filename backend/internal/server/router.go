@@ -3,6 +3,7 @@ package server
 import (
 	"database/sql"
 	"net/http"
+	"strings"
 	"time"
 
 	authhandler "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/handler/auth"
@@ -50,9 +51,11 @@ import (
 	"github.com/go-playground/validator/v10"
 
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/config"
+	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/middleware"
 )
 
 const healthCheckTimeout = 2 * time.Second
+const maxMultipartMemory = 10 << 20
 
 type Dependencies struct {
 	DB            *sql.DB
@@ -65,9 +68,21 @@ func NewRouter(validate *validator.Validate, deps Dependencies) *gin.Engine {
 		validate = validator.New()
 	}
 
+	allowedOrigins := []string(nil)
+	if deps.Config != nil {
+		allowedOrigins = deps.Config.AllowedOrigins
+	}
+
+	if deps.Config != nil {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
 	router := gin.New()
 	router.Use(gin.Recovery())
-	router.Use(corsMiddleware())
+	router.Use(middleware.RequestLogger())
+	router.MaxMultipartMemory = maxMultipartMemory
+	router.Use(securityHeadersMiddleware())
+	router.Use(corsMiddleware(allowedOrigins))
 
 	healthhandler.NewHandler(router, deps.HealthChecker, healthCheckTimeout).RouteList()
 
@@ -113,7 +128,7 @@ func NewRouter(validate *validator.Validate, deps Dependencies) *gin.Engine {
 	projectService := projectservice.NewService(projectRepo, projectTypeRepo)
 	salespersonService := salespersonservice.NewService(salespersonRepo)
 
-	authhandler.NewHandler(router, validate, authService, deps.Config.SecretJWT).RouteList()
+	authhandler.NewHandler(router, validate, authService, deps.Config).RouteList()
 	userhandler.NewHandler(router, validate, userService, deps.Config.SecretJWT).RouteList()
 	budgethandler.NewHandler(router, validate, budgetService, deps.Config.SecretJWT).RouteList()
 	budgetimporthandler.NewHandler(router, validate, budgetImportService, deps.Config.SecretJWT).RouteList()
@@ -131,10 +146,12 @@ func NewRouter(validate *validator.Validate, deps Dependencies) *gin.Engine {
 	return router
 }
 
-func corsMiddleware() gin.HandlerFunc {
+func corsMiddleware(allowedOrigins []string) gin.HandlerFunc {
+	normalizedAllowedOrigins := normalizeOrigins(allowedOrigins)
+
 	return func(c *gin.Context) {
 		origin := c.GetHeader("Origin")
-		if origin != "" {
+		if origin != "" && originAllowed(origin, normalizedAllowedOrigins) {
 			c.Header("Access-Control-Allow-Origin", origin)
 			c.Header("Vary", "Origin")
 			c.Header("Access-Control-Allow-Credentials", "true")
@@ -149,4 +166,32 @@ func corsMiddleware() gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+func securityHeadersMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")
+		c.Header("Referrer-Policy", "no-referrer")
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "DENY")
+
+		c.Next()
+	}
+}
+
+func normalizeOrigins(origins []string) map[string]struct{} {
+	values := make(map[string]struct{}, len(origins))
+	for _, origin := range origins {
+		normalizedOrigin := strings.TrimSpace(origin)
+		if normalizedOrigin != "" {
+			values[normalizedOrigin] = struct{}{}
+		}
+	}
+
+	return values
+}
+
+func originAllowed(origin string, allowedOrigins map[string]struct{}) bool {
+	_, exists := allowedOrigins[strings.TrimSpace(origin)]
+	return exists
 }

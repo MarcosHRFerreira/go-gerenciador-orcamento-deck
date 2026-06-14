@@ -30,14 +30,11 @@ func NewHandler(router gin.IRouter, validate *validator.Validate, service salesp
 }
 
 func (h *Handler) RouteList() {
-	protectedRoutes := h.router.Group("/salespeople")
-	protectedRoutes.Use(middleware.Auth(h.secretKey))
-	protectedRoutes.GET("", h.List)
-	protectedRoutes.GET("/:salesperson_id", h.GetByID)
-
 	adminRoutes := h.router.Group("/salespeople")
 	adminRoutes.Use(middleware.Auth(h.secretKey))
 	adminRoutes.Use(middleware.RequireRoles(model.RoleAdmin))
+	adminRoutes.GET("", h.List)
+	adminRoutes.GET("/:salesperson_id", h.GetByID)
 	adminRoutes.POST("", h.Create)
 	adminRoutes.PUT("/:salesperson_id", h.Update)
 	adminRoutes.DELETE("/:salesperson_id", h.Delete)
@@ -120,7 +117,7 @@ func parseSalespersonID(c *gin.Context) (int64, bool) {
 	rawID := c.Param("salesperson_id")
 	salespersonID, err := strconv.ParseInt(rawID, 10, 64)
 	if err != nil || salespersonID <= 0 {
-		httpresponse.JSONError(c, http.StatusBadRequest, "salesperson_id must be a valid integer")
+		httpresponse.JSONError(c, http.StatusBadRequest, "salesperson_id deve ser um inteiro valido")
 		return 0, false
 	}
 

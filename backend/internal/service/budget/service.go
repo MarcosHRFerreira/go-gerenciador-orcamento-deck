@@ -39,23 +39,23 @@ func NewService(repo budgetrepository.Repository, salespersonRepo salespersonrep
 func (s *service) Create(ctx context.Context, req *dto.CreateBudgetRequest) (int64, error) {
 	budgetNumber := strings.TrimSpace(req.BudgetNumber)
 	if budgetNumber == "" {
-		return 0, apperror.BadRequest("budget_number is required")
+		return 0, apperror.BadRequest("budget_number e obrigatorio")
 	}
 
 	if req.YearBudget <= 0 {
-		return 0, apperror.BadRequest("year_budget is required")
+		return 0, apperror.BadRequest("year_budget e obrigatorio")
 	}
 
 	if req.SentAt.IsZero() {
-		return 0, apperror.BadRequest("sent_at is required")
+		return 0, apperror.BadRequest("sent_at e obrigatorio")
 	}
 
 	if req.GrossValue <= 0 {
-		return 0, apperror.BadRequest("gross_value must be greater than zero")
+		return 0, apperror.BadRequest("gross_value deve ser maior que zero")
 	}
 
 	if req.StatusID <= 0 {
-		return 0, apperror.BadRequest("status_id is required")
+		return 0, apperror.BadRequest("status_id e obrigatorio")
 	}
 
 	exists, err := s.repo.ExistsByNumberAndYear(ctx, budgetNumber, req.YearBudget)
@@ -63,7 +63,7 @@ func (s *service) Create(ctx context.Context, req *dto.CreateBudgetRequest) (int
 		return 0, apperror.Internal("failed to check budget uniqueness", err)
 	}
 	if exists {
-		return 0, apperror.Conflict("budget already exists for informed budget_number and year_budget")
+		return 0, apperror.Conflict("Ja existe um orcamento para o budget_number e year_budget informados")
 	}
 
 	now := time.Now()
@@ -124,7 +124,7 @@ func (s *service) List(ctx context.Context, filters *dto.ListBudgetsFilters, rol
 
 func (s *service) GetByID(ctx context.Context, budgetID int64, role model.UserRole, username string) (*dto.BudgetResponse, error) {
 	if budgetID <= 0 {
-		return nil, apperror.BadRequest("budget_id is required")
+		return nil, apperror.BadRequest("budget_id e obrigatorio")
 	}
 
 	restrictedSalespersonID, err := accessscope.ResolveRestrictedSalespersonID(ctx, role, username, s.salespersonRepo)
@@ -137,7 +137,7 @@ func (s *service) GetByID(ctx context.Context, budgetID int64, role model.UserRo
 		return nil, apperror.Internal("failed to get budget", err)
 	}
 	if item == nil {
-		return nil, apperror.NotFound("budget not found")
+		return nil, apperror.NotFound("Orcamento nao encontrado")
 	}
 
 	response := mapBudgetResponse(item)
@@ -146,7 +146,7 @@ func (s *service) GetByID(ctx context.Context, budgetID int64, role model.UserRo
 
 func (s *service) Update(ctx context.Context, budgetID int64, req *dto.UpdateBudgetRequest) error {
 	if budgetID <= 0 {
-		return apperror.BadRequest("budget_id is required")
+		return apperror.BadRequest("budget_id e obrigatorio")
 	}
 
 	currentBudget, err := s.repo.GetByID(ctx, budgetID)
@@ -154,28 +154,28 @@ func (s *service) Update(ctx context.Context, budgetID int64, req *dto.UpdateBud
 		return apperror.Internal("failed to check budget", err)
 	}
 	if currentBudget == nil {
-		return apperror.NotFound("budget not found")
+		return apperror.NotFound("Orcamento nao encontrado")
 	}
 
 	budgetNumber := strings.TrimSpace(req.BudgetNumber)
 	if budgetNumber == "" {
-		return apperror.BadRequest("budget_number is required")
+		return apperror.BadRequest("budget_number e obrigatorio")
 	}
 
 	if req.YearBudget <= 0 {
-		return apperror.BadRequest("year_budget is required")
+		return apperror.BadRequest("year_budget e obrigatorio")
 	}
 
 	if req.SentAt.IsZero() {
-		return apperror.BadRequest("sent_at is required")
+		return apperror.BadRequest("sent_at e obrigatorio")
 	}
 
 	if req.GrossValue <= 0 {
-		return apperror.BadRequest("gross_value must be greater than zero")
+		return apperror.BadRequest("gross_value deve ser maior que zero")
 	}
 
 	if req.StatusID <= 0 {
-		return apperror.BadRequest("status_id is required")
+		return apperror.BadRequest("status_id e obrigatorio")
 	}
 
 	if currentBudget.BudgetNumber != budgetNumber || currentBudget.YearBudget != req.YearBudget {
@@ -184,7 +184,7 @@ func (s *service) Update(ctx context.Context, budgetID int64, req *dto.UpdateBud
 			return apperror.Internal("failed to check budget uniqueness", existsErr)
 		}
 		if exists {
-			return apperror.Conflict("budget already exists for informed budget_number and year_budget")
+			return apperror.Conflict("Ja existe um orcamento para o budget_number e year_budget informados")
 		}
 	}
 
@@ -220,7 +220,7 @@ func (s *service) Update(ctx context.Context, budgetID int64, req *dto.UpdateBud
 
 func (s *service) Delete(ctx context.Context, budgetID int64) error {
 	if budgetID <= 0 {
-		return apperror.BadRequest("budget_id is required")
+		return apperror.BadRequest("budget_id e obrigatorio")
 	}
 
 	item, err := s.repo.GetByID(ctx, budgetID)
@@ -228,7 +228,7 @@ func (s *service) Delete(ctx context.Context, budgetID int64) error {
 		return apperror.Internal("failed to check budget", err)
 	}
 	if item == nil {
-		return apperror.NotFound("budget not found")
+		return apperror.NotFound("Orcamento nao encontrado")
 	}
 
 	if err := s.repo.Delete(ctx, budgetID); err != nil {
@@ -243,28 +243,28 @@ func mapBudgetPersistenceError(action string, err error) error {
 	if errors.As(err, &pgError) {
 		switch pgError.ConstraintName {
 		case "uq_budgets_budget_number_year":
-			return apperror.Conflict("budget already exists for informed budget_number and year_budget")
+			return apperror.Conflict("Ja existe um orcamento para o budget_number e year_budget informados")
 		case "fk_budgets_status_id":
-			return apperror.BadRequest("budget status not found")
+			return apperror.BadRequest("Status de orcamento nao encontrado")
 		case "fk_budgets_priority_id":
-			return apperror.BadRequest("priority not found")
+			return apperror.BadRequest("Prioridade nao encontrada")
 		case "fk_budgets_installer_id":
-			return apperror.BadRequest("installer not found")
+			return apperror.BadRequest("Instalador nao encontrado")
 		case "fk_budgets_project_id":
-			return apperror.BadRequest("project not found")
+			return apperror.BadRequest("Projeto nao encontrado")
 		case "fk_budgets_salesperson_id":
-			return apperror.BadRequest("salesperson not found")
+			return apperror.BadRequest("Vendedor nao encontrado")
 		case "fk_budgets_contact_id":
-			return apperror.BadRequest("contact not found")
+			return apperror.BadRequest("Contato nao encontrado")
 		case "fk_budgets_loss_reason_id":
-			return apperror.BadRequest("loss reason not found")
+			return apperror.BadRequest("Motivo de perda nao encontrado")
 		}
 
 		if pgError.Code == "23503" {
-			return apperror.BadRequest("invalid related entity reference")
+			return apperror.BadRequest("Referencia de entidade relacionada invalida")
 		}
 		if pgError.Code == "23505" {
-			return apperror.Conflict("budget already exists for informed budget_number and year_budget")
+			return apperror.Conflict("Ja existe um orcamento para o budget_number e year_budget informados")
 		}
 	}
 
@@ -290,7 +290,7 @@ func normalizeListFilters(filters *dto.ListBudgetsFilters) (*dto.ListBudgetsFilt
 		normalized.PageSize = 20
 	}
 	if normalized.PageSize > 100 {
-		return nil, apperror.BadRequest("page_size cannot be greater than 100")
+		return nil, apperror.BadRequest("page_size nao pode ser maior que 100")
 	}
 	if normalized.SortBy == "" {
 		normalized.SortBy = "sent_at"
@@ -300,40 +300,40 @@ func normalizeListFilters(filters *dto.ListBudgetsFilters) (*dto.ListBudgetsFilt
 	}
 
 	if normalized.YearBudget != nil && *normalized.YearBudget <= 0 {
-		return nil, apperror.BadRequest("year_budget must be greater than zero")
+		return nil, apperror.BadRequest("year_budget deve ser maior que zero")
 	}
 	if normalized.StatusID != nil && *normalized.StatusID <= 0 {
-		return nil, apperror.BadRequest("status_id must be greater than zero")
+		return nil, apperror.BadRequest("status_id deve ser maior que zero")
 	}
 	if normalized.SalespersonID != nil && *normalized.SalespersonID <= 0 {
-		return nil, apperror.BadRequest("salesperson_id must be greater than zero")
+		return nil, apperror.BadRequest("salesperson_id deve ser maior que zero")
 	}
 	if normalized.InstallerID != nil && *normalized.InstallerID <= 0 {
-		return nil, apperror.BadRequest("installer_id must be greater than zero")
+		return nil, apperror.BadRequest("installer_id deve ser maior que zero")
 	}
 	if normalized.PriorityID != nil && *normalized.PriorityID <= 0 {
-		return nil, apperror.BadRequest("priority_id must be greater than zero")
+		return nil, apperror.BadRequest("priority_id deve ser maior que zero")
 	}
 	if normalized.ProjectTypeID != nil && *normalized.ProjectTypeID <= 0 {
-		return nil, apperror.BadRequest("project_type_id must be greater than zero")
+		return nil, apperror.BadRequest("project_type_id deve ser maior que zero")
 	}
 	if normalized.GrossValueMin != nil && *normalized.GrossValueMin < 0 {
-		return nil, apperror.BadRequest("gross_value_min must be greater than or equal to zero")
+		return nil, apperror.BadRequest("gross_value_min deve ser maior ou igual a zero")
 	}
 	if normalized.GrossValueMax != nil && *normalized.GrossValueMax < 0 {
-		return nil, apperror.BadRequest("gross_value_max must be greater than or equal to zero")
+		return nil, apperror.BadRequest("gross_value_max deve ser maior ou igual a zero")
 	}
 	if normalized.SentAtFrom != nil && normalized.SentAtTo != nil && normalized.SentAtFrom.After(*normalized.SentAtTo) {
-		return nil, apperror.BadRequest("sent_at_from cannot be greater than sent_at_to")
+		return nil, apperror.BadRequest("sent_at_from nao pode ser maior que sent_at_to")
 	}
 	if normalized.GrossValueMin != nil && normalized.GrossValueMax != nil && *normalized.GrossValueMin > *normalized.GrossValueMax {
-		return nil, apperror.BadRequest("gross_value_min cannot be greater than gross_value_max")
+		return nil, apperror.BadRequest("gross_value_min nao pode ser maior que gross_value_max")
 	}
 	if normalized.SortOrder != "asc" && normalized.SortOrder != "desc" {
-		return nil, apperror.BadRequest("sort_order must be asc or desc")
+		return nil, apperror.BadRequest("sort_order deve ser asc ou desc")
 	}
 	if !isAllowedSortBy(normalized.SortBy) {
-		return nil, apperror.BadRequest("sort_by is invalid")
+		return nil, apperror.BadRequest("sort_by e invalido")
 	}
 
 	return &normalized, nil
@@ -382,6 +382,9 @@ func mapBudgetResponse(item *model.BudgetModel) dto.BudgetResponse {
 		CompetitorName:       item.CompetitorName,
 		CompetitorPrice:      nullableFloat64Pointer(item.CompetitorPrice),
 		DesignerName:         item.DesignerName,
+		ProjectName:          nullableStringPointer(item.ProjectName),
+		SalespersonName:      nullableStringPointer(item.SalespersonName),
+		ContactName:          nullableStringPointer(item.ContactName),
 		SpecificationDetails: item.SpecificationDetails,
 		CurrentFollowUp:      item.CurrentFollowUp,
 		CreatedAt:            item.CreatedAt,
@@ -425,4 +428,12 @@ func nullableFloat64Pointer(value sql.NullFloat64) *float64 {
 	}
 
 	return &value.Float64
+}
+
+func nullableStringPointer(value sql.NullString) *string {
+	if !value.Valid {
+		return nil
+	}
+
+	return &value.String
 }

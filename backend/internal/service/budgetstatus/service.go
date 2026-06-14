@@ -37,7 +37,7 @@ func (s *service) Create(ctx context.Context, req *dto.CreateBudgetStatusRequest
 		return 0, apperror.Internal("failed to check existing budget status", err)
 	}
 	if existingItem != nil {
-		return 0, apperror.Conflict("budget status already exists")
+		return 0, apperror.Conflict("Status de orcamento ja existe")
 	}
 
 	now := time.Now()
@@ -82,7 +82,7 @@ func (s *service) List(ctx context.Context) ([]dto.BudgetStatusResponse, error) 
 
 func (s *service) GetByID(ctx context.Context, statusID int64) (*dto.BudgetStatusResponse, error) {
 	if statusID <= 0 {
-		return nil, apperror.BadRequest("status_id is required")
+		return nil, apperror.BadRequest("status_id e obrigatorio")
 	}
 
 	item, err := s.repo.GetByID(ctx, statusID)
@@ -90,7 +90,7 @@ func (s *service) GetByID(ctx context.Context, statusID int64) (*dto.BudgetStatu
 		return nil, apperror.Internal("failed to get budget status", err)
 	}
 	if item == nil {
-		return nil, apperror.NotFound("budget status not found")
+		return nil, apperror.NotFound("Status de orcamento nao encontrado")
 	}
 
 	response := toResponse(*item)
@@ -99,7 +99,7 @@ func (s *service) GetByID(ctx context.Context, statusID int64) (*dto.BudgetStatu
 
 func (s *service) Update(ctx context.Context, statusID int64, req *dto.UpdateBudgetStatusRequest) error {
 	if statusID <= 0 {
-		return apperror.BadRequest("status_id is required")
+		return apperror.BadRequest("status_id e obrigatorio")
 	}
 
 	currentItem, err := s.repo.GetByID(ctx, statusID)
@@ -107,17 +107,17 @@ func (s *service) Update(ctx context.Context, statusID int64, req *dto.UpdateBud
 		return apperror.Internal("failed to check budget status", err)
 	}
 	if currentItem == nil {
-		return apperror.NotFound("budget status not found")
+		return apperror.NotFound("Status de orcamento nao encontrado")
 	}
 
 	code := strings.TrimSpace(req.Code)
 	if code == "" {
-		return apperror.BadRequest("code is required")
+		return apperror.BadRequest("code e obrigatorio")
 	}
 
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
-		return apperror.BadRequest("name is required")
+		return apperror.BadRequest("name e obrigatorio")
 	}
 
 	existingItem, err := s.repo.GetByCodeOrName(ctx, code, name)
@@ -125,7 +125,7 @@ func (s *service) Update(ctx context.Context, statusID int64, req *dto.UpdateBud
 		return apperror.Internal("failed to check existing budget status", err)
 	}
 	if existingItem != nil && existingItem.ID != statusID {
-		return apperror.Conflict("budget status already exists")
+		return apperror.Conflict("Status de orcamento ja existe")
 	}
 
 	err = s.repo.Update(ctx, &model.BudgetStatusModel{
@@ -146,7 +146,7 @@ func (s *service) Update(ctx context.Context, statusID int64, req *dto.UpdateBud
 
 func (s *service) Delete(ctx context.Context, statusID int64) error {
 	if statusID <= 0 {
-		return apperror.BadRequest("status_id is required")
+		return apperror.BadRequest("status_id e obrigatorio")
 	}
 
 	item, err := s.repo.GetByID(ctx, statusID)
@@ -154,7 +154,7 @@ func (s *service) Delete(ctx context.Context, statusID int64) error {
 		return apperror.Internal("failed to check budget status", err)
 	}
 	if item == nil {
-		return apperror.NotFound("budget status not found")
+		return apperror.NotFound("Status de orcamento nao encontrado")
 	}
 
 	if err := s.repo.Delete(ctx, statusID); err != nil {
@@ -182,16 +182,16 @@ func mapBudgetStatusPersistenceError(action string, err error) error {
 	if errors.As(err, &pgError) {
 		switch pgError.ConstraintName {
 		case "budget_statuses_code_key", "budget_statuses_name_key":
-			return apperror.Conflict("budget status already exists")
+			return apperror.Conflict("Status de orcamento ja existe")
 		case "fk_budgets_status_id", "fk_budget_status_history_to_status_id":
-			return apperror.Conflict("budget status is being used and cannot be deleted")
+			return apperror.Conflict("O status de orcamento esta em uso e nao pode ser removido")
 		}
 
 		if pgError.Code == "23505" {
-			return apperror.Conflict("budget status already exists")
+			return apperror.Conflict("Status de orcamento ja existe")
 		}
 		if pgError.Code == "23503" {
-			return apperror.Conflict("budget status is being used and cannot be deleted")
+			return apperror.Conflict("O status de orcamento esta em uso e nao pode ser removido")
 		}
 	}
 

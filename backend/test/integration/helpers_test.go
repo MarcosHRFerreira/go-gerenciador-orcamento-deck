@@ -26,6 +26,7 @@ import (
 )
 
 const integrationRequestTimeout = 5 * time.Second
+const integrationSetupToken = "integration-bootstrap-token"
 
 const (
 	integrationStrongPassword  = "Strong@123"
@@ -40,6 +41,13 @@ type integrationTestEnv struct {
 	db     *sql.DB
 	router http.Handler
 	config *config.Config
+}
+
+type jsonRequestOptions struct {
+	token   string
+	body    string
+	headers map[string]string
+	cookies []*http.Cookie
 }
 
 type budgetSeedData struct {
@@ -111,6 +119,7 @@ func newIntegrationTestEnv(t *testing.T) *integrationTestEnv {
 
 	testConfig := *cfg
 	testConfig.DatabaseURL = testDatabaseURL
+	testConfig.InitialAdminSetupToken = integrationSetupToken
 
 	env := &integrationTestEnv{
 		db:     testDB,
@@ -129,18 +138,60 @@ func newIntegrationTestEnv(t *testing.T) *integrationTestEnv {
 func (e *integrationTestEnv) doJSONRequest(t *testing.T, method string, path string, token string, body string) *httptest.ResponseRecorder {
 	t.Helper()
 
-	req := httptest.NewRequest(method, path, strings.NewReader(body))
-	if body != "" {
+	return e.doJSONRequestWithOptions(t, method, path, jsonRequestOptions{
+		token: token,
+		body:  body,
+	})
+}
+
+func (e *integrationTestEnv) doJSONRequestWithOptions(t *testing.T, method string, path string, options jsonRequestOptions) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequest(method, path, strings.NewReader(options.body))
+	if options.body != "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	if options.token != "" {
+		req.Header.Set("Authorization", "Bearer "+options.token)
+	}
+	for key, value := range options.headers {
+		req.Header.Set(key, value)
+	}
+	for _, cookie := range options.cookies {
+		req.AddCookie(cookie)
 	}
 
 	recorder := httptest.NewRecorder()
 	e.router.ServeHTTP(recorder, req)
 
 	return recorder
+}
+
+func (e *integrationTestEnv) doAuthRegisterRequest(t *testing.T, body string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	return e.doJSONRequestWithOptions(t, http.MethodPost, "/auth/register", jsonRequestOptions{
+		body: body,
+		headers: map[string]string{
+			"X-Setup-Token": e.config.InitialAdminSetupToken,
+		},
+	})
+}
+
+func (e *integrationTestEnv) requireRefreshCookie(t *testing.T, recorder *httptest.ResponseRecorder) *http.Cookie {
+	t.Helper()
+
+	response := recorder.Result()
+	defer response.Body.Close()
+
+	for _, cookie := range response.Cookies() {
+		if cookie.Name == e.config.RefreshCookieName {
+			return cookie
+		}
+	}
+
+	t.Fatalf("expected refresh cookie %s to be set", e.config.RefreshCookieName)
+	return nil
 }
 
 func decodeJSONResponse[T any](t *testing.T, body io.Reader) T {
@@ -158,7 +209,7 @@ func (e *integrationTestEnv) createAdminToken(t *testing.T) string {
 	t.Helper()
 
 	registerBody := fmt.Sprintf(`{"name":"Admin Local","email":"admin@local.dev","username":"admin","password":"%s","password_confirm":"%s"}`, integrationStrongPassword, integrationStrongPassword)
-	registerResponse := e.doJSONRequest(t, http.MethodPost, "/auth/register", "", registerBody)
+	registerResponse := e.doAuthRegisterRequest(t, registerBody)
 	if registerResponse.Code != http.StatusCreated {
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, registerResponse.Code)
 	}

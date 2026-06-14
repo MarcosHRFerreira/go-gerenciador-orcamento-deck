@@ -66,10 +66,10 @@ func (s *service) List(ctx context.Context, installerIDRaw string) ([]dto.Contac
 	if installerIDRaw != "" {
 		parsedValue, err := strconv.ParseInt(installerIDRaw, 10, 64)
 		if err != nil {
-			return nil, apperror.BadRequest("installer_id must be a valid integer")
+			return nil, apperror.BadRequest("installer_id deve ser um inteiro valido")
 		}
 		if parsedValue <= 0 {
-			return nil, apperror.BadRequest("installer_id must be a valid integer")
+			return nil, apperror.BadRequest("installer_id deve ser um inteiro valido")
 		}
 
 		installerID = &parsedValue
@@ -90,7 +90,7 @@ func (s *service) List(ctx context.Context, installerIDRaw string) ([]dto.Contac
 
 func (s *service) GetByID(ctx context.Context, contactID int64) (*dto.ContactResponse, error) {
 	if contactID <= 0 {
-		return nil, apperror.BadRequest("contact_id is required")
+		return nil, apperror.BadRequest("contact_id e obrigatorio")
 	}
 
 	item, err := s.repo.GetByID(ctx, contactID)
@@ -98,7 +98,7 @@ func (s *service) GetByID(ctx context.Context, contactID int64) (*dto.ContactRes
 		return nil, apperror.Internal("failed to get contact", err)
 	}
 	if item == nil {
-		return nil, apperror.NotFound("contact not found")
+		return nil, apperror.NotFound("Contato nao encontrado")
 	}
 
 	response := toResponse(*item)
@@ -107,7 +107,7 @@ func (s *service) GetByID(ctx context.Context, contactID int64) (*dto.ContactRes
 
 func (s *service) Update(ctx context.Context, contactID int64, req *dto.UpdateContactRequest) error {
 	if contactID <= 0 {
-		return apperror.BadRequest("contact_id is required")
+		return apperror.BadRequest("contact_id e obrigatorio")
 	}
 
 	currentItem, err := s.repo.GetByID(ctx, contactID)
@@ -115,7 +115,7 @@ func (s *service) Update(ctx context.Context, contactID int64, req *dto.UpdateCo
 		return apperror.Internal("failed to check contact", err)
 	}
 	if currentItem == nil {
-		return apperror.NotFound("contact not found")
+		return apperror.NotFound("Contato nao encontrado")
 	}
 
 	if err := s.validateInstallerExists(ctx, req.InstallerID); err != nil {
@@ -147,7 +147,7 @@ func (s *service) Update(ctx context.Context, contactID int64, req *dto.UpdateCo
 
 func (s *service) Delete(ctx context.Context, contactID int64) error {
 	if contactID <= 0 {
-		return apperror.BadRequest("contact_id is required")
+		return apperror.BadRequest("contact_id e obrigatorio")
 	}
 
 	item, err := s.repo.GetByID(ctx, contactID)
@@ -155,7 +155,7 @@ func (s *service) Delete(ctx context.Context, contactID int64) error {
 		return apperror.Internal("failed to check contact", err)
 	}
 	if item == nil {
-		return apperror.NotFound("contact not found")
+		return apperror.NotFound("Contato nao encontrado")
 	}
 
 	if err := s.repo.Delete(ctx, contactID); err != nil {
@@ -167,7 +167,7 @@ func (s *service) Delete(ctx context.Context, contactID int64) error {
 
 func (s *service) validateInstallerExists(ctx context.Context, installerID int64) error {
 	if installerID <= 0 {
-		return apperror.BadRequest("installer_id is required")
+		return apperror.BadRequest("installer_id e obrigatorio")
 	}
 
 	installer, err := s.installerRepo.GetByID(ctx, installerID)
@@ -175,7 +175,7 @@ func (s *service) validateInstallerExists(ctx context.Context, installerID int64
 		return apperror.Internal("failed to check installer", err)
 	}
 	if installer == nil {
-		return apperror.BadRequest("installer not found")
+		return apperror.BadRequest("Instalador nao encontrado")
 	}
 
 	return nil
@@ -187,7 +187,7 @@ func (s *service) validateUniqueFields(ctx context.Context, installerID int64, e
 		return apperror.Internal("failed to check existing contact", err)
 	}
 	if existingByEmail != nil && existingByEmail.ID != contactID {
-		return apperror.Conflict("contact already exists")
+		return apperror.Conflict("Contato ja existe")
 	}
 
 	existingByPhone, err := s.repo.GetByInstallerAndPhone(ctx, installerID, phone)
@@ -195,7 +195,7 @@ func (s *service) validateUniqueFields(ctx context.Context, installerID int64, e
 		return apperror.Internal("failed to check existing contact", err)
 	}
 	if existingByPhone != nil && existingByPhone.ID != contactID {
-		return apperror.Conflict("contact already exists")
+		return apperror.Conflict("Contato ja existe")
 	}
 
 	return nil
@@ -220,11 +220,11 @@ func mapContactPersistenceError(action string, err error) error {
 	if errors.As(err, &pgError) {
 		switch pgError.ConstraintName {
 		case "uq_contacts_installer_email", "uq_contacts_installer_phone":
-			return apperror.Conflict("contact already exists")
+			return apperror.Conflict("Contato ja existe")
 		}
 
 		if pgError.Code == "23505" {
-			return apperror.Conflict("contact already exists")
+			return apperror.Conflict("Contato ja existe")
 		}
 	}
 

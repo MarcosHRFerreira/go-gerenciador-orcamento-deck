@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/server"
@@ -39,6 +40,11 @@ func TestCheckHealthShouldReturnOKWhenDatabaseIsAvailable(t *testing.T) {
 	if res.Body.String() != expectedBody {
 		t.Fatalf("expected body %s, got %s", expectedBody, res.Body.String())
 	}
+
+	requestID := strings.TrimSpace(res.Header().Get("X-Request-Id"))
+	if requestID == "" {
+		t.Fatal("expected X-Request-Id header to be set")
+	}
 }
 
 func TestCheckHealthShouldReturnServiceUnavailableWhenDatabaseIsUnavailable(t *testing.T) {
@@ -60,5 +66,27 @@ func TestCheckHealthShouldReturnServiceUnavailableWhenDatabaseIsUnavailable(t *t
 	expectedBody := "{\"message\":\"database unavailable\"}"
 	if res.Body.String() != expectedBody {
 		t.Fatalf("expected body %s, got %s", expectedBody, res.Body.String())
+	}
+}
+
+func TestCheckHealthShouldPreserveIncomingRequestIDHeader(t *testing.T) {
+	t.Parallel()
+
+	router := server.NewRouter(validator.New(), server.Dependencies{
+		HealthChecker: &healthCheckerStub{},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/check-health", nil)
+	req.Header.Set("X-Request-Id", "req_teste_123")
+	res := httptest.NewRecorder()
+
+	router.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, res.Code)
+	}
+
+	if res.Header().Get("X-Request-Id") != "req_teste_123" {
+		t.Fatalf("expected X-Request-Id header to be preserved, got %s", res.Header().Get("X-Request-Id"))
 	}
 }

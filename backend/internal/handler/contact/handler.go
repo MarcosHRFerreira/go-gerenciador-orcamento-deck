@@ -30,14 +30,11 @@ func NewHandler(router gin.IRouter, validate *validator.Validate, service contac
 }
 
 func (h *Handler) RouteList() {
-	protectedRoutes := h.router.Group("/contacts")
-	protectedRoutes.Use(middleware.Auth(h.secretKey))
-	protectedRoutes.GET("", h.List)
-	protectedRoutes.GET("/:contact_id", h.GetByID)
-
 	adminRoutes := h.router.Group("/contacts")
 	adminRoutes.Use(middleware.Auth(h.secretKey))
 	adminRoutes.Use(middleware.RequireRoles(model.RoleAdmin))
+	adminRoutes.GET("", h.List)
+	adminRoutes.GET("/:contact_id", h.GetByID)
 	adminRoutes.POST("", h.Create)
 	adminRoutes.PUT("/:contact_id", h.Update)
 	adminRoutes.DELETE("/:contact_id", h.Delete)
@@ -120,7 +117,7 @@ func parseContactID(c *gin.Context) (int64, bool) {
 	rawID := c.Param("contact_id")
 	contactID, err := strconv.ParseInt(rawID, 10, 64)
 	if err != nil || contactID <= 0 {
-		httpresponse.JSONError(c, http.StatusBadRequest, "contact_id must be a valid integer")
+		httpresponse.JSONError(c, http.StatusBadRequest, "contact_id deve ser um inteiro valido")
 		return 0, false
 	}
 

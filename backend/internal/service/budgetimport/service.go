@@ -205,11 +205,11 @@ func (s *service) Preview(
 	options dto.PreviewBudgetImportOptions,
 ) (*dto.PreviewBudgetImportResponse, error) {
 	if len(fileData) == 0 {
-		return nil, apperror.BadRequest("file is required")
+		return nil, apperror.BadRequest("Arquivo obrigatorio")
 	}
 
 	if strings.ToLower(filepath.Ext(fileName)) != ".xlsx" {
-		return nil, apperror.BadRequest("only .xlsx files are supported")
+		return nil, apperror.BadRequest("Apenas arquivos .xlsx sao suportados")
 	}
 
 	normalizedOptions, err := normalizePreviewOptions(options)
@@ -224,7 +224,7 @@ func (s *service) Preview(
 
 	header := workbook.rows[previewHeaderRowNumber]
 	if !isExpectedHeader(header) {
-		return nil, apperror.BadRequest("invalid header for ORCAMENTOS sheet")
+		return nil, apperror.BadRequest("Cabecalho invalido na aba ORCAMENTOS")
 	}
 
 	catalogs, err := s.loadCatalogIndex(ctx)
@@ -355,7 +355,7 @@ func (s *service) Preview(
 	}
 
 	if response.Summary.RowsRead == 0 {
-		return nil, apperror.BadRequest("the ORCAMENTOS sheet does not contain importable rows")
+		return nil, apperror.BadRequest("A aba ORCAMENTOS nao contem linhas importaveis")
 	}
 
 	response.CatalogActions = dto.BudgetImportCatalogActions{
@@ -624,7 +624,7 @@ func normalizePreviewOptions(options dto.PreviewBudgetImportOptions) (dto.Previe
 		normalized.DuplicateStrategy = duplicateStrategyUpdate
 	}
 	if normalized.DuplicateStrategy != duplicateStrategyIgnore && normalized.DuplicateStrategy != duplicateStrategyUpdate {
-		return dto.PreviewBudgetImportOptions{}, apperror.BadRequest("duplicate_strategy must be ignore or update")
+		return dto.PreviewBudgetImportOptions{}, apperror.BadRequest("duplicate_strategy deve ser ignore ou update")
 	}
 	if !options.CreateMissingCatalogs && !options.UseDefaultNotInformed {
 		normalized.CreateMissingCatalogs = false
@@ -758,12 +758,12 @@ func (s *service) loadCatalogIndex(ctx context.Context) (*catalogIndex, error) {
 func parseWorkbook(fileData []byte, sheetName string) (*workbookData, error) {
 	reader, err := zip.NewReader(bytes.NewReader(fileData), int64(len(fileData)))
 	if err != nil {
-		return nil, apperror.BadRequest("invalid xlsx file")
+		return nil, apperror.BadRequest("Arquivo xlsx invalido")
 	}
 
 	sharedStrings, err := readSharedStrings(reader)
 	if err != nil {
-		return nil, apperror.BadRequest("failed to read shared strings from xlsx")
+		return nil, apperror.BadRequest("Falha ao ler as strings compartilhadas do arquivo xlsx")
 	}
 
 	sheetPath, err := resolveSheetPath(reader, sheetName)
@@ -773,12 +773,12 @@ func parseWorkbook(fileData []byte, sheetName string) (*workbookData, error) {
 
 	sheetFile := findZipFile(reader, sheetPath)
 	if sheetFile == nil {
-		return nil, apperror.BadRequest("sheet data not found in xlsx file")
+		return nil, apperror.BadRequest("Dados da aba nao encontrados no arquivo xlsx")
 	}
 
 	rows, maxRow, err := readSheetRows(sheetFile, sharedStrings)
 	if err != nil {
-		return nil, apperror.BadRequest("failed to parse ORCAMENTOS sheet")
+		return nil, apperror.BadRequest("Falha ao processar a aba ORCAMENTOS")
 	}
 
 	return &workbookData{
@@ -823,11 +823,11 @@ func readSharedStrings(reader *zip.Reader) ([]string, error) {
 func resolveSheetPath(reader *zip.Reader, sheetName string) (string, error) {
 	workbookFile := findZipFile(reader, "xl/workbook.xml")
 	if workbookFile == nil {
-		return "", apperror.BadRequest("workbook definition not found in xlsx file")
+		return "", apperror.BadRequest("Definicao da pasta de trabalho nao encontrada no arquivo xlsx")
 	}
 	workbookRelsFile := findZipFile(reader, "xl/_rels/workbook.xml.rels")
 	if workbookRelsFile == nil {
-		return "", apperror.BadRequest("workbook relationships not found in xlsx file")
+		return "", apperror.BadRequest("Relacionamentos da pasta de trabalho nao encontrados no arquivo xlsx")
 	}
 
 	workbookContent, err := readZipFile(workbookFile)
@@ -866,7 +866,7 @@ func resolveSheetPath(reader *zip.Reader, sheetName string) (string, error) {
 		}
 	}
 
-	return "", apperror.BadRequest("sheet ORCAMENTOS not found in xlsx file")
+	return "", apperror.BadRequest("A aba ORCAMENTOS nao foi encontrada no arquivo xlsx")
 }
 
 func readSheetRows(file *zip.File, sharedStrings []string) (map[int][]string, int, error) {

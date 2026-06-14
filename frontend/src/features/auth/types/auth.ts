@@ -1,6 +1,5 @@
 export type AuthSession = {
   token: string;
-  refreshToken: string;
 };
 
 export type LoginPayload = {
@@ -10,7 +9,6 @@ export type LoginPayload = {
 
 export type LoginResponse = {
   token: string;
-  refresh_token: string;
 };
 
 export type ChangePasswordPayload = {
@@ -21,16 +19,10 @@ export type ChangePasswordPayload = {
 
 export type ChangePasswordResponse = {
   token: string;
-  refresh_token: string;
-};
-
-export type RefreshTokenPayload = {
-  refresh_token: string;
 };
 
 export type RefreshTokenResponse = {
   token: string;
-  refresh_token: string;
 };
 
 export type AuthUser = {

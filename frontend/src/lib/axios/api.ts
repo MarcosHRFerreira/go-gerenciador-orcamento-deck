@@ -16,9 +16,15 @@ type RetryableRequestConfig = InternalAxiosRequestConfig & {
 
 const baseURL = import.meta.env.VITE_API_URL?.trim() || "http://localhost:8080";
 
-const authApi = axios.create({ baseURL });
+const authApi = axios.create({
+  baseURL,
+  withCredentials: true,
+});
 
-export const api = axios.create({ baseURL });
+export const api = axios.create({
+  baseURL,
+  withCredentials: true,
+});
 
 let refreshSessionPromise: Promise<AuthSession | null> | null = null;
 let unauthorizedHandler: (() => void) | null = null;
@@ -28,26 +34,11 @@ export function setUnauthorizedHandler(handler: () => void) {
 }
 
 async function requestRefreshSession() {
-  const currentSession = getStoredSession();
-
-  if (!currentSession) {
-    return null;
-  }
-
   try {
-    const response = await authApi.post<RefreshTokenResponse>(
-      "/auth/refresh",
-      { refresh_token: currentSession.refreshToken },
-      {
-        headers: {
-          Authorization: `Bearer ${currentSession.token}`,
-        },
-      },
-    );
+    const response = await authApi.post<RefreshTokenResponse>("/auth/refresh");
 
     const refreshedSession: AuthSession = {
       token: response.data.token,
-      refreshToken: response.data.refresh_token,
     };
 
     setStoredSession(refreshedSession);

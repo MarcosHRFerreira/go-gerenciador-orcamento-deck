@@ -2,6 +2,7 @@ package unit
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
@@ -122,7 +123,7 @@ func TestBudgetServiceCreateShouldReturnBadRequestWhenBudgetNumberIsMissing(t *t
 
 	_, err := service.Create(context.Background(), &dto.CreateBudgetRequest{})
 
-	assertAppError(t, err, 400, "budget_number is required")
+	assertAppError(t, err, 400, "budget_number e obrigatorio")
 }
 
 func TestBudgetServiceCreateShouldReturnConflictWhenBudgetAlreadyExists(t *testing.T) {
@@ -133,7 +134,7 @@ func TestBudgetServiceCreateShouldReturnConflictWhenBudgetAlreadyExists(t *testi
 
 	_, err := service.Create(context.Background(), validCreateBudgetRequest())
 
-	assertAppError(t, err, 409, "budget already exists for informed budget_number and year_budget")
+	assertAppError(t, err, 409, "Ja existe um orcamento para o budget_number e year_budget informados")
 }
 
 func TestBudgetServiceCreateShouldTrimFieldsAndMapNullableValues(t *testing.T) {
@@ -202,6 +203,18 @@ func TestBudgetServiceListShouldNormalizeFiltersAndReturnPaginatedResponse(t *te
 				SentAt:       time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
 				GrossValue:   1500,
 				StatusID:     1,
+				ProjectName: sql.NullString{
+					String: "Projeto Centro",
+					Valid:  true,
+				},
+				SalespersonName: sql.NullString{
+					String: "Guilherme",
+					Valid:  true,
+				},
+				ContactName: sql.NullString{
+					String: "Contato Centro",
+					Valid:  true,
+				},
 			},
 		},
 		listTotal: 1,
@@ -229,6 +242,15 @@ func TestBudgetServiceListShouldNormalizeFiltersAndReturnPaginatedResponse(t *te
 	if len(response.Items) != 1 {
 		t.Fatalf("expected 1 item, got %d", len(response.Items))
 	}
+	if response.Items[0].ProjectName == nil || *response.Items[0].ProjectName != "Projeto Centro" {
+		t.Fatalf("expected project name Projeto Centro, got %v", response.Items[0].ProjectName)
+	}
+	if response.Items[0].SalespersonName == nil || *response.Items[0].SalespersonName != "Guilherme" {
+		t.Fatalf("expected salesperson name Guilherme, got %v", response.Items[0].SalespersonName)
+	}
+	if response.Items[0].ContactName == nil || *response.Items[0].ContactName != "Contato Centro" {
+		t.Fatalf("expected contact name Contato Centro, got %v", response.Items[0].ContactName)
+	}
 	if repo.capturedListFilters == nil {
 		t.Fatal("expected filters to be captured")
 	}
@@ -250,7 +272,7 @@ func TestBudgetServiceListShouldReturnBadRequestWhenPageSizeIsTooLarge(t *testin
 		PageSize: 101,
 	}, model.RoleAdmin, "")
 
-	assertAppError(t, err, 400, "page_size cannot be greater than 100")
+	assertAppError(t, err, 400, "page_size nao pode ser maior que 100")
 }
 
 func TestBudgetServiceListShouldRestrictUserBySalespersonResolvedFromUsername(t *testing.T) {
@@ -277,7 +299,7 @@ func TestBudgetServiceGetByIDShouldReturnNotFoundWhenBudgetDoesNotExist(t *testi
 
 	_, err := service.GetByID(context.Background(), 10, model.RoleAdmin, "")
 
-	assertAppError(t, err, 404, "budget not found")
+	assertAppError(t, err, 404, "Orcamento nao encontrado")
 }
 
 func TestBudgetServiceGetByIDShouldRestrictUserBySalespersonResolvedFromUsername(t *testing.T) {
@@ -321,7 +343,7 @@ func TestBudgetServiceUpdateShouldReturnConflictWhenNumberAndYearAlreadyExist(t 
 		StatusID:     1,
 	})
 
-	assertAppError(t, err, 409, "budget already exists for informed budget_number and year_budget")
+	assertAppError(t, err, 409, "Ja existe um orcamento para o budget_number e year_budget informados")
 }
 
 func TestBudgetServiceUpdateShouldSkipUniquenessCheckWhenNumberAndYearDoNotChange(t *testing.T) {
@@ -362,7 +384,7 @@ func TestBudgetServiceDeleteShouldReturnNotFoundWhenBudgetDoesNotExist(t *testin
 
 	err := service.Delete(context.Background(), 8)
 
-	assertAppError(t, err, 404, "budget not found")
+	assertAppError(t, err, 404, "Orcamento nao encontrado")
 }
 
 func TestBudgetServiceCreateShouldMapPersistenceErrorFromForeignKey(t *testing.T) {
@@ -373,7 +395,7 @@ func TestBudgetServiceCreateShouldMapPersistenceErrorFromForeignKey(t *testing.T
 
 	_, err := service.Create(context.Background(), validCreateBudgetRequest())
 
-	assertAppError(t, err, 400, "budget status not found")
+	assertAppError(t, err, 400, "Status de orcamento nao encontrado")
 }
 
 func validCreateBudgetRequest() *dto.CreateBudgetRequest {

@@ -20,8 +20,8 @@ type Service interface {
 }
 
 type service struct {
-	repo             budgetfollowuprepository.Repository
-	budgetRepo       budgetrepository.Repository
+	repo            budgetfollowuprepository.Repository
+	budgetRepo      budgetrepository.Repository
 	salespersonRepo salespersonrepository.Repository
 }
 
@@ -39,11 +39,11 @@ func NewService(
 
 func (s *service) Create(ctx context.Context, budgetID int64, userID int64, role model.UserRole, username string, req *dto.CreateBudgetFollowUpRequest) (int64, error) {
 	if budgetID <= 0 {
-		return 0, apperror.BadRequest("budget_id is required")
+		return 0, apperror.BadRequest("budget_id e obrigatorio")
 	}
 
 	if userID <= 0 {
-		return 0, apperror.Unauthorized("authenticated user is required")
+		return 0, apperror.Unauthorized("Usuario autenticado obrigatorio")
 	}
 
 	restrictedSalespersonID, err := accessscope.ResolveRestrictedSalespersonID(ctx, role, username, s.salespersonRepo)
@@ -56,12 +56,12 @@ func (s *service) Create(ctx context.Context, budgetID int64, userID int64, role
 		return 0, apperror.Internal("failed to check budget", err)
 	}
 	if budget == nil {
-		return 0, apperror.NotFound("budget not found")
+		return 0, apperror.NotFound("Orcamento nao encontrado")
 	}
 
 	notes := strings.TrimSpace(req.Notes)
 	if notes == "" {
-		return 0, apperror.BadRequest("notes is required")
+		return 0, apperror.BadRequest("Observacoes obrigatorias")
 	}
 
 	now := time.Now()
@@ -91,7 +91,7 @@ func (s *service) Create(ctx context.Context, budgetID int64, userID int64, role
 
 func (s *service) ListByBudgetID(ctx context.Context, budgetID int64, role model.UserRole, username string) ([]dto.BudgetFollowUpResponse, error) {
 	if budgetID <= 0 {
-		return nil, apperror.BadRequest("budget_id is required")
+		return nil, apperror.BadRequest("budget_id e obrigatorio")
 	}
 
 	restrictedSalespersonID, err := accessscope.ResolveRestrictedSalespersonID(ctx, role, username, s.salespersonRepo)
@@ -104,7 +104,7 @@ func (s *service) ListByBudgetID(ctx context.Context, budgetID int64, role model
 		return nil, apperror.Internal("failed to check budget", err)
 	}
 	if budget == nil {
-		return nil, apperror.NotFound("budget not found")
+		return nil, apperror.NotFound("Orcamento nao encontrado")
 	}
 
 	items, err := s.repo.ListByBudgetID(ctx, budgetID)

@@ -45,17 +45,17 @@ type BudgetImportPreviewRow struct {
 }
 
 type PreviewBudgetImportResponse struct {
-	PreviewID      string                       `json:"preview_id"`
-	FileName       string                       `json:"file_name"`
-	SheetName      string                       `json:"sheet_name"`
-	HeaderRow      int                          `json:"header_row"`
-	Options        PreviewBudgetImportOptions   `json:"options"`
-	Summary        BudgetImportPreviewSummary   `json:"summary"`
-	CatalogActions BudgetImportCatalogActions   `json:"catalog_actions"`
-	Warnings       []BudgetImportPreviewMessage `json:"warnings"`
-	Errors         []BudgetImportPreviewMessage `json:"errors"`
-	SampleRows     []BudgetImportPreviewRow     `json:"sample_rows"`
-	InconsistencyRows []BudgetImportPreviewRow  `json:"inconsistency_rows"`
+	PreviewID         string                       `json:"preview_id"`
+	FileName          string                       `json:"file_name"`
+	SheetName         string                       `json:"sheet_name"`
+	HeaderRow         int                          `json:"header_row"`
+	Options           PreviewBudgetImportOptions   `json:"options"`
+	Summary           BudgetImportPreviewSummary   `json:"summary"`
+	CatalogActions    BudgetImportCatalogActions   `json:"catalog_actions"`
+	Warnings          []BudgetImportPreviewMessage `json:"warnings"`
+	Errors            []BudgetImportPreviewMessage `json:"errors"`
+	SampleRows        []BudgetImportPreviewRow     `json:"sample_rows"`
+	InconsistencyRows []BudgetImportPreviewRow     `json:"inconsistency_rows"`
 }
 
 type ExecuteBudgetImportSummary struct {

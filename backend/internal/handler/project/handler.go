@@ -30,14 +30,11 @@ func NewHandler(router gin.IRouter, validate *validator.Validate, service projec
 }
 
 func (h *Handler) RouteList() {
-	protectedRoutes := h.router.Group("/projects")
-	protectedRoutes.Use(middleware.Auth(h.secretKey))
-	protectedRoutes.GET("", h.List)
-	protectedRoutes.GET("/:project_id", h.GetByID)
-
 	adminRoutes := h.router.Group("/projects")
 	adminRoutes.Use(middleware.Auth(h.secretKey))
 	adminRoutes.Use(middleware.RequireRoles(model.RoleAdmin))
+	adminRoutes.GET("", h.List)
+	adminRoutes.GET("/:project_id", h.GetByID)
 	adminRoutes.POST("", h.Create)
 	adminRoutes.PUT("/:project_id", h.Update)
 	adminRoutes.DELETE("/:project_id", h.Delete)
@@ -120,7 +117,7 @@ func parseProjectID(c *gin.Context) (int64, bool) {
 	rawID := c.Param("project_id")
 	projectID, err := strconv.ParseInt(rawID, 10, 64)
 	if err != nil || projectID <= 0 {
-		httpresponse.JSONError(c, http.StatusBadRequest, "project_id must be a valid integer")
+		httpresponse.JSONError(c, http.StatusBadRequest, "project_id deve ser um inteiro valido")
 		return 0, false
 	}
 

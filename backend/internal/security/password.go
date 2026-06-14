@@ -12,7 +12,7 @@ const (
 	maxPasswordLength = 72
 )
 
-const strongPasswordMessage = "password must contain at least 8 characters, uppercase letter, lowercase letter, number and special character"
+const strongPasswordMessage = "A senha deve conter pelo menos 8 caracteres, letra maiuscula, letra minuscula, numero e caractere especial"
 
 func ValidateStrongPassword(password string) error {
 	passwordLength := len(password)

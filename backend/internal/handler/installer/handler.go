@@ -120,7 +120,7 @@ func parseInstallerID(c *gin.Context) (int64, bool) {
 	rawID := c.Param("installer_id")
 	installerID, err := strconv.ParseInt(rawID, 10, 64)
 	if err != nil || installerID <= 0 {
-		httpresponse.JSONError(c, http.StatusBadRequest, "installer_id must be a valid integer")
+		httpresponse.JSONError(c, http.StatusBadRequest, "installer_id deve ser um inteiro valido")
 		return 0, false
 	}
 

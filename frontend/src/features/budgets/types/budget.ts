@@ -39,6 +39,9 @@ export type BudgetApiItem = {
   competitor_name: string;
   competitor_price?: number | null;
   designer_name: string;
+  project_name?: string | null;
+  salesperson_name?: string | null;
+  contact_name?: string | null;
   specification_details: string;
   current_follow_up: string;
   created_at: string;
@@ -71,6 +74,9 @@ export type BudgetListItem = {
   designerName: string;
   competitorName: string;
   competitorPrice: number | null;
+  projectName: string | null;
+  salespersonName: string | null;
+  contactName: string | null;
   specificationDetails: string;
   currentFollowUp: string;
   createdAt: string;

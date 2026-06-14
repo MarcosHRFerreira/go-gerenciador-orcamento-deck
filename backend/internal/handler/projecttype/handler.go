@@ -120,7 +120,7 @@ func parseProjectTypeID(c *gin.Context) (int64, bool) {
 	rawID := c.Param("project_type_id")
 	projectTypeID, err := strconv.ParseInt(rawID, 10, 64)
 	if err != nil || projectTypeID <= 0 {
-		httpresponse.JSONError(c, http.StatusBadRequest, "project_type_id must be a valid integer")
+		httpresponse.JSONError(c, http.StatusBadRequest, "project_type_id deve ser um inteiro valido")
 		return 0, false
 	}
 

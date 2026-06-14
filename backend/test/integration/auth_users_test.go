@@ -13,7 +13,7 @@ func TestAuthRegisterLoginRefreshAndGetMeFlow(t *testing.T) {
 	env := newIntegrationTestEnv(t)
 
 	registerBody := fmt.Sprintf(`{"name":"Admin Local","email":"admin@local.dev","username":"admin","password":"%s","password_confirm":"%s"}`, integrationStrongPassword, integrationStrongPassword)
-	registerResponse := env.doJSONRequest(t, http.MethodPost, "/auth/register", "", registerBody)
+	registerResponse := env.doAuthRegisterRequest(t, registerBody)
 	if registerResponse.Code != http.StatusCreated {
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, registerResponse.Code)
 	}
@@ -33,9 +33,7 @@ func TestAuthRegisterLoginRefreshAndGetMeFlow(t *testing.T) {
 	if loginPayload.Token == "" {
 		t.Fatal("expected access token to be returned")
 	}
-	if loginPayload.RefreshToken == "" {
-		t.Fatal("expected refresh token to be returned")
-	}
+	refreshCookie := env.requireRefreshCookie(t, loginResponse)
 
 	meResponse := env.doJSONRequest(t, http.MethodGet, "/users/me", loginPayload.Token, "")
 	if meResponse.Code != http.StatusOK {
@@ -53,8 +51,9 @@ func TestAuthRegisterLoginRefreshAndGetMeFlow(t *testing.T) {
 		t.Fatal("expected first registered admin to access the system without forced password change")
 	}
 
-	refreshBody := fmt.Sprintf(`{"refresh_token":"%s"}`, loginPayload.RefreshToken)
-	refreshResponse := env.doJSONRequest(t, http.MethodPost, "/auth/refresh", loginPayload.Token, refreshBody)
+	refreshResponse := env.doJSONRequestWithOptions(t, http.MethodPost, "/auth/refresh", jsonRequestOptions{
+		cookies: []*http.Cookie{refreshCookie},
+	})
 	if refreshResponse.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, refreshResponse.Code)
 	}
@@ -63,8 +62,25 @@ func TestAuthRegisterLoginRefreshAndGetMeFlow(t *testing.T) {
 	if refreshPayload.Token == "" {
 		t.Fatal("expected refreshed access token to be returned")
 	}
-	if refreshPayload.RefreshToken == "" {
-		t.Fatal("expected refreshed refresh token to be returned")
+	refreshedCookie := env.requireRefreshCookie(t, refreshResponse)
+
+	logoutResponse := env.doJSONRequestWithOptions(t, http.MethodPost, "/auth/logout", jsonRequestOptions{
+		cookies: []*http.Cookie{refreshedCookie},
+	})
+	if logoutResponse.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d", http.StatusNoContent, logoutResponse.Code)
+	}
+
+	refreshAfterLogoutResponse := env.doJSONRequestWithOptions(t, http.MethodPost, "/auth/refresh", jsonRequestOptions{
+		cookies: []*http.Cookie{refreshedCookie},
+	})
+	if refreshAfterLogoutResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, refreshAfterLogoutResponse.Code)
+	}
+
+	refreshAfterLogoutPayload := decodeJSONResponse[httpresponse.ErrorResponse](t, refreshAfterLogoutResponse.Body)
+	if refreshAfterLogoutPayload.Message != "Refresh token expirado" {
+		t.Fatalf("expected refresh token expired message, got %s", refreshAfterLogoutPayload.Message)
 	}
 }
 
@@ -72,19 +88,19 @@ func TestAuthRegisterShouldBeBlockedAfterFirstUser(t *testing.T) {
 	env := newIntegrationTestEnv(t)
 
 	firstRegisterBody := fmt.Sprintf(`{"name":"Admin Local","email":"admin@local.dev","username":"admin","password":"%s","password_confirm":"%s"}`, integrationStrongPassword, integrationStrongPassword)
-	firstRegisterResponse := env.doJSONRequest(t, http.MethodPost, "/auth/register", "", firstRegisterBody)
+	firstRegisterResponse := env.doAuthRegisterRequest(t, firstRegisterBody)
 	if firstRegisterResponse.Code != http.StatusCreated {
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, firstRegisterResponse.Code)
 	}
 
 	secondRegisterBody := fmt.Sprintf(`{"name":"Outro Admin","email":"other@local.dev","username":"other","password":"%s","password_confirm":"%s"}`, integrationStrongPassword, integrationStrongPassword)
-	secondRegisterResponse := env.doJSONRequest(t, http.MethodPost, "/auth/register", "", secondRegisterBody)
+	secondRegisterResponse := env.doAuthRegisterRequest(t, secondRegisterBody)
 	if secondRegisterResponse.Code != http.StatusForbidden {
 		t.Fatalf("expected status %d, got %d", http.StatusForbidden, secondRegisterResponse.Code)
 	}
 
 	errorPayload := decodeJSONResponse[httpresponse.ErrorResponse](t, secondRegisterResponse.Body)
-	if errorPayload.Message != "public registration is no longer available" {
+	if errorPayload.Message != "Cadastro publico nao esta mais disponivel" {
 		t.Fatalf("expected forbidden message, got %s", errorPayload.Message)
 	}
 }
@@ -92,11 +108,8 @@ func TestAuthRegisterShouldBeBlockedAfterFirstUser(t *testing.T) {
 func TestAuthAndUsersShouldRejectWeakPasswords(t *testing.T) {
 	env := newIntegrationTestEnv(t)
 
-	registerResponse := env.doJSONRequest(
+	registerResponse := env.doAuthRegisterRequest(
 		t,
-		http.MethodPost,
-		"/auth/register",
-		"",
 		fmt.Sprintf(`{"name":"Admin Local","email":"admin@local.dev","username":"admin","password":"%s","password_confirm":"%s"}`, integrationWeakPassword, integrationWeakPassword),
 	)
 	if registerResponse.Code != http.StatusBadRequest {
@@ -104,7 +117,7 @@ func TestAuthAndUsersShouldRejectWeakPasswords(t *testing.T) {
 	}
 
 	registerPayload := decodeJSONResponse[httpresponse.ErrorResponse](t, registerResponse.Body)
-	if registerPayload.Message != "password must contain at least 8 characters, uppercase letter, lowercase letter, number and special character" {
+	if registerPayload.Message != "A senha deve conter pelo menos 8 caracteres, letra maiuscula, letra minuscula, numero e caractere especial" {
 		t.Fatalf("expected strong password message, got %s", registerPayload.Message)
 	}
 
@@ -122,7 +135,7 @@ func TestAuthAndUsersShouldRejectWeakPasswords(t *testing.T) {
 	}
 
 	createUserPayload := decodeJSONResponse[httpresponse.ErrorResponse](t, createUserResponse.Body)
-	if createUserPayload.Message != "password must contain at least 8 characters, uppercase letter, lowercase letter, number and special character" {
+	if createUserPayload.Message != "A senha deve conter pelo menos 8 caracteres, letra maiuscula, letra minuscula, numero e caractere especial" {
 		t.Fatalf("expected strong password message, got %s", createUserPayload.Message)
 	}
 }
@@ -131,7 +144,7 @@ func TestUsersRoutesShouldRespectAdminAuthorization(t *testing.T) {
 	env := newIntegrationTestEnv(t)
 
 	adminRegisterBody := fmt.Sprintf(`{"name":"Admin Local","email":"admin@local.dev","username":"admin","password":"%s","password_confirm":"%s"}`, integrationStrongPassword, integrationStrongPassword)
-	adminRegisterResponse := env.doJSONRequest(t, http.MethodPost, "/auth/register", "", adminRegisterBody)
+	adminRegisterResponse := env.doAuthRegisterRequest(t, adminRegisterBody)
 	if adminRegisterResponse.Code != http.StatusCreated {
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, adminRegisterResponse.Code)
 	}
@@ -171,7 +184,7 @@ func TestUsersRoutesShouldRespectAdminAuthorization(t *testing.T) {
 	}
 
 	forbiddenPayload := decodeJSONResponse[httpresponse.ErrorResponse](t, forbiddenListResponse.Body)
-	if forbiddenPayload.Message != "insufficient permissions" {
+	if forbiddenPayload.Message != "Permissoes insuficientes" {
 		t.Fatalf("expected forbidden message, got %s", forbiddenPayload.Message)
 	}
 }
@@ -204,7 +217,7 @@ func TestProjectsRoutesShouldRespectAdminAuthorization(t *testing.T) {
 	}
 
 	forbiddenPayload := decodeJSONResponse[httpresponse.ErrorResponse](t, forbiddenCreateResponse.Body)
-	if forbiddenPayload.Message != "insufficient permissions" {
+	if forbiddenPayload.Message != "Permissoes insuficientes" {
 		t.Fatalf("expected forbidden message, got %s", forbiddenPayload.Message)
 	}
 }
@@ -271,6 +284,22 @@ func TestUsersAdminShouldUpdateRoleAndActive(t *testing.T) {
 	}
 	if updatedUser.Active {
 		t.Fatal("expected updated user to be inactive")
+	}
+
+	loginResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/auth/login",
+		"",
+		fmt.Sprintf(`{"email":"user@local.dev","password":"%s"}`, integrationStrongPassword),
+	)
+	if loginResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, loginResponse.Code)
+	}
+
+	loginPayload := decodeJSONResponse[httpresponse.ErrorResponse](t, loginResponse.Body)
+	if loginPayload.Message != "Usuario desativado" {
+		t.Fatalf("expected inactive user message, got %s", loginPayload.Message)
 	}
 }
 
@@ -403,7 +432,7 @@ func TestAuthChangePasswordAndResetPasswordShouldRejectWeakPassword(t *testing.T
 	}
 
 	changePasswordPayload := decodeJSONResponse[httpresponse.ErrorResponse](t, changePasswordResponse.Body)
-	if changePasswordPayload.Message != "password must contain at least 8 characters, uppercase letter, lowercase letter, number and special character" {
+	if changePasswordPayload.Message != "A senha deve conter pelo menos 8 caracteres, letra maiuscula, letra minuscula, numero e caractere especial" {
 		t.Fatalf("expected strong password message, got %s", changePasswordPayload.Message)
 	}
 
@@ -419,7 +448,7 @@ func TestAuthChangePasswordAndResetPasswordShouldRejectWeakPassword(t *testing.T
 	}
 
 	resetPasswordPayload := decodeJSONResponse[httpresponse.ErrorResponse](t, resetPasswordResponse.Body)
-	if resetPasswordPayload.Message != "password must contain at least 8 characters, uppercase letter, lowercase letter, number and special character" {
+	if resetPasswordPayload.Message != "A senha deve conter pelo menos 8 caracteres, letra maiuscula, letra minuscula, numero e caractere especial" {
 		t.Fatalf("expected strong password message, got %s", resetPasswordPayload.Message)
 	}
 }
@@ -468,7 +497,7 @@ func TestAuthChangePasswordShouldUnlockFirstAccessUser(t *testing.T) {
 	}
 
 	budgetsErrorPayload := decodeJSONResponse[httpresponse.ErrorResponse](t, budgetsResponse.Body)
-	if budgetsErrorPayload.Message != "password change required before accessing the system" {
+	if budgetsErrorPayload.Message != "Troca de senha obrigatoria antes de acessar o sistema" {
 		t.Fatalf("expected password change required message, got %s", budgetsErrorPayload.Message)
 	}
 
@@ -484,9 +513,10 @@ func TestAuthChangePasswordShouldUnlockFirstAccessUser(t *testing.T) {
 	}
 
 	changePasswordPayload := decodeJSONResponse[dto.ChangePasswordResponse](t, changePasswordResponse.Body)
-	if changePasswordPayload.Token == "" || changePasswordPayload.RefreshToken == "" {
-		t.Fatal("expected updated token pair after changing password")
+	if changePasswordPayload.Token == "" {
+		t.Fatal("expected updated access token after changing password")
 	}
+	env.requireRefreshCookie(t, changePasswordResponse)
 
 	updatedMeResponse := env.doJSONRequest(t, http.MethodGet, "/users/me", changePasswordPayload.Token, "")
 	if updatedMeResponse.Code != http.StatusOK {
@@ -538,7 +568,7 @@ func TestUsersAdminUpdateRoutesShouldProtectLastAdminAndRespectAuthorization(t *
 	}
 
 	forbiddenRolePayload := decodeJSONResponse[httpresponse.ErrorResponse](t, forbiddenRoleResponse.Body)
-	if forbiddenRolePayload.Message != "insufficient permissions" {
+	if forbiddenRolePayload.Message != "Permissoes insuficientes" {
 		t.Fatalf("expected forbidden message, got %s", forbiddenRolePayload.Message)
 	}
 
@@ -554,7 +584,7 @@ func TestUsersAdminUpdateRoutesShouldProtectLastAdminAndRespectAuthorization(t *
 	}
 
 	lastAdminRolePayload := decodeJSONResponse[httpresponse.ErrorResponse](t, lastAdminRoleResponse.Body)
-	if lastAdminRolePayload.Message != "cannot change your own role" {
+	if lastAdminRolePayload.Message != "Nao e permitido alterar o proprio perfil" {
 		t.Fatalf("expected self role protection message, got %s", lastAdminRolePayload.Message)
 	}
 
@@ -570,7 +600,7 @@ func TestUsersAdminUpdateRoutesShouldProtectLastAdminAndRespectAuthorization(t *
 	}
 
 	lastAdminActivePayload := decodeJSONResponse[httpresponse.ErrorResponse](t, lastAdminActiveResponse.Body)
-	if lastAdminActivePayload.Message != "cannot deactivate your own user" {
+	if lastAdminActivePayload.Message != "Nao e permitido desativar o proprio usuario" {
 		t.Fatalf("expected self active protection message, got %s", lastAdminActivePayload.Message)
 	}
 
@@ -586,7 +616,7 @@ func TestUsersAdminUpdateRoutesShouldProtectLastAdminAndRespectAuthorization(t *
 	}
 
 	resetOwnPasswordPayload := decodeJSONResponse[httpresponse.ErrorResponse](t, resetOwnPasswordResponse.Body)
-	if resetOwnPasswordPayload.Message != "cannot reset your own password" {
+	if resetOwnPasswordPayload.Message != "Nao e permitido resetar a propria senha" {
 		t.Fatalf("expected self reset protection message, got %s", resetOwnPasswordPayload.Message)
 	}
 }

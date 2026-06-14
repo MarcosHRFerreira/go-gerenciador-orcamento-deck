@@ -32,7 +32,13 @@ func JSONError(c *gin.Context, statusCode int, message string) {
 }
 
 func JSONAppError(c *gin.Context, err error) {
-	JSONError(c, apperror.StatusCode(err), err.Error())
+	statusCode := apperror.StatusCode(err)
+	if statusCode >= http.StatusInternalServerError {
+		JSONError(c, statusCode, "Erro interno do servidor")
+		return
+	}
+
+	JSONError(c, statusCode, err.Error())
 }
 
 func AbortJSONError(c *gin.Context, statusCode int, message string) {
@@ -43,7 +49,7 @@ func AbortJSONError(c *gin.Context, statusCode int, message string) {
 
 func BindAndValidateJSON(c *gin.Context, validate *validator.Validate, req interface{}) bool {
 	if err := c.ShouldBindJSON(req); err != nil {
-		JSONError(c, http.StatusBadRequest, "invalid request body")
+		JSONError(c, http.StatusBadRequest, "Corpo da requisicao invalido")
 		return false
 	}
 
@@ -62,7 +68,7 @@ func BindAndValidateJSON(c *gin.Context, validate *validator.Validate, req inter
 func JSONValidationError(c *gin.Context, err error, req interface{}) {
 	validationErrors, ok := err.(validator.ValidationErrors)
 	if !ok {
-		JSONError(c, http.StatusBadRequest, "validation failed")
+		JSONError(c, http.StatusBadRequest, "Validacao falhou")
 		return
 	}
 
@@ -81,7 +87,7 @@ func JSONValidationError(c *gin.Context, err error, req interface{}) {
 	}
 
 	c.JSON(http.StatusBadRequest, ErrorResponse{
-		Message: "validation failed",
+		Message: "Validacao falhou",
 		Errors:  details,
 	})
 }
@@ -117,23 +123,23 @@ func jsonFieldNames(req interface{}) map[string]string {
 func validationMessage(fieldError validator.FieldError, fieldNames map[string]string) string {
 	switch fieldError.Tag() {
 	case "required":
-		return "is required"
+		return "e obrigatorio"
 	case "email":
-		return "must be a valid email"
+		return "deve ser um e-mail valido"
 	case "min":
-		return fmt.Sprintf("must have at least %s characters", fieldError.Param())
+		return fmt.Sprintf("deve ter pelo menos %s caracteres", fieldError.Param())
 	case "max":
-		return fmt.Sprintf("must have at most %s characters", fieldError.Param())
+		return fmt.Sprintf("deve ter no maximo %s caracteres", fieldError.Param())
 	case "oneof":
-		return fmt.Sprintf("must be one of: %s", fieldError.Param())
+		return fmt.Sprintf("deve ser um dos valores: %s", fieldError.Param())
 	case "eqfield":
 		targetField := fieldNames[fieldError.Param()]
 		if targetField == "" {
 			targetField = strings.ToLower(fieldError.Param())
 		}
 
-		return fmt.Sprintf("must match %s", targetField)
+		return fmt.Sprintf("deve ser igual a %s", targetField)
 	default:
-		return "is invalid"
+		return "e invalido"
 	}
 }

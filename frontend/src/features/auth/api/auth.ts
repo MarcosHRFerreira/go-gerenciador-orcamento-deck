@@ -12,7 +12,6 @@ export async function loginRequest(payload: LoginPayload) {
 
   return {
     token: response.data.token,
-    refreshToken: response.data.refresh_token,
   };
 }
 
@@ -29,6 +28,17 @@ export async function changePasswordRequest(payload: ChangePasswordPayload) {
 
   return {
     token: response.data.token,
-    refreshToken: response.data.refresh_token,
   };
+}
+
+export async function refreshSessionRequest() {
+  const response = await api.post<LoginResponse>("/auth/refresh");
+
+  return {
+    token: response.data.token,
+  };
+}
+
+export async function logoutRequest() {
+  await api.post("/auth/logout");
 }

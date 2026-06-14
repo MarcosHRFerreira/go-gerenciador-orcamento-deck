@@ -244,7 +244,7 @@ func TestBudgetsCreateShouldRejectDuplicateNumberAndYear(t *testing.T) {
 	}
 
 	errorPayload := decodeJSONResponse[httpresponse.ErrorResponse](t, secondCreateResponse.Body)
-	if errorPayload.Message != "budget already exists for informed budget_number and year_budget" {
+	if errorPayload.Message != "Ja existe um orcamento para o budget_number e year_budget informados" {
 		t.Fatalf("expected duplicate budget message, got %s", errorPayload.Message)
 	}
 }
@@ -271,7 +271,7 @@ func TestBudgetsWriteRoutesShouldRespectAdminAuthorization(t *testing.T) {
 	}
 
 	forbiddenCreatePayload := decodeJSONResponse[httpresponse.ErrorResponse](t, forbiddenCreateResponse.Body)
-	if forbiddenCreatePayload.Message != "insufficient permissions" {
+	if forbiddenCreatePayload.Message != "Permissoes insuficientes" {
 		t.Fatalf("expected forbidden message, got %s", forbiddenCreatePayload.Message)
 	}
 
@@ -297,7 +297,7 @@ func TestBudgetsWriteRoutesShouldRespectAdminAuthorization(t *testing.T) {
 	}
 
 	forbiddenUpdatePayload := decodeJSONResponse[httpresponse.ErrorResponse](t, forbiddenUpdateResponse.Body)
-	if forbiddenUpdatePayload.Message != "insufficient permissions" {
+	if forbiddenUpdatePayload.Message != "Permissoes insuficientes" {
 		t.Fatalf("expected forbidden message, got %s", forbiddenUpdatePayload.Message)
 	}
 
@@ -307,7 +307,7 @@ func TestBudgetsWriteRoutesShouldRespectAdminAuthorization(t *testing.T) {
 	}
 
 	forbiddenDeletePayload := decodeJSONResponse[httpresponse.ErrorResponse](t, forbiddenDeleteResponse.Body)
-	if forbiddenDeletePayload.Message != "insufficient permissions" {
+	if forbiddenDeletePayload.Message != "Permissoes insuficientes" {
 		t.Fatalf("expected forbidden message, got %s", forbiddenDeletePayload.Message)
 	}
 }
@@ -384,6 +384,15 @@ func TestBudgetsReadRoutesShouldRestrictUserToOwnSalespersonScope(t *testing.T) 
 	}
 	if listPayload.Items[0].ID != ownBudget.ID {
 		t.Fatalf("expected only own budget id %d, got %d", ownBudget.ID, listPayload.Items[0].ID)
+	}
+	if listPayload.Items[0].ProjectName == nil || *listPayload.Items[0].ProjectName != "Projeto "+ownSuffix {
+		t.Fatalf("expected project name Projeto %s, got %v", ownSuffix, listPayload.Items[0].ProjectName)
+	}
+	if listPayload.Items[0].SalespersonName == nil || *listPayload.Items[0].SalespersonName != "Vendedor "+ownSuffix {
+		t.Fatalf("expected salesperson name Vendedor %s, got %v", ownSuffix, listPayload.Items[0].SalespersonName)
+	}
+	if listPayload.Items[0].ContactName == nil || *listPayload.Items[0].ContactName != "Contato "+ownSuffix {
+		t.Fatalf("expected contact name Contato %s, got %v", ownSuffix, listPayload.Items[0].ContactName)
 	}
 
 	ownGetResponse := env.doJSONRequest(t, http.MethodGet, fmt.Sprintf("/budgets/%d", ownBudget.ID), userToken, "")
@@ -468,6 +477,9 @@ func TestBudgetsReadRoutesShouldRestrictUserToOwnSalespersonScopeBySalespersonNa
 	}
 	if listPayload.Items[0].ID != ownBudget.ID {
 		t.Fatalf("expected only own budget id %d, got %d", ownBudget.ID, listPayload.Items[0].ID)
+	}
+	if listPayload.Items[0].SalespersonName == nil || *listPayload.Items[0].SalespersonName != "Vendedor "+ownSuffix {
+		t.Fatalf("expected salesperson name Vendedor %s, got %v", ownSuffix, listPayload.Items[0].SalespersonName)
 	}
 
 	otherGetResponse := env.doJSONRequest(t, http.MethodGet, fmt.Sprintf("/budgets/%d", otherBudget.ID), userToken, "")

@@ -18,8 +18,7 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	Token        string `json:"token"`
-	RefreshToken string `json:"refresh_token"`
+	Token string `json:"token"`
 }
 
 type ChangePasswordRequest struct {
@@ -29,15 +28,9 @@ type ChangePasswordRequest struct {
 }
 
 type ChangePasswordResponse struct {
-	Token        string `json:"token"`
-	RefreshToken string `json:"refresh_token"`
-}
-
-type RefreshTokenRequest struct {
-	RefreshToken string `json:"refresh_token" validate:"required"`
+	Token string `json:"token"`
 }
 
 type RefreshTokenResponse struct {
-	Token        string `json:"token"`
-	RefreshToken string `json:"refresh_token"`
+	Token string `json:"token"`
 }

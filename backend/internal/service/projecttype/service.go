@@ -38,7 +38,7 @@ func (s *service) Create(ctx context.Context, req *dto.CreateProjectTypeRequest)
 		return 0, apperror.Internal("failed to check existing project type", err)
 	}
 	if existingItem != nil {
-		return 0, apperror.Conflict("project type already exists")
+		return 0, apperror.Conflict("Tipo de projeto ja existe")
 	}
 
 	now := time.Now()
@@ -72,7 +72,7 @@ func (s *service) List(ctx context.Context) ([]dto.ProjectTypeResponse, error) {
 
 func (s *service) GetByID(ctx context.Context, projectTypeID int64) (*dto.ProjectTypeResponse, error) {
 	if projectTypeID <= 0 {
-		return nil, apperror.BadRequest("project_type_id is required")
+		return nil, apperror.BadRequest("project_type_id e obrigatorio")
 	}
 
 	item, err := s.repo.GetByID(ctx, projectTypeID)
@@ -80,7 +80,7 @@ func (s *service) GetByID(ctx context.Context, projectTypeID int64) (*dto.Projec
 		return nil, apperror.Internal("failed to get project type", err)
 	}
 	if item == nil {
-		return nil, apperror.NotFound("project type not found")
+		return nil, apperror.NotFound("Tipo de projeto nao encontrado")
 	}
 
 	response := toResponse(*item)
@@ -89,7 +89,7 @@ func (s *service) GetByID(ctx context.Context, projectTypeID int64) (*dto.Projec
 
 func (s *service) Update(ctx context.Context, projectTypeID int64, req *dto.UpdateProjectTypeRequest) error {
 	if projectTypeID <= 0 {
-		return apperror.BadRequest("project_type_id is required")
+		return apperror.BadRequest("project_type_id e obrigatorio")
 	}
 
 	currentItem, err := s.repo.GetByID(ctx, projectTypeID)
@@ -97,17 +97,17 @@ func (s *service) Update(ctx context.Context, projectTypeID int64, req *dto.Upda
 		return apperror.Internal("failed to check project type", err)
 	}
 	if currentItem == nil {
-		return apperror.NotFound("project type not found")
+		return apperror.NotFound("Tipo de projeto nao encontrado")
 	}
 
 	code := strings.TrimSpace(req.Code)
 	if code == "" {
-		return apperror.BadRequest("code is required")
+		return apperror.BadRequest("code e obrigatorio")
 	}
 
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
-		return apperror.BadRequest("name is required")
+		return apperror.BadRequest("name e obrigatorio")
 	}
 
 	existingItem, err := s.repo.GetByCodeOrName(ctx, code, name)
@@ -115,7 +115,7 @@ func (s *service) Update(ctx context.Context, projectTypeID int64, req *dto.Upda
 		return apperror.Internal("failed to check existing project type", err)
 	}
 	if existingItem != nil && existingItem.ID != projectTypeID {
-		return apperror.Conflict("project type already exists")
+		return apperror.Conflict("Tipo de projeto ja existe")
 	}
 
 	err = s.repo.Update(ctx, &model.ProjectTypeModel{
@@ -134,7 +134,7 @@ func (s *service) Update(ctx context.Context, projectTypeID int64, req *dto.Upda
 
 func (s *service) Delete(ctx context.Context, projectTypeID int64) error {
 	if projectTypeID <= 0 {
-		return apperror.BadRequest("project_type_id is required")
+		return apperror.BadRequest("project_type_id e obrigatorio")
 	}
 
 	item, err := s.repo.GetByID(ctx, projectTypeID)
@@ -142,7 +142,7 @@ func (s *service) Delete(ctx context.Context, projectTypeID int64) error {
 		return apperror.Internal("failed to check project type", err)
 	}
 	if item == nil {
-		return apperror.NotFound("project type not found")
+		return apperror.NotFound("Tipo de projeto nao encontrado")
 	}
 
 	if err := s.repo.Delete(ctx, projectTypeID); err != nil {
@@ -168,11 +168,11 @@ func mapProjectTypePersistenceError(action string, err error) error {
 	if errors.As(err, &pgError) {
 		switch pgError.ConstraintName {
 		case "project_types_code_key", "project_types_name_key":
-			return apperror.Conflict("project type already exists")
+			return apperror.Conflict("Tipo de projeto ja existe")
 		}
 
 		if pgError.Code == "23505" {
-			return apperror.Conflict("project type already exists")
+			return apperror.Conflict("Tipo de projeto ja existe")
 		}
 	}
 
