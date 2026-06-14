@@ -11,6 +11,7 @@ type Repository interface {
 	Create(ctx context.Context, salesperson *model.SalespersonModel) (int64, error)
 	List(ctx context.Context) ([]model.SalespersonModel, error)
 	GetByEmail(ctx context.Context, email string) (*model.SalespersonModel, error)
+	GetByUsername(ctx context.Context, username string) (*model.SalespersonModel, error)
 	GetByID(ctx context.Context, salespersonID int64) (*model.SalespersonModel, error)
 	Update(ctx context.Context, salesperson *model.SalespersonModel) error
 	Delete(ctx context.Context, salespersonID int64) error
@@ -95,6 +96,38 @@ func (r *repository) GetByEmail(ctx context.Context, email string) (*model.Sales
 	`
 
 	row := r.db.QueryRowContext(ctx, query, email)
+
+	var item model.SalespersonModel
+	err := row.Scan(
+		&item.ID,
+		&item.Name,
+		&item.Email,
+		&item.Phone,
+		&item.Active,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	return &item, nil
+}
+
+func (r *repository) GetByUsername(ctx context.Context, username string) (*model.SalespersonModel, error) {
+	const query = `
+		SELECT id, name, email, phone, active, created_at, updated_at
+		FROM salespeople
+		WHERE LOWER(email) = LOWER($1)
+		   OR LOWER(split_part(email, '@', 1)) = LOWER($1)
+		   OR LOWER(name) = LOWER($1)
+	`
+
+	row := r.db.QueryRowContext(ctx, query, username)
 
 	var item model.SalespersonModel
 	err := row.Scan(

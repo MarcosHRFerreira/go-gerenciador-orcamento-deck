@@ -122,3 +122,82 @@ export type BudgetCreatePayload = {
   specificationDetails: string;
   currentFollowUp: string;
 };
+
+export type BudgetImportPreviewOptions = {
+  duplicateStrategy: "ignore" | "update";
+  createMissingCatalogs: boolean;
+  useDefaultNotInformed: boolean;
+};
+
+export type BudgetImportPreviewMessage = {
+  code: string;
+  message: string;
+};
+
+export type BudgetImportPreviewSummary = {
+  rowsRead: number;
+  rowsValid: number;
+  rowsWithWarning: number;
+  rowsWithError: number;
+  rowsEmptyIgnored: number;
+  newBudgets: number;
+  existingBudgets: number;
+};
+
+export type BudgetImportCatalogActions = {
+  budgetStatusesToCreate: number;
+  prioritiesToCreate: number;
+  installersToCreate: number;
+  projectsToCreate: number;
+  projectTypesToCreate: number;
+  salespeopleToCreate: number;
+  contactsToCreate: number;
+  lossReasonsToCreate: number;
+};
+
+export type BudgetImportPreviewRow = {
+  rowNumber: number;
+  budgetNumber: string;
+  status: string;
+  action: string;
+  messages: string[];
+};
+
+export type BudgetImportPreviewResult = {
+  previewId: string;
+  fileName: string;
+  sheetName: string;
+  headerRow: number;
+  options: BudgetImportPreviewOptions;
+  summary: BudgetImportPreviewSummary;
+  catalogActions: BudgetImportCatalogActions;
+  warnings: BudgetImportPreviewMessage[];
+  errors: BudgetImportPreviewMessage[];
+  sampleRows: BudgetImportPreviewRow[];
+  inconsistencyRows: BudgetImportPreviewRow[];
+};
+
+export type ExecuteBudgetImportPayload = {
+  previewId: string;
+};
+
+export type BudgetImportExecutionSummary = {
+  rowsProcessed: number;
+  budgetsCreated: number;
+  budgetsUpdated: number;
+  budgetsIgnored: number;
+  rowsFailed: number;
+  catalogsCreated: number;
+};
+
+export type BudgetImportExecutionResult = {
+  importId: string;
+  previewId: string;
+  status: string;
+  startedAt: string;
+  finishedAt: string;
+  summary: BudgetImportExecutionSummary;
+  result: {
+    message: string;
+  };
+};

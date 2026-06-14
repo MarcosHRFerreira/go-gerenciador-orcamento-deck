@@ -2,6 +2,7 @@ import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
+import UploadFileRoundedIcon from "@mui/icons-material/UploadFileRounded";
 import {
   Alert,
   Box,
@@ -15,10 +16,10 @@ import {
   DialogTitle,
   MenuItem,
   Pagination,
-  Paper,
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
   TextField,
@@ -31,10 +32,17 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
-import { useMemo, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type UIEvent,
+} from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { PageHeader } from "../../../components/common/PageHeader";
 import { SectionCard } from "../../../components/common/SectionCard";
+import { useAuth } from "../../auth/hooks/useAuth";
 import {
   deleteBudgetRequest,
   getBudgetCatalogsRequest,
@@ -233,6 +241,11 @@ const tableDetailCellSx = {
   verticalAlign: "top",
 };
 
+const stickyIdColumnWidth = 72;
+const stickyBudgetColumnWidth = 150;
+const frozenColumnsWidth = stickyIdColumnWidth + stickyBudgetColumnWidth;
+const tableMaxHeight = "calc(100vh - 280px)";
+
 const compactFilterFieldSx = {
   width: "100%",
   "@media (min-width:900px)": {
@@ -240,34 +253,77 @@ const compactFilterFieldSx = {
   },
 };
 
+function resetTableRowHeight(row: HTMLTableRowElement | null) {
+  if (!row) {
+    return;
+  }
+
+  row.style.height = "";
+}
+
+function applyTableRowHeight(row: HTMLTableRowElement | null, height: number) {
+  if (!row) {
+    return;
+  }
+
+  row.style.height = `${height}px`;
+}
+
 export function BudgetListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  const isAdmin = user?.role === "admin";
   const filters = useMemo(
     () => getFiltersFromSearchParams(searchParams),
     [searchParams],
+  );
+  const effectiveFilters = useMemo(
+    () =>
+      isAdmin
+        ? filters
+        : {
+            ...filters,
+            salespersonId: "",
+          },
+    [filters, isAdmin],
   );
   const [budgetPendingDelete, setBudgetPendingDelete] = useState<{
     id: number;
     budgetNumber: string;
   } | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const frozenTableContainerRef = useRef<HTMLDivElement | null>(null);
+  const mainTableContainerRef = useRef<HTMLDivElement | null>(null);
+  const frozenHeaderRowRef = useRef<HTMLTableRowElement | null>(null);
+  const mainHeaderRowRef = useRef<HTMLTableRowElement | null>(null);
+  const frozenBodyRowRefs = useRef<Array<HTMLTableRowElement | null>>([]);
+  const mainBodyRowRefs = useRef<Array<HTMLTableRowElement | null>>([]);
+  const scrollSyncSourceRef = useRef<"frozen" | "main" | null>(null);
   const [draftFilters, setDraftFilters] = useState(() => ({
-    budgetNumber: filters.budgetNumber,
-    yearBudget: filters.yearBudget,
-    statusId: filters.statusId,
-    installerId: filters.installerId,
-    salespersonId: filters.salespersonId,
+    budgetNumber: effectiveFilters.budgetNumber,
+    yearBudget: effectiveFilters.yearBudget,
+    statusId: effectiveFilters.statusId,
+    installerId: effectiveFilters.installerId,
+    salespersonId: effectiveFilters.salespersonId,
   }));
 
+  useEffect(() => {
+    if (isAdmin || !filters.salespersonId) {
+      return;
+    }
+
+    setSearchParams(buildSearchParams(effectiveFilters), { replace: true });
+  }, [effectiveFilters, filters.salespersonId, isAdmin, setSearchParams]);
+
   const budgetListQuery = useQuery({
-    queryKey: ["budgets", filters],
-    queryFn: () => getBudgetListRequest(filters),
+    queryKey: ["budgets", user?.id ?? "anonymous", effectiveFilters],
+    queryFn: () => getBudgetListRequest(effectiveFilters),
     placeholderData: keepPreviousData,
   });
   const budgetCatalogsQuery = useQuery({
-    queryKey: ["budget-catalogs"],
+    queryKey: ["budget-catalogs", user?.id ?? "anonymous"],
     queryFn: getBudgetCatalogsRequest,
     staleTime: 1000 * 60 * 5,
   });
@@ -275,13 +331,14 @@ export function BudgetListPage() {
     mutationFn: deleteBudgetRequest,
     onSuccess: async () => {
       const shouldGoToPreviousPage =
-        filters.page > 1 && (budgetListQuery.data?.items.length ?? 0) === 1;
+        effectiveFilters.page > 1 &&
+        (budgetListQuery.data?.items.length ?? 0) === 1;
 
       if (shouldGoToPreviousPage) {
         setSearchParams(
           buildSearchParams({
-            ...filters,
-            page: filters.page - 1,
+            ...effectiveFilters,
+            page: effectiveFilters.page - 1,
           }),
         );
       }
@@ -324,6 +381,99 @@ export function BudgetListPage() {
     1,
     Math.ceil((budgetListQuery.data?.total ?? 0) / filters.pageSize),
   );
+  const budgetItems = useMemo(
+    () => budgetListQuery.data?.items ?? [],
+    [budgetListQuery.data?.items],
+  );
+
+  useEffect(() => {
+    frozenBodyRowRefs.current = frozenBodyRowRefs.current.slice(
+      0,
+      budgetItems.length,
+    );
+    mainBodyRowRefs.current = mainBodyRowRefs.current.slice(
+      0,
+      budgetItems.length,
+    );
+  }, [budgetItems.length]);
+
+  useLayoutEffect(() => {
+    const syncRowHeights = () => {
+      resetTableRowHeight(frozenHeaderRowRef.current);
+      resetTableRowHeight(mainHeaderRowRef.current);
+      frozenBodyRowRefs.current.forEach((row) => resetTableRowHeight(row));
+      mainBodyRowRefs.current.forEach((row) => resetTableRowHeight(row));
+
+      const headerHeight = Math.max(
+        frozenHeaderRowRef.current?.getBoundingClientRect().height ?? 0,
+        mainHeaderRowRef.current?.getBoundingClientRect().height ?? 0,
+      );
+
+      if (headerHeight > 0) {
+        applyTableRowHeight(frozenHeaderRowRef.current, headerHeight);
+        applyTableRowHeight(mainHeaderRowRef.current, headerHeight);
+      }
+
+      budgetItems.forEach((_, index) => {
+        const frozenRow = frozenBodyRowRefs.current[index] ?? null;
+        const mainRow = mainBodyRowRefs.current[index] ?? null;
+        const rowHeight = Math.max(
+          frozenRow?.getBoundingClientRect().height ?? 0,
+          mainRow?.getBoundingClientRect().height ?? 0,
+        );
+
+        if (rowHeight > 0) {
+          applyTableRowHeight(frozenRow, rowHeight);
+          applyTableRowHeight(mainRow, rowHeight);
+        }
+      });
+    };
+
+    syncRowHeights();
+    window.addEventListener("resize", syncRowHeights);
+
+    return () => {
+      window.removeEventListener("resize", syncRowHeights);
+    };
+  }, [budgetCatalogsQuery.data, budgetItems, isAdmin]);
+
+  const handleMainTableScroll = (event: UIEvent<HTMLDivElement>) => {
+    if (scrollSyncSourceRef.current === "frozen") {
+      scrollSyncSourceRef.current = null;
+      return;
+    }
+
+    if (!frozenTableContainerRef.current) {
+      return;
+    }
+
+    scrollSyncSourceRef.current = "main";
+    frozenTableContainerRef.current.scrollTop = event.currentTarget.scrollTop;
+    requestAnimationFrame(() => {
+      if (scrollSyncSourceRef.current === "main") {
+        scrollSyncSourceRef.current = null;
+      }
+    });
+  };
+
+  const handleFrozenTableScroll = (event: UIEvent<HTMLDivElement>) => {
+    if (scrollSyncSourceRef.current === "main") {
+      scrollSyncSourceRef.current = null;
+      return;
+    }
+
+    if (!mainTableContainerRef.current) {
+      return;
+    }
+
+    scrollSyncSourceRef.current = "frozen";
+    mainTableContainerRef.current.scrollTop = event.currentTarget.scrollTop;
+    requestAnimationFrame(() => {
+      if (scrollSyncSourceRef.current === "frozen") {
+        scrollSyncSourceRef.current = null;
+      }
+    });
+  };
 
   const handleDraftChange = (
     field: keyof typeof draftFilters,
@@ -337,9 +487,10 @@ export function BudgetListPage() {
 
   const handleApplyFilters = () => {
     const nextFilters: BudgetListFilters = {
-      ...filters,
+      ...effectiveFilters,
       ...draftFilters,
       page: 1,
+      salespersonId: isAdmin ? draftFilters.salespersonId : "",
     };
 
     setSearchParams(buildSearchParams(nextFilters));
@@ -351,9 +502,14 @@ export function BudgetListPage() {
       yearBudget: defaultFilters.yearBudget,
       statusId: defaultFilters.statusId,
       installerId: defaultFilters.installerId,
-      salespersonId: defaultFilters.salespersonId,
+      salespersonId: isAdmin ? defaultFilters.salespersonId : "",
     });
-    setSearchParams(buildSearchParams(defaultFilters));
+    setSearchParams(
+      buildSearchParams({
+        ...defaultFilters,
+        salespersonId: isAdmin ? defaultFilters.salespersonId : "",
+      }),
+    );
   };
 
   const handlePageChange = (
@@ -362,7 +518,7 @@ export function BudgetListPage() {
   ) => {
     setSearchParams(
       buildSearchParams({
-        ...filters,
+        ...effectiveFilters,
         page: value,
       }),
     );
@@ -370,7 +526,7 @@ export function BudgetListPage() {
 
   const handleSortByChange = (value: BudgetSortBy) => {
     const nextFilters: BudgetListFilters = {
-      ...filters,
+      ...effectiveFilters,
       page: 1,
       sortBy: value,
     };
@@ -380,7 +536,7 @@ export function BudgetListPage() {
 
   const handleSortOrderChange = (value: BudgetSortOrder) => {
     const nextFilters: BudgetListFilters = {
-      ...filters,
+      ...effectiveFilters,
       page: 1,
       sortOrder: value,
     };
@@ -419,22 +575,34 @@ export function BudgetListPage() {
   };
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
-      <PageHeader
-        action={
-          <Box sx={{ width: "100%" }}>
-            <Button
-              onClick={() => navigate("/budgets/new")}
-              startIcon={<AddRoundedIcon />}
-              variant="contained"
-            >
-              Novo orçamento
-            </Button>
-          </Box>
-        }
-        description="Listagem real conectada ao backend, com filtros por query string e resposta paginada."
-        title="Orçamentos"
-      />
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+      {isAdmin ? (
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: { sm: "row", xs: "column" },
+            gap: 1.5,
+            justifyContent: "flex-start",
+            mt: { md: 1.5, xs: 1 },
+            width: "100%",
+          }}
+        >
+          <Button
+            onClick={() => navigate("/budgets/import")}
+            startIcon={<UploadFileRoundedIcon />}
+            variant="outlined"
+          >
+            Importar planilha
+          </Button>
+          <Button
+            onClick={() => navigate("/budgets/new")}
+            startIcon={<AddRoundedIcon />}
+            variant="contained"
+          >
+            Novo orçamento
+          </Button>
+        </Box>
+      ) : null}
 
       <SectionCard
         description="Use os filtros abaixo para consultar budgets reais na API."
@@ -508,25 +676,27 @@ export function BudgetListPage() {
               </MenuItem>
             ))}
           </TextField>
-          <TextField
-            label="Vendedor"
-            onChange={(event) =>
-              handleDraftChange("salespersonId", event.target.value)
-            }
-            select
-            size="small"
-            sx={compactFilterFieldSx}
-            value={draftFilters.salespersonId}
-          >
-            <MenuItem value="">Todos</MenuItem>
-            {(budgetCatalogsQuery.data?.salespeople ?? []).map(
-              (salesperson) => (
-                <MenuItem key={salesperson.id} value={String(salesperson.id)}>
-                  {salesperson.name}
-                </MenuItem>
-              ),
-            )}
-          </TextField>
+          {isAdmin ? (
+            <TextField
+              label="Vendedor"
+              onChange={(event) =>
+                handleDraftChange("salespersonId", event.target.value)
+              }
+              select
+              size="small"
+              sx={compactFilterFieldSx}
+              value={draftFilters.salespersonId}
+            >
+              <MenuItem value="">Todos</MenuItem>
+              {(budgetCatalogsQuery.data?.salespeople ?? []).map(
+                (salesperson) => (
+                  <MenuItem key={salesperson.id} value={String(salesperson.id)}>
+                    {salesperson.name}
+                  </MenuItem>
+                ),
+              )}
+            </TextField>
+          ) : null}
         </Box>
 
         <Box
@@ -619,7 +789,14 @@ export function BudgetListPage() {
         {deleteError ? <Alert severity="error">{deleteError}</Alert> : null}
 
         {!budgetListQuery.isLoading && !budgetListQuery.isError ? (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+              minWidth: 0,
+            }}
+          >
             <Box
               sx={{
                 alignItems: { md: "center", xs: "flex-start" },
@@ -636,210 +813,340 @@ export function BudgetListPage() {
             </Box>
 
             {budgetListQuery.data?.items.length ? (
-              <Paper sx={{ overflowX: "auto", p: 0 }}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell sx={tableHeadCellSx}>ID</TableCell>
-                      <TableCell sx={tableHeadCellSx}>Orçamento</TableCell>
-                      <TableCell sx={tableHeadCellSx}>Ano</TableCell>
-                      <TableCell sx={tableHeadCellSx}>Revisão</TableCell>
-                      <TableCell sx={tableHeadCellSx}>Envio</TableCell>
-                      <TableCell sx={tableHeadCellSx}>Status</TableCell>
-                      <TableCell sx={tableHeadCellSx}>Prioridade</TableCell>
-                      <TableCell sx={tableHeadCellSx}>Instalador</TableCell>
-                      <TableCell sx={tableHeadCellSx}>Projeto</TableCell>
-                      <TableCell sx={tableHeadCellSx}>Vendedor</TableCell>
-                      <TableCell sx={tableHeadCellSx}>Contato</TableCell>
-                      <TableCell sx={tableHeadCellSx}>
-                        Motivo de perda
-                      </TableCell>
-                      <TableCell sx={tableHeadCellSx}>Designer</TableCell>
-                      <TableCell sx={tableHeadCellSx}>Concorrente</TableCell>
-                      <TableCell align="right" sx={tableHeadCellSx}>
-                        Preço concorrente
-                      </TableCell>
-                      <TableCell sx={tableHeadCellSx}>Especificações</TableCell>
-                      <TableCell sx={tableHeadCellSx}>
-                        Follow-up atual
-                      </TableCell>
-                      <TableCell align="right" sx={tableHeadCellSx}>
-                        Área m²
-                      </TableCell>
-                      <TableCell align="right" sx={tableHeadCellSx}>
-                        Comissão
-                      </TableCell>
-                      <TableCell align="right" sx={tableHeadCellSx}>
-                        Valor bruto
-                      </TableCell>
-                      <TableCell sx={tableHeadCellSx}>Criado em</TableCell>
-                      <TableCell sx={tableHeadCellSx}>Atualizado em</TableCell>
-                      <TableCell sx={tableHeadCellSx}>Ações</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {budgetListQuery.data.items.map((budget) => (
-                      <TableRow hover key={budget.id}>
+              <Box
+                sx={{
+                  border: (theme) => `1px solid ${theme.palette.divider}`,
+                  borderRadius: 3,
+                  display: "flex",
+                  minWidth: 0,
+                  overflow: "hidden",
+                  width: "100%",
+                }}
+              >
+                <TableContainer
+                  onScroll={handleFrozenTableScroll}
+                  ref={frozenTableContainerRef}
+                  sx={{
+                    borderRight: (theme) =>
+                      `1px solid ${theme.palette.divider}`,
+                    flex: "0 0 auto",
+                    maxHeight: tableMaxHeight,
+                    overflowX: "hidden",
+                    overflowY: "auto",
+                    scrollbarWidth: "none",
+                    width: frozenColumnsWidth,
+                    "&::-webkit-scrollbar": {
+                      display: "none",
+                    },
+                  }}
+                >
+                  <Table
+                    size="small"
+                    stickyHeader
+                    sx={{
+                      borderCollapse: "separate",
+                      borderSpacing: 0,
+                      tableLayout: "fixed",
+                      width: frozenColumnsWidth,
+                      "& .MuiTableCell-stickyHeader": {
+                        backgroundColor: "background.paper",
+                        top: 0,
+                        zIndex: 2,
+                      },
+                    }}
+                  >
+                    <TableHead>
+                      <TableRow ref={frozenHeaderRowRef}>
                         <TableCell
-                          sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
+                          sx={{
+                            ...tableHeadCellSx,
+                            minWidth: stickyIdColumnWidth,
+                            width: stickyIdColumnWidth,
+                          }}
                         >
-                          {budget.id}
-                        </TableCell>
-                        <TableCell sx={tableDetailCellSx}>
-                          <Box
-                            sx={{
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: 0.5,
-                            }}
-                          >
-                            <Typography
-                              sx={{ fontSize: "0.8rem", fontWeight: 600 }}
-                              variant="body2"
-                            >
-                              {budget.budgetNumber}
-                            </Typography>
-                          </Box>
+                          ID
                         </TableCell>
                         <TableCell
-                          sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
+                          sx={{
+                            ...tableHeadCellSx,
+                            minWidth: stickyBudgetColumnWidth,
+                            width: stickyBudgetColumnWidth,
+                          }}
                         >
-                          {budget.yearBudget}
-                        </TableCell>
-                        <TableCell
-                          sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
-                        >
-                          {budget.revision}
-                        </TableCell>
-                        <TableCell sx={tableDetailCellSx}>
-                          {dateFormatter.format(new Date(budget.sentAt))}
-                        </TableCell>
-                        <TableCell sx={tableDetailCellSx}>
-                          <Chip
-                            color="primary"
-                            label={formatCatalogName(
-                              budget.statusId,
-                              statusMap,
-                            )}
-                            size="small"
-                            sx={{ fontSize: "0.72rem", height: 24 }}
-                            variant="outlined"
-                          />
-                        </TableCell>
-                        <TableCell
-                          sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
-                        >
-                          {formatCatalogName(budget.priorityId, priorityMap)}
-                        </TableCell>
-                        <TableCell sx={tableDetailCellSx}>
-                          {formatCatalogName(
-                            budget.installerId,
-                            installerMap,
-                            "Sem instalador vinculado",
-                          )}
-                        </TableCell>
-                        <TableCell
-                          sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
-                        >
-                          {formatCatalogName(budget.projectId, projectMap)}
-                        </TableCell>
-                        <TableCell
-                          sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
-                        >
-                          {formatCatalogName(
-                            budget.salespersonId,
-                            salespersonMap,
-                          )}
-                        </TableCell>
-                        <TableCell
-                          sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
-                        >
-                          {formatCatalogName(budget.contactId, contactMap)}
-                        </TableCell>
-                        <TableCell
-                          sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
-                        >
-                          {formatCatalogName(
-                            budget.lossReasonId,
-                            lossReasonMap,
-                          )}
-                        </TableCell>
-                        <TableCell sx={tableDetailCellSx}>
-                          {formatOptionalText(budget.designerName)}
-                        </TableCell>
-                        <TableCell sx={tableDetailCellSx}>
-                          {formatOptionalText(budget.competitorName)}
-                        </TableCell>
-                        <TableCell
-                          align="right"
-                          sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
-                        >
-                          {formatOptionalCurrency(budget.competitorPrice)}
-                        </TableCell>
-                        <TableCell sx={{ ...tableDetailCellSx, minWidth: 220 }}>
-                          {formatOptionalText(budget.specificationDetails)}
-                        </TableCell>
-                        <TableCell sx={{ ...tableDetailCellSx, minWidth: 220 }}>
-                          {formatOptionalText(budget.currentFollowUp)}
-                        </TableCell>
-                        <TableCell
-                          align="right"
-                          sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
-                        >
-                          {decimalFormatter.format(budget.areaM2)}
-                        </TableCell>
-                        <TableCell
-                          align="right"
-                          sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
-                        >
-                          {currencyFormatter.format(budget.commissionValue)}
-                        </TableCell>
-                        <TableCell align="right" sx={tableDetailCellSx}>
-                          {currencyFormatter.format(budget.grossValue)}
-                        </TableCell>
-                        <TableCell
-                          sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
-                        >
-                          {dateTimeFormatter.format(new Date(budget.createdAt))}
-                        </TableCell>
-                        <TableCell
-                          sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
-                        >
-                          {dateTimeFormatter.format(new Date(budget.updatedAt))}
-                        </TableCell>
-                        <TableCell
-                          sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
-                        >
-                          <Button
-                            onClick={() =>
-                              navigate(`/budgets/${budget.id}/edit`)
-                            }
-                            size="small"
-                            startIcon={<EditRoundedIcon />}
-                            variant="text"
-                          >
-                            Editar
-                          </Button>
-                          <Button
-                            color="error"
-                            onClick={() =>
-                              handleOpenDeleteDialog(
-                                budget.id,
-                                budget.budgetNumber,
-                              )
-                            }
-                            size="small"
-                            startIcon={<DeleteOutlineRoundedIcon />}
-                            variant="text"
-                          >
-                            Excluir
-                          </Button>
+                          Orçamento
                         </TableCell>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </Paper>
+                    </TableHead>
+                    <TableBody>
+                      {budgetItems.map((budget, index) => (
+                        <TableRow
+                          hover
+                          key={budget.id}
+                          ref={(element) => {
+                            frozenBodyRowRefs.current[index] = element;
+                          }}
+                        >
+                          <TableCell
+                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
+                          >
+                            {budget.id}
+                          </TableCell>
+                          <TableCell
+                            sx={{
+                              ...tableDetailCellSx,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 0.5,
+                              }}
+                            >
+                              <Typography
+                                sx={{ fontSize: "0.8rem", fontWeight: 600 }}
+                                variant="body2"
+                              >
+                                {budget.budgetNumber}
+                              </Typography>
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+
+                <TableContainer
+                  onScroll={handleMainTableScroll}
+                  ref={mainTableContainerRef}
+                  sx={{
+                    flex: 1,
+                    maxHeight: tableMaxHeight,
+                    minWidth: 0,
+                    overflow: "auto",
+                  }}
+                >
+                  <Table
+                    size="small"
+                    stickyHeader
+                    sx={{
+                      borderCollapse: "separate",
+                      borderSpacing: 0,
+                      minWidth: 1600,
+                      "& .MuiTableCell-stickyHeader": {
+                        backgroundColor: "background.paper",
+                        top: 0,
+                        zIndex: 2,
+                      },
+                    }}
+                  >
+                    <TableHead>
+                      <TableRow ref={mainHeaderRowRef}>
+                        <TableCell sx={tableHeadCellSx}>Ano</TableCell>
+                        <TableCell sx={tableHeadCellSx}>Revisão</TableCell>
+                        <TableCell sx={tableHeadCellSx}>Envio</TableCell>
+                        <TableCell sx={tableHeadCellSx}>Status</TableCell>
+                        <TableCell sx={tableHeadCellSx}>Prioridade</TableCell>
+                        <TableCell sx={tableHeadCellSx}>Instalador</TableCell>
+                        <TableCell sx={tableHeadCellSx}>Projeto</TableCell>
+                        <TableCell sx={tableHeadCellSx}>Vendedor</TableCell>
+                        <TableCell sx={tableHeadCellSx}>Contato</TableCell>
+                        <TableCell sx={tableHeadCellSx}>
+                          Motivo de perda
+                        </TableCell>
+                        <TableCell sx={tableHeadCellSx}>Designer</TableCell>
+                        <TableCell sx={tableHeadCellSx}>Concorrente</TableCell>
+                        <TableCell align="right" sx={tableHeadCellSx}>
+                          Preço concorrente
+                        </TableCell>
+                        <TableCell sx={tableHeadCellSx}>
+                          Especificações
+                        </TableCell>
+                        <TableCell sx={tableHeadCellSx}>
+                          Follow-up atual
+                        </TableCell>
+                        <TableCell align="right" sx={tableHeadCellSx}>
+                          Área m²
+                        </TableCell>
+                        <TableCell align="right" sx={tableHeadCellSx}>
+                          Comissão
+                        </TableCell>
+                        <TableCell align="right" sx={tableHeadCellSx}>
+                          Valor bruto
+                        </TableCell>
+                        <TableCell sx={tableHeadCellSx}>Criado em</TableCell>
+                        <TableCell sx={tableHeadCellSx}>
+                          Atualizado em
+                        </TableCell>
+                        {isAdmin ? (
+                          <TableCell sx={tableHeadCellSx}>Ações</TableCell>
+                        ) : null}
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {budgetItems.map((budget, index) => (
+                        <TableRow
+                          hover
+                          key={budget.id}
+                          ref={(element) => {
+                            mainBodyRowRefs.current[index] = element;
+                          }}
+                        >
+                          <TableCell
+                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
+                          >
+                            {budget.yearBudget}
+                          </TableCell>
+                          <TableCell
+                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
+                          >
+                            {budget.revision}
+                          </TableCell>
+                          <TableCell sx={tableDetailCellSx}>
+                            {dateFormatter.format(new Date(budget.sentAt))}
+                          </TableCell>
+                          <TableCell sx={tableDetailCellSx}>
+                            <Chip
+                              color="primary"
+                              label={formatCatalogName(
+                                budget.statusId,
+                                statusMap,
+                              )}
+                              size="small"
+                              sx={{ fontSize: "0.72rem", height: 24 }}
+                              variant="outlined"
+                            />
+                          </TableCell>
+                          <TableCell
+                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
+                          >
+                            {formatCatalogName(budget.priorityId, priorityMap)}
+                          </TableCell>
+                          <TableCell sx={tableDetailCellSx}>
+                            {formatCatalogName(
+                              budget.installerId,
+                              installerMap,
+                              "Sem instalador vinculado",
+                            )}
+                          </TableCell>
+                          <TableCell
+                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
+                          >
+                            {formatCatalogName(budget.projectId, projectMap)}
+                          </TableCell>
+                          <TableCell
+                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
+                          >
+                            {formatCatalogName(
+                              budget.salespersonId,
+                              salespersonMap,
+                            )}
+                          </TableCell>
+                          <TableCell
+                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
+                          >
+                            {formatCatalogName(budget.contactId, contactMap)}
+                          </TableCell>
+                          <TableCell
+                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
+                          >
+                            {formatCatalogName(
+                              budget.lossReasonId,
+                              lossReasonMap,
+                            )}
+                          </TableCell>
+                          <TableCell sx={tableDetailCellSx}>
+                            {formatOptionalText(budget.designerName)}
+                          </TableCell>
+                          <TableCell sx={tableDetailCellSx}>
+                            {formatOptionalText(budget.competitorName)}
+                          </TableCell>
+                          <TableCell
+                            align="right"
+                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
+                          >
+                            {formatOptionalCurrency(budget.competitorPrice)}
+                          </TableCell>
+                          <TableCell
+                            sx={{ ...tableDetailCellSx, minWidth: 220 }}
+                          >
+                            {formatOptionalText(budget.specificationDetails)}
+                          </TableCell>
+                          <TableCell
+                            sx={{ ...tableDetailCellSx, minWidth: 220 }}
+                          >
+                            {formatOptionalText(budget.currentFollowUp)}
+                          </TableCell>
+                          <TableCell
+                            align="right"
+                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
+                          >
+                            {decimalFormatter.format(budget.areaM2)}
+                          </TableCell>
+                          <TableCell
+                            align="right"
+                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
+                          >
+                            {currencyFormatter.format(budget.commissionValue)}
+                          </TableCell>
+                          <TableCell align="right" sx={tableDetailCellSx}>
+                            {currencyFormatter.format(budget.grossValue)}
+                          </TableCell>
+                          <TableCell
+                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
+                          >
+                            {dateTimeFormatter.format(
+                              new Date(budget.createdAt),
+                            )}
+                          </TableCell>
+                          <TableCell
+                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
+                          >
+                            {dateTimeFormatter.format(
+                              new Date(budget.updatedAt),
+                            )}
+                          </TableCell>
+                          {isAdmin ? (
+                            <TableCell
+                              sx={{
+                                ...tableDetailCellSx,
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              <Button
+                                onClick={() =>
+                                  navigate(`/budgets/${budget.id}/edit`)
+                                }
+                                size="small"
+                                startIcon={<EditRoundedIcon />}
+                                variant="text"
+                              >
+                                Editar
+                              </Button>
+                              <Button
+                                color="error"
+                                onClick={() =>
+                                  handleOpenDeleteDialog(
+                                    budget.id,
+                                    budget.budgetNumber,
+                                  )
+                                }
+                                size="small"
+                                startIcon={<DeleteOutlineRoundedIcon />}
+                                variant="text"
+                              >
+                                Excluir
+                              </Button>
+                            </TableCell>
+                          ) : null}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
             ) : (
               <Alert severity="info" variant="outlined">
                 Nenhum orcamento encontrado para os filtros informados.

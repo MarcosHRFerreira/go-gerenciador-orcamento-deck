@@ -34,6 +34,39 @@ type budgetRepositoryStub struct {
 	updateStatusErr            error
 }
 
+type salespersonRepositoryStub struct {
+	getByUsernameItem *model.SalespersonModel
+	getByUsernameErr  error
+}
+
+func (s *salespersonRepositoryStub) Create(_ context.Context, _ *model.SalespersonModel) (int64, error) {
+	return 0, nil
+}
+
+func (s *salespersonRepositoryStub) List(_ context.Context) ([]model.SalespersonModel, error) {
+	return nil, nil
+}
+
+func (s *salespersonRepositoryStub) GetByEmail(_ context.Context, _ string) (*model.SalespersonModel, error) {
+	return nil, nil
+}
+
+func (s *salespersonRepositoryStub) GetByUsername(_ context.Context, _ string) (*model.SalespersonModel, error) {
+	return s.getByUsernameItem, s.getByUsernameErr
+}
+
+func (s *salespersonRepositoryStub) GetByID(_ context.Context, _ int64) (*model.SalespersonModel, error) {
+	return nil, nil
+}
+
+func (s *salespersonRepositoryStub) Update(_ context.Context, _ *model.SalespersonModel) error {
+	return nil
+}
+
+func (s *salespersonRepositoryStub) Delete(_ context.Context, _ int64) error {
+	return nil
+}
+
 func (s *budgetRepositoryStub) Create(_ context.Context, item *model.BudgetModel) (int64, error) {
 	s.capturedCreateItem = item
 	return s.createID, s.createErr
@@ -49,7 +82,19 @@ func (s *budgetRepositoryStub) ExistsByNumberAndYear(_ context.Context, _ string
 	return s.existsByNumberAndYear, s.existsByNumberAndYearErr
 }
 
+func (s *budgetRepositoryStub) GetByNumberAndYear(_ context.Context, _ string, _ int) (*model.BudgetModel, error) {
+	return nil, nil
+}
+
 func (s *budgetRepositoryStub) GetByID(_ context.Context, _ int64) (*model.BudgetModel, error) {
+	return s.getByIDItem, s.getByIDErr
+}
+
+func (s *budgetRepositoryStub) GetByIDScoped(_ context.Context, _ int64, restrictedSalespersonID *int64) (*model.BudgetModel, error) {
+	if s.capturedListFilters == nil {
+		s.capturedListFilters = &dto.ListBudgetsFilters{}
+	}
+	s.capturedListFilters.RestrictedSalespersonID = restrictedSalespersonID
 	return s.getByIDItem, s.getByIDErr
 }
 
@@ -73,7 +118,7 @@ func (s *budgetRepositoryStub) UpdateStatus(_ context.Context, _ int64, statusID
 }
 
 func TestBudgetServiceCreateShouldReturnBadRequestWhenBudgetNumberIsMissing(t *testing.T) {
-	service := budgetservice.NewService(&budgetRepositoryStub{})
+	service := budgetservice.NewService(&budgetRepositoryStub{}, &salespersonRepositoryStub{})
 
 	_, err := service.Create(context.Background(), &dto.CreateBudgetRequest{})
 
@@ -84,7 +129,7 @@ func TestBudgetServiceCreateShouldReturnConflictWhenBudgetAlreadyExists(t *testi
 	repo := &budgetRepositoryStub{
 		existsByNumberAndYear: true,
 	}
-	service := budgetservice.NewService(repo)
+	service := budgetservice.NewService(repo, &salespersonRepositoryStub{})
 
 	_, err := service.Create(context.Background(), validCreateBudgetRequest())
 
@@ -98,7 +143,7 @@ func TestBudgetServiceCreateShouldTrimFieldsAndMapNullableValues(t *testing.T) {
 	repo := &budgetRepositoryStub{
 		createID: 77,
 	}
-	service := budgetservice.NewService(repo)
+	service := budgetservice.NewService(repo, &salespersonRepositoryStub{})
 
 	req := validCreateBudgetRequest()
 	req.BudgetNumber = "  ORC-100  "
@@ -161,13 +206,13 @@ func TestBudgetServiceListShouldNormalizeFiltersAndReturnPaginatedResponse(t *te
 		},
 		listTotal: 1,
 	}
-	service := budgetservice.NewService(repo)
+	service := budgetservice.NewService(repo, &salespersonRepositoryStub{})
 	yearBudget := 2026
 
 	response, err := service.List(context.Background(), &dto.ListBudgetsFilters{
 		BudgetNumber: "  ORC  ",
 		YearBudget:   &yearBudget,
-	})
+	}, model.RoleAdmin, "")
 
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -199,21 +244,61 @@ func TestBudgetServiceListShouldNormalizeFiltersAndReturnPaginatedResponse(t *te
 }
 
 func TestBudgetServiceListShouldReturnBadRequestWhenPageSizeIsTooLarge(t *testing.T) {
-	service := budgetservice.NewService(&budgetRepositoryStub{})
+	service := budgetservice.NewService(&budgetRepositoryStub{}, &salespersonRepositoryStub{})
 
 	_, err := service.List(context.Background(), &dto.ListBudgetsFilters{
 		PageSize: 101,
-	})
+	}, model.RoleAdmin, "")
 
 	assertAppError(t, err, 400, "page_size cannot be greater than 100")
 }
 
-func TestBudgetServiceGetByIDShouldReturnNotFoundWhenBudgetDoesNotExist(t *testing.T) {
-	service := budgetservice.NewService(&budgetRepositoryStub{})
+func TestBudgetServiceListShouldRestrictUserBySalespersonResolvedFromUsername(t *testing.T) {
+	repo := &budgetRepositoryStub{}
+	service := budgetservice.NewService(repo, &salespersonRepositoryStub{
+		getByUsernameItem: &model.SalespersonModel{ID: 15, Active: true},
+	})
 
-	_, err := service.GetByID(context.Background(), 10)
+	_, err := service.List(context.Background(), &dto.ListBudgetsFilters{}, model.RoleUser, "sales.alpha")
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if repo.capturedListFilters == nil || repo.capturedListFilters.RestrictedSalespersonID == nil {
+		t.Fatal("expected restricted salesperson id to be applied")
+	}
+	if *repo.capturedListFilters.RestrictedSalespersonID != 15 {
+		t.Fatalf("expected restricted salesperson id 15, got %d", *repo.capturedListFilters.RestrictedSalespersonID)
+	}
+}
+
+func TestBudgetServiceGetByIDShouldReturnNotFoundWhenBudgetDoesNotExist(t *testing.T) {
+	service := budgetservice.NewService(&budgetRepositoryStub{}, &salespersonRepositoryStub{})
+
+	_, err := service.GetByID(context.Background(), 10, model.RoleAdmin, "")
 
 	assertAppError(t, err, 404, "budget not found")
+}
+
+func TestBudgetServiceGetByIDShouldRestrictUserBySalespersonResolvedFromUsername(t *testing.T) {
+	repo := &budgetRepositoryStub{
+		getByIDItem: &model.BudgetModel{ID: 20, BudgetNumber: "ORC-020", YearBudget: 2026, SentAt: time.Now(), GrossValue: 1000, StatusID: 1},
+	}
+	service := budgetservice.NewService(repo, &salespersonRepositoryStub{
+		getByUsernameItem: &model.SalespersonModel{ID: 18, Active: true},
+	})
+
+	_, err := service.GetByID(context.Background(), 20, model.RoleUser, "sales.beta")
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if repo.capturedListFilters == nil || repo.capturedListFilters.RestrictedSalespersonID == nil {
+		t.Fatal("expected restricted salesperson id to be applied")
+	}
+	if *repo.capturedListFilters.RestrictedSalespersonID != 18 {
+		t.Fatalf("expected restricted salesperson id 18, got %d", *repo.capturedListFilters.RestrictedSalespersonID)
+	}
 }
 
 func TestBudgetServiceUpdateShouldReturnConflictWhenNumberAndYearAlreadyExist(t *testing.T) {
@@ -226,7 +311,7 @@ func TestBudgetServiceUpdateShouldReturnConflictWhenNumberAndYearAlreadyExist(t 
 		},
 		existsByNumberAndYear: true,
 	}
-	service := budgetservice.NewService(repo)
+	service := budgetservice.NewService(repo, &salespersonRepositoryStub{})
 
 	err := service.Update(context.Background(), 5, &dto.UpdateBudgetRequest{
 		BudgetNumber: "ORC-NEW",
@@ -248,7 +333,7 @@ func TestBudgetServiceUpdateShouldSkipUniquenessCheckWhenNumberAndYearDoNotChang
 			StatusID:     1,
 		},
 	}
-	service := budgetservice.NewService(repo)
+	service := budgetservice.NewService(repo, &salespersonRepositoryStub{})
 
 	err := service.Update(context.Background(), 5, &dto.UpdateBudgetRequest{
 		BudgetNumber: "  ORC-100  ",
@@ -273,7 +358,7 @@ func TestBudgetServiceUpdateShouldSkipUniquenessCheckWhenNumberAndYearDoNotChang
 }
 
 func TestBudgetServiceDeleteShouldReturnNotFoundWhenBudgetDoesNotExist(t *testing.T) {
-	service := budgetservice.NewService(&budgetRepositoryStub{})
+	service := budgetservice.NewService(&budgetRepositoryStub{}, &salespersonRepositoryStub{})
 
 	err := service.Delete(context.Background(), 8)
 
@@ -284,7 +369,7 @@ func TestBudgetServiceCreateShouldMapPersistenceErrorFromForeignKey(t *testing.T
 	repo := &budgetRepositoryStub{
 		createErr: &pgconn.PgError{ConstraintName: "fk_budgets_status_id"},
 	}
-	service := budgetservice.NewService(repo)
+	service := budgetservice.NewService(repo, &salespersonRepositoryStub{})
 
 	_, err := service.Create(context.Background(), validCreateBudgetRequest())
 

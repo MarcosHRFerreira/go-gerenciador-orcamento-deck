@@ -9,6 +9,7 @@ import (
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/dto"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/model"
 	userrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/user"
+	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/security"
 	jwtutil "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/pkg/internalsql/jwt"
 	refreshtoken "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/pkg/internalsql/refreshtoken"
 	"golang.org/x/crypto/bcrypt"
@@ -19,6 +20,7 @@ const refreshTokenTTL = 7 * 24 * time.Hour
 type Service interface {
 	Register(ctx context.Context, req *dto.RegisterRequest) (int64, error)
 	Login(ctx context.Context, req *dto.LoginRequest) (string, string, error)
+	ChangePassword(ctx context.Context, userID int64, req *dto.ChangePasswordRequest) (string, string, error)
 	Refresh(ctx context.Context, req *dto.RefreshTokenRequest, userID int64) (string, string, error)
 }
 
@@ -100,6 +102,10 @@ func (s *service) createUser(ctx context.Context, name string, email string, use
 		return 0, apperror.Conflict("user already exists")
 	}
 
+	if err := security.ValidateStrongPassword(password); err != nil {
+		return 0, err
+	}
+
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return 0, apperror.Internal("failed to hash password", err)
@@ -107,14 +113,15 @@ func (s *service) createUser(ctx context.Context, name string, email string, use
 
 	now := time.Now()
 	userID, err := s.userRepo.CreateUser(ctx, &model.UserModel{
-		Name:         name,
-		Email:        email,
-		Username:     username,
-		PasswordHash: string(passwordHash),
-		Role:         role,
-		Active:       true,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		Name:               name,
+		Email:              email,
+		Username:           username,
+		PasswordHash:       string(passwordHash),
+		Role:               role,
+		Active:             true,
+		MustChangePassword: false,
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	})
 	if err != nil {
 		return 0, apperror.Internal("failed to create user", err)
@@ -123,8 +130,46 @@ func (s *service) createUser(ctx context.Context, name string, email string, use
 	return userID, nil
 }
 
+func (s *service) ChangePassword(ctx context.Context, userID int64, req *dto.ChangePasswordRequest) (string, string, error) {
+	if userID <= 0 {
+		return "", "", apperror.Forbidden("invalid authenticated user")
+	}
+
+	user, err := s.userRepo.GetUserByID(ctx, userID)
+	if err != nil {
+		return "", "", apperror.Internal("failed to load user", err)
+	}
+	if user == nil || !user.Active {
+		return "", "", apperror.Unauthorized("user is not active")
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.CurrentPassword)); err != nil {
+		return "", "", apperror.Unauthorized("current password is invalid")
+	}
+	if req.CurrentPassword == req.NewPassword {
+		return "", "", apperror.BadRequest("new password must be different from current password")
+	}
+	if err := security.ValidateStrongPassword(req.NewPassword); err != nil {
+		return "", "", err
+	}
+
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return "", "", apperror.Internal("failed to hash password", err)
+	}
+
+	if err := s.userRepo.UpdateUserPassword(ctx, user.ID, string(passwordHash), false, time.Now()); err != nil {
+		return "", "", apperror.Internal("failed to update user password", err)
+	}
+
+	user.PasswordHash = string(passwordHash)
+	user.MustChangePassword = false
+
+	return s.issueTokens(ctx, user)
+}
+
 func (s *service) issueTokens(ctx context.Context, user *model.UserModel) (string, string, error) {
-	token, err := jwtutil.CreateToken(user.ID, user.Username, string(user.Role), s.cfg.SecretJWT)
+	token, err := jwtutil.CreateToken(user.ID, user.Username, string(user.Role), user.MustChangePassword, s.cfg.SecretJWT)
 	if err != nil {
 		return "", "", apperror.Internal("failed to create token", err)
 	}

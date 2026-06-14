@@ -3,6 +3,7 @@ package integration
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -308,6 +309,170 @@ func TestBudgetsWriteRoutesShouldRespectAdminAuthorization(t *testing.T) {
 	forbiddenDeletePayload := decodeJSONResponse[httpresponse.ErrorResponse](t, forbiddenDeleteResponse.Body)
 	if forbiddenDeletePayload.Message != "insufficient permissions" {
 		t.Fatalf("expected forbidden message, got %s", forbiddenDeletePayload.Message)
+	}
+}
+
+func TestBudgetsReadRoutesShouldRestrictUserToOwnSalespersonScope(t *testing.T) {
+	env := newIntegrationTestEnv(t)
+	adminToken := env.createAdminToken(t)
+	ownSuffix := uniqueSuffix()
+	otherSuffix := uniqueSuffix()
+	seedOwn := env.seedBudgetData(t, ownSuffix)
+	seedOther := env.seedBudgetData(t, otherSuffix)
+
+	ownCreateResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/budgets",
+		adminToken,
+		buildBudgetRequestBody(
+			"SCOPE-001",
+			2026,
+			time.Date(2026, time.September, 1, 10, 0, 0, 0, time.UTC),
+			2100,
+			seedOwn,
+			"Designer Scope",
+			"Concorrente Scope",
+		),
+	)
+	if ownCreateResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, ownCreateResponse.Code)
+	}
+	ownBudget := decodeJSONResponse[createResourceResponse](t, ownCreateResponse.Body)
+
+	otherCreateResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/budgets",
+		adminToken,
+		buildBudgetRequestBody(
+			"SCOPE-002",
+			2026,
+			time.Date(2026, time.September, 2, 10, 0, 0, 0, time.UTC),
+			2200,
+			seedOther,
+			"Designer Scope B",
+			"Concorrente Scope B",
+		),
+	)
+	if otherCreateResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, otherCreateResponse.Code)
+	}
+	otherBudget := decodeJSONResponse[createResourceResponse](t, otherCreateResponse.Body)
+
+	normalizedOwnSuffix := strings.ToLower(strings.NewReplacer("-", "", "_", "", " ", "").Replace(ownSuffix))
+	userToken := env.createUserTokenWithCredentials(
+		t,
+		adminToken,
+		"Vendedor Escopo",
+		fmt.Sprintf("scope.user.%s@local.dev", normalizedOwnSuffix),
+		fmt.Sprintf("sales.%s", normalizedOwnSuffix),
+		"user",
+	)
+
+	listResponse := env.doJSONRequest(t, http.MethodGet, "/budgets", userToken, "")
+	if listResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, listResponse.Code)
+	}
+
+	listPayload := decodeJSONResponse[dto.ListBudgetsResponse](t, listResponse.Body)
+	if listPayload.Total != 1 {
+		t.Fatalf("expected total 1, got %d", listPayload.Total)
+	}
+	if len(listPayload.Items) != 1 {
+		t.Fatalf("expected 1 listed item, got %d", len(listPayload.Items))
+	}
+	if listPayload.Items[0].ID != ownBudget.ID {
+		t.Fatalf("expected only own budget id %d, got %d", ownBudget.ID, listPayload.Items[0].ID)
+	}
+
+	ownGetResponse := env.doJSONRequest(t, http.MethodGet, fmt.Sprintf("/budgets/%d", ownBudget.ID), userToken, "")
+	if ownGetResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, ownGetResponse.Code)
+	}
+
+	otherGetResponse := env.doJSONRequest(t, http.MethodGet, fmt.Sprintf("/budgets/%d", otherBudget.ID), userToken, "")
+	if otherGetResponse.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d", http.StatusNotFound, otherGetResponse.Code)
+	}
+}
+
+func TestBudgetsReadRoutesShouldRestrictUserToOwnSalespersonScopeBySalespersonName(t *testing.T) {
+	env := newIntegrationTestEnv(t)
+	adminToken := env.createAdminToken(t)
+	ownSuffix := uniqueSuffix()
+	otherSuffix := uniqueSuffix()
+	seedOwn := env.seedBudgetData(t, ownSuffix)
+	seedOther := env.seedBudgetData(t, otherSuffix)
+
+	ownCreateResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/budgets",
+		adminToken,
+		buildBudgetRequestBody(
+			"SCOPE-NAME-001",
+			2026,
+			time.Date(2026, time.October, 1, 10, 0, 0, 0, time.UTC),
+			2300,
+			seedOwn,
+			"Designer Scope Name",
+			"Concorrente Scope Name",
+		),
+	)
+	if ownCreateResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, ownCreateResponse.Code)
+	}
+	ownBudget := decodeJSONResponse[createResourceResponse](t, ownCreateResponse.Body)
+
+	otherCreateResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/budgets",
+		adminToken,
+		buildBudgetRequestBody(
+			"SCOPE-NAME-002",
+			2026,
+			time.Date(2026, time.October, 2, 10, 0, 0, 0, time.UTC),
+			2400,
+			seedOther,
+			"Designer Scope Name B",
+			"Concorrente Scope Name B",
+		),
+	)
+	if otherCreateResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, otherCreateResponse.Code)
+	}
+	otherBudget := decodeJSONResponse[createResourceResponse](t, otherCreateResponse.Body)
+
+	userToken := env.createUserTokenWithCredentials(
+		t,
+		adminToken,
+		"Usuario Guilherme",
+		fmt.Sprintf("scope.name.user.%s@local.dev", strings.ToLower(ownSuffix)),
+		fmt.Sprintf("Vendedor %s", ownSuffix),
+		"user",
+	)
+
+	listResponse := env.doJSONRequest(t, http.MethodGet, "/budgets", userToken, "")
+	if listResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, listResponse.Code)
+	}
+
+	listPayload := decodeJSONResponse[dto.ListBudgetsResponse](t, listResponse.Body)
+	if listPayload.Total != 1 {
+		t.Fatalf("expected total 1, got %d", listPayload.Total)
+	}
+	if len(listPayload.Items) != 1 {
+		t.Fatalf("expected 1 listed item, got %d", len(listPayload.Items))
+	}
+	if listPayload.Items[0].ID != ownBudget.ID {
+		t.Fatalf("expected only own budget id %d, got %d", ownBudget.ID, listPayload.Items[0].ID)
+	}
+
+	otherGetResponse := env.doJSONRequest(t, http.MethodGet, fmt.Sprintf("/budgets/%d", otherBudget.ID), userToken, "")
+	if otherGetResponse.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d", http.StatusNotFound, otherGetResponse.Code)
 	}
 }
 

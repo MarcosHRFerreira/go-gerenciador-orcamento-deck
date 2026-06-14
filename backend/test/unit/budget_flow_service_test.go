@@ -83,10 +83,10 @@ func TestBudgetFollowUpServiceCreateShouldTrimNotesAndSyncCurrentFollowUp(t *tes
 	budgetRepo := &budgetRepositoryStub{
 		getByIDItem: &model.BudgetModel{ID: 8},
 	}
-	service := budgetfollowupservice.NewService(followUpRepo, budgetRepo)
+	service := budgetfollowupservice.NewService(followUpRepo, budgetRepo, &salespersonRepositoryStub{})
 	followUpAt := time.Date(2026, time.July, 1, 15, 0, 0, 0, time.UTC)
 
-	id, err := service.Create(context.Background(), 8, 21, &dto.CreateBudgetFollowUpRequest{
+	id, err := service.Create(context.Background(), 8, 21, model.RoleAdmin, "", &dto.CreateBudgetFollowUpRequest{
 		Notes:      "  retorno na proxima semana  ",
 		FollowUpAt: &followUpAt,
 	})
@@ -112,9 +112,9 @@ func TestBudgetFollowUpServiceCreateShouldTrimNotesAndSyncCurrentFollowUp(t *tes
 }
 
 func TestBudgetFollowUpServiceCreateShouldReturnNotFoundWhenBudgetDoesNotExist(t *testing.T) {
-	service := budgetfollowupservice.NewService(&budgetFollowUpRepositoryStub{}, &budgetRepositoryStub{})
+	service := budgetfollowupservice.NewService(&budgetFollowUpRepositoryStub{}, &budgetRepositoryStub{}, &salespersonRepositoryStub{})
 
-	_, err := service.Create(context.Background(), 8, 21, &dto.CreateBudgetFollowUpRequest{
+	_, err := service.Create(context.Background(), 8, 21, model.RoleAdmin, "", &dto.CreateBudgetFollowUpRequest{
 		Notes: "retorno",
 	})
 
@@ -122,9 +122,9 @@ func TestBudgetFollowUpServiceCreateShouldReturnNotFoundWhenBudgetDoesNotExist(t
 }
 
 func TestBudgetFollowUpServiceCreateShouldReturnUnauthorizedWhenUserIsMissing(t *testing.T) {
-	service := budgetfollowupservice.NewService(&budgetFollowUpRepositoryStub{}, &budgetRepositoryStub{})
+	service := budgetfollowupservice.NewService(&budgetFollowUpRepositoryStub{}, &budgetRepositoryStub{}, &salespersonRepositoryStub{})
 
-	_, err := service.Create(context.Background(), 8, 0, &dto.CreateBudgetFollowUpRequest{
+	_, err := service.Create(context.Background(), 8, 0, model.RoleAdmin, "", &dto.CreateBudgetFollowUpRequest{
 		Notes: "retorno",
 	})
 
@@ -145,9 +145,9 @@ func TestBudgetFollowUpServiceListShouldMapItems(t *testing.T) {
 		},
 	}, &budgetRepositoryStub{
 		getByIDItem: &model.BudgetModel{ID: 8},
-	})
+	}, &salespersonRepositoryStub{})
 
-	items, err := service.ListByBudgetID(context.Background(), 8)
+	items, err := service.ListByBudgetID(context.Background(), 8, model.RoleAdmin, "")
 
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -176,9 +176,9 @@ func TestBudgetStatusHistoryServiceChangeStatusShouldCreateHistoryAndSyncBudget(
 	statusRepo := &budgetStatusRepositoryStub{
 		getByIDItem: &model.BudgetStatusModel{ID: 2},
 	}
-	service := budgetstatushistoryservice.NewService(historyRepo, budgetRepo, statusRepo)
+	service := budgetstatushistoryservice.NewService(historyRepo, budgetRepo, statusRepo, &salespersonRepositoryStub{})
 
-	id, err := service.ChangeStatus(context.Background(), 9, 30, &dto.ChangeBudgetStatusRequest{
+	id, err := service.ChangeStatus(context.Background(), 9, 30, model.RoleAdmin, "", &dto.ChangeBudgetStatusRequest{
 		StatusID: 2,
 		Notes:    "  status atualizado  ",
 	})
@@ -218,9 +218,10 @@ func TestBudgetStatusHistoryServiceChangeStatusShouldReturnConflictWhenStatusIsT
 		&budgetStatusRepositoryStub{
 			getByIDItem: &model.BudgetStatusModel{ID: 2},
 		},
+		&salespersonRepositoryStub{},
 	)
 
-	_, err := service.ChangeStatus(context.Background(), 9, 30, &dto.ChangeBudgetStatusRequest{
+	_, err := service.ChangeStatus(context.Background(), 9, 30, model.RoleAdmin, "", &dto.ChangeBudgetStatusRequest{
 		StatusID: 2,
 	})
 
@@ -237,9 +238,10 @@ func TestBudgetStatusHistoryServiceChangeStatusShouldReturnBadRequestWhenStatusD
 			},
 		},
 		&budgetStatusRepositoryStub{},
+		&salespersonRepositoryStub{},
 	)
 
-	_, err := service.ChangeStatus(context.Background(), 9, 30, &dto.ChangeBudgetStatusRequest{
+	_, err := service.ChangeStatus(context.Background(), 9, 30, model.RoleAdmin, "", &dto.ChangeBudgetStatusRequest{
 		StatusID: 2,
 	})
 
@@ -265,9 +267,10 @@ func TestBudgetStatusHistoryServiceListShouldMapItems(t *testing.T) {
 			getByIDItem: &model.BudgetModel{ID: 9},
 		},
 		&budgetStatusRepositoryStub{},
+		&salespersonRepositoryStub{},
 	)
 
-	items, err := service.ListByBudgetID(context.Background(), 9)
+	items, err := service.ListByBudgetID(context.Background(), 9, model.RoleAdmin, "")
 
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)

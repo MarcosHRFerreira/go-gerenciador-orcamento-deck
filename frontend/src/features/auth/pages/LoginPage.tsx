@@ -14,6 +14,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { z } from "zod";
+import BrandLogo from "../../../components/common/BrandLogo";
 import { useAuth } from "../hooks/useAuth";
 
 const loginSchema = z.object({
@@ -54,7 +55,7 @@ export function LoginPage() {
       setSubmitError(null);
       await login(values);
 
-      navigate("/", { replace: true });
+      navigate("/budgets", { replace: true });
     } catch (error) {
       setSubmitError(getLoginErrorMessage(error));
     }
@@ -78,6 +79,17 @@ export function LoginPage() {
             sx={{ display: "flex", flexDirection: "column", gap: 3 }}
           >
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+              <Box sx={{ display: "flex", justifyContent: "center" }}>
+                <BrandLogo
+                  imageSx={{ width: { sm: 220, xs: 180 } }}
+                  wrapperSx={{
+                    border: "1px solid",
+                    borderColor: "divider",
+                    boxShadow: "0 10px 24px rgba(15, 23, 42, 0.06)",
+                    p: 1,
+                  }}
+                />
+              </Box>
               <Box
                 sx={{
                   alignItems: "center",
@@ -140,7 +152,7 @@ export function LoginPage() {
               <Typography
                 component={RouterLink}
                 sx={{ color: "primary.main", textDecoration: "none" }}
-                to="/"
+                to="/dashboard"
               >
                 estrutura inicial
               </Typography>

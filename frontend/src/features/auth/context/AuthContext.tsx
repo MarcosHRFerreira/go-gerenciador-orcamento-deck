@@ -24,14 +24,38 @@ export function AuthProvider({ children }: PropsWithChildren) {
     getStoredSession(),
   );
 
-  const clearAuthState = useCallback(() => {
-    clearStoredSession();
-    setSession(null);
-    queryClient.removeQueries({ queryKey: currentUserQueryKey });
+  const resetApplicationSession = useCallback(async () => {
+    await queryClient.cancelQueries();
+    queryClient.clear();
   }, [queryClient]);
 
+  const refreshCurrentUser = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: currentUserQueryKey });
+    await queryClient.refetchQueries({
+      queryKey: currentUserQueryKey,
+      type: "active",
+    });
+  }, [queryClient]);
+
+  const replaceSession = useCallback(
+    async (nextSession: AuthSession) => {
+      await resetApplicationSession();
+      setStoredSession(nextSession);
+      setSession(nextSession);
+    },
+    [resetApplicationSession],
+  );
+
+  const clearAuthState = useCallback(async () => {
+    await resetApplicationSession();
+    clearStoredSession();
+    setSession(null);
+  }, [resetApplicationSession]);
+
   useEffect(() => {
-    setUnauthorizedHandler(clearAuthState);
+    setUnauthorizedHandler(() => {
+      void clearAuthState();
+    });
   }, [clearAuthState]);
 
   const currentUserQuery = useQuery({
@@ -44,21 +68,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const login = useCallback(
     async (payload: LoginPayload) => {
       const nextSession = await loginRequest(payload);
-
-      setStoredSession(nextSession);
-      setSession(nextSession);
-
-      await queryClient.invalidateQueries({ queryKey: currentUserQueryKey });
-      await queryClient.refetchQueries({
-        queryKey: currentUserQueryKey,
-        type: "active",
-      });
+      await replaceSession(nextSession);
     },
-    [queryClient],
+    [replaceSession],
   );
 
   const logout = useCallback(() => {
-    clearAuthState();
+    void clearAuthState();
   }, [clearAuthState]);
 
   const value = useMemo<AuthContextValue>(
@@ -69,8 +85,18 @@ export function AuthProvider({ children }: PropsWithChildren) {
       user: currentUserQuery.data ?? null,
       login,
       logout,
+      refreshCurrentUser,
+      replaceSession,
     }),
-    [currentUserQuery.data, currentUserQuery.isLoading, login, logout, session],
+    [
+      currentUserQuery.data,
+      currentUserQuery.isLoading,
+      login,
+      logout,
+      refreshCurrentUser,
+      replaceSession,
+      session,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -51,6 +51,7 @@ type ListBudgetsFilters struct {
 	YearBudget     *int
 	StatusID       *int64
 	SalespersonID  *int64
+	RestrictedSalespersonID *int64
 	InstallerID    *int64
 	PriorityID     *int64
 	ProjectTypeID  *int64

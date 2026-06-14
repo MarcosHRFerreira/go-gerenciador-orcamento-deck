@@ -6,38 +6,43 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/accessscope"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/apperror"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/dto"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/model"
 	budgetrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budget"
 	budgetstatushistoryrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budgetstatushistory"
 	budgetstatusrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budgetstatus"
+	salespersonrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/salesperson"
 )
 
 type Service interface {
-	ChangeStatus(ctx context.Context, budgetID int64, userID int64, req *dto.ChangeBudgetStatusRequest) (int64, error)
-	ListByBudgetID(ctx context.Context, budgetID int64) ([]dto.BudgetStatusHistoryResponse, error)
+	ChangeStatus(ctx context.Context, budgetID int64, userID int64, role model.UserRole, username string, req *dto.ChangeBudgetStatusRequest) (int64, error)
+	ListByBudgetID(ctx context.Context, budgetID int64, role model.UserRole, username string) ([]dto.BudgetStatusHistoryResponse, error)
 }
 
 type service struct {
 	repo             budgetstatushistoryrepository.Repository
 	budgetRepo       budgetrepository.Repository
 	budgetStatusRepo budgetstatusrepository.Repository
+	salespersonRepo  salespersonrepository.Repository
 }
 
 func NewService(
 	repo budgetstatushistoryrepository.Repository,
 	budgetRepo budgetrepository.Repository,
 	budgetStatusRepo budgetstatusrepository.Repository,
+	salespersonRepo salespersonrepository.Repository,
 ) Service {
 	return &service{
 		repo:             repo,
 		budgetRepo:       budgetRepo,
 		budgetStatusRepo: budgetStatusRepo,
+		salespersonRepo:  salespersonRepo,
 	}
 }
 
-func (s *service) ChangeStatus(ctx context.Context, budgetID int64, userID int64, req *dto.ChangeBudgetStatusRequest) (int64, error) {
+func (s *service) ChangeStatus(ctx context.Context, budgetID int64, userID int64, role model.UserRole, username string, req *dto.ChangeBudgetStatusRequest) (int64, error) {
 	if budgetID <= 0 {
 		return 0, apperror.BadRequest("budget_id is required")
 	}
@@ -50,7 +55,12 @@ func (s *service) ChangeStatus(ctx context.Context, budgetID int64, userID int64
 		return 0, apperror.BadRequest("status_id is required")
 	}
 
-	budget, err := s.budgetRepo.GetByID(ctx, budgetID)
+	restrictedSalespersonID, err := accessscope.ResolveRestrictedSalespersonID(ctx, role, username, s.salespersonRepo)
+	if err != nil {
+		return 0, err
+	}
+
+	budget, err := s.budgetRepo.GetByIDScoped(ctx, budgetID, restrictedSalespersonID)
 	if err != nil {
 		return 0, apperror.Internal("failed to check budget", err)
 	}
@@ -96,12 +106,17 @@ func (s *service) ChangeStatus(ctx context.Context, budgetID int64, userID int64
 	return id, nil
 }
 
-func (s *service) ListByBudgetID(ctx context.Context, budgetID int64) ([]dto.BudgetStatusHistoryResponse, error) {
+func (s *service) ListByBudgetID(ctx context.Context, budgetID int64, role model.UserRole, username string) ([]dto.BudgetStatusHistoryResponse, error) {
 	if budgetID <= 0 {
 		return nil, apperror.BadRequest("budget_id is required")
 	}
 
-	budget, err := s.budgetRepo.GetByID(ctx, budgetID)
+	restrictedSalespersonID, err := accessscope.ResolveRestrictedSalespersonID(ctx, role, username, s.salespersonRepo)
+	if err != nil {
+		return nil, err
+	}
+
+	budget, err := s.budgetRepo.GetByIDScoped(ctx, budgetID, restrictedSalespersonID)
 	if err != nil {
 		return nil, apperror.Internal("failed to check budget", err)
 	}

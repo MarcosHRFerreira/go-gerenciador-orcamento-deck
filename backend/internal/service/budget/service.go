@@ -7,27 +7,33 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/accessscope"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/apperror"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/dto"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/model"
 	budgetrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budget"
+	salespersonrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/salesperson"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type Service interface {
 	Create(ctx context.Context, req *dto.CreateBudgetRequest) (int64, error)
-	List(ctx context.Context, filters *dto.ListBudgetsFilters) (*dto.ListBudgetsResponse, error)
-	GetByID(ctx context.Context, budgetID int64) (*dto.BudgetResponse, error)
+	List(ctx context.Context, filters *dto.ListBudgetsFilters, role model.UserRole, username string) (*dto.ListBudgetsResponse, error)
+	GetByID(ctx context.Context, budgetID int64, role model.UserRole, username string) (*dto.BudgetResponse, error)
 	Update(ctx context.Context, budgetID int64, req *dto.UpdateBudgetRequest) error
 	Delete(ctx context.Context, budgetID int64) error
 }
 
 type service struct {
-	repo budgetrepository.Repository
+	repo            budgetrepository.Repository
+	salespersonRepo salespersonrepository.Repository
 }
 
-func NewService(repo budgetrepository.Repository) Service {
-	return &service{repo: repo}
+func NewService(repo budgetrepository.Repository, salespersonRepo salespersonrepository.Repository) Service {
+	return &service{
+		repo:            repo,
+		salespersonRepo: salespersonRepo,
+	}
 }
 
 func (s *service) Create(ctx context.Context, req *dto.CreateBudgetRequest) (int64, error) {
@@ -91,11 +97,17 @@ func (s *service) Create(ctx context.Context, req *dto.CreateBudgetRequest) (int
 	return id, nil
 }
 
-func (s *service) List(ctx context.Context, filters *dto.ListBudgetsFilters) (*dto.ListBudgetsResponse, error) {
+func (s *service) List(ctx context.Context, filters *dto.ListBudgetsFilters, role model.UserRole, username string) (*dto.ListBudgetsResponse, error) {
 	normalizedFilters, err := normalizeListFilters(filters)
 	if err != nil {
 		return nil, err
 	}
+
+	restrictedSalespersonID, err := accessscope.ResolveRestrictedSalespersonID(ctx, role, username, s.salespersonRepo)
+	if err != nil {
+		return nil, err
+	}
+	normalizedFilters.RestrictedSalespersonID = restrictedSalespersonID
 
 	items, total, err := s.repo.List(ctx, normalizedFilters)
 	if err != nil {
@@ -110,12 +122,17 @@ func (s *service) List(ctx context.Context, filters *dto.ListBudgetsFilters) (*d
 	}, nil
 }
 
-func (s *service) GetByID(ctx context.Context, budgetID int64) (*dto.BudgetResponse, error) {
+func (s *service) GetByID(ctx context.Context, budgetID int64, role model.UserRole, username string) (*dto.BudgetResponse, error) {
 	if budgetID <= 0 {
 		return nil, apperror.BadRequest("budget_id is required")
 	}
 
-	item, err := s.repo.GetByID(ctx, budgetID)
+	restrictedSalespersonID, err := accessscope.ResolveRestrictedSalespersonID(ctx, role, username, s.salespersonRepo)
+	if err != nil {
+		return nil, err
+	}
+
+	item, err := s.repo.GetByIDScoped(ctx, budgetID, restrictedSalespersonID)
 	if err != nil {
 		return nil, apperror.Internal("failed to get budget", err)
 	}

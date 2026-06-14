@@ -12,7 +12,7 @@ import (
 func TestAuthRegisterLoginRefreshAndGetMeFlow(t *testing.T) {
 	env := newIntegrationTestEnv(t)
 
-	registerBody := `{"name":"Admin Local","email":"admin@local.dev","username":"admin","password":"123456","password_confirm":"123456"}`
+	registerBody := fmt.Sprintf(`{"name":"Admin Local","email":"admin@local.dev","username":"admin","password":"%s","password_confirm":"%s"}`, integrationStrongPassword, integrationStrongPassword)
 	registerResponse := env.doJSONRequest(t, http.MethodPost, "/auth/register", "", registerBody)
 	if registerResponse.Code != http.StatusCreated {
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, registerResponse.Code)
@@ -23,7 +23,7 @@ func TestAuthRegisterLoginRefreshAndGetMeFlow(t *testing.T) {
 		t.Fatalf("expected created user id to be greater than zero, got %d", registerPayload.ID)
 	}
 
-	loginBody := `{"email":"admin@local.dev","password":"123456"}`
+	loginBody := fmt.Sprintf(`{"email":"admin@local.dev","password":"%s"}`, integrationStrongPassword)
 	loginResponse := env.doJSONRequest(t, http.MethodPost, "/auth/login", "", loginBody)
 	if loginResponse.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, loginResponse.Code)
@@ -49,6 +49,9 @@ func TestAuthRegisterLoginRefreshAndGetMeFlow(t *testing.T) {
 	if mePayload.Role != "admin" {
 		t.Fatalf("expected role admin, got %s", mePayload.Role)
 	}
+	if mePayload.MustChangePassword {
+		t.Fatal("expected first registered admin to access the system without forced password change")
+	}
 
 	refreshBody := fmt.Sprintf(`{"refresh_token":"%s"}`, loginPayload.RefreshToken)
 	refreshResponse := env.doJSONRequest(t, http.MethodPost, "/auth/refresh", loginPayload.Token, refreshBody)
@@ -68,13 +71,13 @@ func TestAuthRegisterLoginRefreshAndGetMeFlow(t *testing.T) {
 func TestAuthRegisterShouldBeBlockedAfterFirstUser(t *testing.T) {
 	env := newIntegrationTestEnv(t)
 
-	firstRegisterBody := `{"name":"Admin Local","email":"admin@local.dev","username":"admin","password":"123456","password_confirm":"123456"}`
+	firstRegisterBody := fmt.Sprintf(`{"name":"Admin Local","email":"admin@local.dev","username":"admin","password":"%s","password_confirm":"%s"}`, integrationStrongPassword, integrationStrongPassword)
 	firstRegisterResponse := env.doJSONRequest(t, http.MethodPost, "/auth/register", "", firstRegisterBody)
 	if firstRegisterResponse.Code != http.StatusCreated {
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, firstRegisterResponse.Code)
 	}
 
-	secondRegisterBody := `{"name":"Outro Admin","email":"other@local.dev","username":"other","password":"123456","password_confirm":"123456"}`
+	secondRegisterBody := fmt.Sprintf(`{"name":"Outro Admin","email":"other@local.dev","username":"other","password":"%s","password_confirm":"%s"}`, integrationStrongPassword, integrationStrongPassword)
 	secondRegisterResponse := env.doJSONRequest(t, http.MethodPost, "/auth/register", "", secondRegisterBody)
 	if secondRegisterResponse.Code != http.StatusForbidden {
 		t.Fatalf("expected status %d, got %d", http.StatusForbidden, secondRegisterResponse.Code)
@@ -86,16 +89,54 @@ func TestAuthRegisterShouldBeBlockedAfterFirstUser(t *testing.T) {
 	}
 }
 
+func TestAuthAndUsersShouldRejectWeakPasswords(t *testing.T) {
+	env := newIntegrationTestEnv(t)
+
+	registerResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/auth/register",
+		"",
+		fmt.Sprintf(`{"name":"Admin Local","email":"admin@local.dev","username":"admin","password":"%s","password_confirm":"%s"}`, integrationWeakPassword, integrationWeakPassword),
+	)
+	if registerResponse.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, registerResponse.Code)
+	}
+
+	registerPayload := decodeJSONResponse[httpresponse.ErrorResponse](t, registerResponse.Body)
+	if registerPayload.Message != "password must contain at least 8 characters, uppercase letter, lowercase letter, number and special character" {
+		t.Fatalf("expected strong password message, got %s", registerPayload.Message)
+	}
+
+	adminToken := env.createAdminToken(t)
+
+	createUserResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/users",
+		adminToken,
+		fmt.Sprintf(`{"name":"Usuario Fraco","email":"weak.user@local.dev","username":"weak_user","password":"%s","password_confirm":"%s","role":"user"}`, integrationWeakPassword, integrationWeakPassword),
+	)
+	if createUserResponse.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, createUserResponse.Code)
+	}
+
+	createUserPayload := decodeJSONResponse[httpresponse.ErrorResponse](t, createUserResponse.Body)
+	if createUserPayload.Message != "password must contain at least 8 characters, uppercase letter, lowercase letter, number and special character" {
+		t.Fatalf("expected strong password message, got %s", createUserPayload.Message)
+	}
+}
+
 func TestUsersRoutesShouldRespectAdminAuthorization(t *testing.T) {
 	env := newIntegrationTestEnv(t)
 
-	adminRegisterBody := `{"name":"Admin Local","email":"admin@local.dev","username":"admin","password":"123456","password_confirm":"123456"}`
+	adminRegisterBody := fmt.Sprintf(`{"name":"Admin Local","email":"admin@local.dev","username":"admin","password":"%s","password_confirm":"%s"}`, integrationStrongPassword, integrationStrongPassword)
 	adminRegisterResponse := env.doJSONRequest(t, http.MethodPost, "/auth/register", "", adminRegisterBody)
 	if adminRegisterResponse.Code != http.StatusCreated {
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, adminRegisterResponse.Code)
 	}
 
-	adminLoginBody := `{"email":"admin@local.dev","password":"123456"}`
+	adminLoginBody := fmt.Sprintf(`{"email":"admin@local.dev","password":"%s"}`, integrationStrongPassword)
 	adminLoginResponse := env.doJSONRequest(t, http.MethodPost, "/auth/login", "", adminLoginBody)
 	if adminLoginResponse.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, adminLoginResponse.Code)
@@ -103,7 +144,7 @@ func TestUsersRoutesShouldRespectAdminAuthorization(t *testing.T) {
 
 	adminLoginPayload := decodeJSONResponse[dto.LoginResponse](t, adminLoginResponse.Body)
 
-	createUserBody := `{"name":"Usuario Comum","email":"user@local.dev","username":"user","password":"123456","password_confirm":"123456","role":"user"}`
+	createUserBody := fmt.Sprintf(`{"name":"Usuario Comum","email":"user@local.dev","username":"user","password":"%s","password_confirm":"%s","role":"user"}`, integrationStrongPassword, integrationStrongPassword)
 	createUserResponse := env.doJSONRequest(t, http.MethodPost, "/users", adminLoginPayload.Token, createUserBody)
 	if createUserResponse.Code != http.StatusCreated {
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, createUserResponse.Code)
@@ -117,6 +158,9 @@ func TestUsersRoutesShouldRespectAdminAuthorization(t *testing.T) {
 	listUsersPayload := decodeJSONResponse[[]dto.UserResponse](t, listUsersResponse.Body)
 	if len(listUsersPayload) != 2 {
 		t.Fatalf("expected 2 users, got %d", len(listUsersPayload))
+	}
+	if !listUsersPayload[1].MustChangePassword {
+		t.Fatal("expected admin-created user to require password change on first access")
 	}
 
 	userToken := env.createUserToken(t, adminLoginPayload.Token, uniqueSuffix(), "user")
@@ -162,5 +206,387 @@ func TestProjectsRoutesShouldRespectAdminAuthorization(t *testing.T) {
 	forbiddenPayload := decodeJSONResponse[httpresponse.ErrorResponse](t, forbiddenCreateResponse.Body)
 	if forbiddenPayload.Message != "insufficient permissions" {
 		t.Fatalf("expected forbidden message, got %s", forbiddenPayload.Message)
+	}
+}
+
+func TestUsersAdminShouldUpdateRoleAndActive(t *testing.T) {
+	env := newIntegrationTestEnv(t)
+	adminToken := env.createAdminToken(t)
+
+	createUserResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/users",
+		adminToken,
+		fmt.Sprintf(`{"name":"Usuario Comum","email":"user@local.dev","username":"user","password":"%s","password_confirm":"%s","role":"user"}`, integrationStrongPassword, integrationStrongPassword),
+	)
+	if createUserResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createUserResponse.Code)
+	}
+
+	createUserPayload := decodeJSONResponse[dto.CreateUserResponse](t, createUserResponse.Body)
+
+	updateRoleResponse := env.doJSONRequest(
+		t,
+		http.MethodPatch,
+		fmt.Sprintf("/users/%d/role", createUserPayload.ID),
+		adminToken,
+		`{"role":"admin"}`,
+	)
+	if updateRoleResponse.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d", http.StatusNoContent, updateRoleResponse.Code)
+	}
+
+	updateActiveResponse := env.doJSONRequest(
+		t,
+		http.MethodPatch,
+		fmt.Sprintf("/users/%d/active", createUserPayload.ID),
+		adminToken,
+		`{"active":false}`,
+	)
+	if updateActiveResponse.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d", http.StatusNoContent, updateActiveResponse.Code)
+	}
+
+	listUsersResponse := env.doJSONRequest(t, http.MethodGet, "/users", adminToken, "")
+	if listUsersResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, listUsersResponse.Code)
+	}
+
+	listUsersPayload := decodeJSONResponse[[]dto.UserResponse](t, listUsersResponse.Body)
+	if len(listUsersPayload) != 2 {
+		t.Fatalf("expected 2 users, got %d", len(listUsersPayload))
+	}
+
+	var updatedUser dto.UserResponse
+	for _, item := range listUsersPayload {
+		if item.ID == createUserPayload.ID {
+			updatedUser = item
+			break
+		}
+	}
+
+	if updatedUser.Role != "admin" {
+		t.Fatalf("expected updated role admin, got %s", updatedUser.Role)
+	}
+	if updatedUser.Active {
+		t.Fatal("expected updated user to be inactive")
+	}
+}
+
+func TestUsersAdminShouldResetPasswordAndRequireChangeOnNextLogin(t *testing.T) {
+	env := newIntegrationTestEnv(t)
+	adminToken := env.createAdminToken(t)
+
+	createUserResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/users",
+		adminToken,
+		fmt.Sprintf(`{"name":"Usuario Reset","email":"user.reset@local.dev","username":"user_reset","password":"%s","password_confirm":"%s","role":"user"}`, integrationStrongPassword, integrationStrongPassword),
+	)
+	if createUserResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createUserResponse.Code)
+	}
+
+	createUserPayload := decodeJSONResponse[dto.CreateUserResponse](t, createUserResponse.Body)
+
+	changePasswordResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/auth/login",
+		"",
+		fmt.Sprintf(`{"email":"user.reset@local.dev","password":"%s"}`, integrationStrongPassword),
+	)
+	if changePasswordResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, changePasswordResponse.Code)
+	}
+
+	firstLoginPayload := decodeJSONResponse[dto.LoginResponse](t, changePasswordResponse.Body)
+
+	firstAccessChangeResponse := env.doJSONRequest(
+		t,
+		http.MethodPatch,
+		"/auth/change-password",
+		firstLoginPayload.Token,
+		fmt.Sprintf(`{"current_password":"%s","new_password":"%s","new_password_confirm":"%s"}`, integrationStrongPassword, integrationUpdatedPassword, integrationUpdatedPassword),
+	)
+	if firstAccessChangeResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, firstAccessChangeResponse.Code)
+	}
+
+	resetPasswordResponse := env.doJSONRequest(
+		t,
+		http.MethodPatch,
+		fmt.Sprintf("/users/%d/reset-password", createUserPayload.ID),
+		adminToken,
+		fmt.Sprintf(`{"password":"%s","password_confirm":"%s"}`, integrationResetPassword, integrationResetPassword),
+	)
+	if resetPasswordResponse.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d", http.StatusNoContent, resetPasswordResponse.Code)
+	}
+
+	oldPasswordLoginResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/auth/login",
+		"",
+		fmt.Sprintf(`{"email":"user.reset@local.dev","password":"%s"}`, integrationUpdatedPassword),
+	)
+	if oldPasswordLoginResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, oldPasswordLoginResponse.Code)
+	}
+
+	resetLoginResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/auth/login",
+		"",
+		fmt.Sprintf(`{"email":"user.reset@local.dev","password":"%s"}`, integrationResetPassword),
+	)
+	if resetLoginResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, resetLoginResponse.Code)
+	}
+
+	resetLoginPayload := decodeJSONResponse[dto.LoginResponse](t, resetLoginResponse.Body)
+
+	meResponse := env.doJSONRequest(t, http.MethodGet, "/users/me", resetLoginPayload.Token, "")
+	if meResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, meResponse.Code)
+	}
+
+	mePayload := decodeJSONResponse[dto.UserResponse](t, meResponse.Body)
+	if !mePayload.MustChangePassword {
+		t.Fatal("expected password reset to require a new change on next access")
+	}
+}
+
+func TestAuthChangePasswordAndResetPasswordShouldRejectWeakPassword(t *testing.T) {
+	env := newIntegrationTestEnv(t)
+	adminToken := env.createAdminToken(t)
+
+	createUserResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/users",
+		adminToken,
+		fmt.Sprintf(`{"name":"Usuario Seguro","email":"secure.user@local.dev","username":"secure_user","password":"%s","password_confirm":"%s","role":"user"}`, integrationStrongPassword, integrationStrongPassword),
+	)
+	if createUserResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createUserResponse.Code)
+	}
+
+	createUserPayload := decodeJSONResponse[dto.CreateUserResponse](t, createUserResponse.Body)
+
+	loginResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/auth/login",
+		"",
+		fmt.Sprintf(`{"email":"secure.user@local.dev","password":"%s"}`, integrationStrongPassword),
+	)
+	if loginResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, loginResponse.Code)
+	}
+
+	loginPayload := decodeJSONResponse[dto.LoginResponse](t, loginResponse.Body)
+
+	changePasswordResponse := env.doJSONRequest(
+		t,
+		http.MethodPatch,
+		"/auth/change-password",
+		loginPayload.Token,
+		fmt.Sprintf(`{"current_password":"%s","new_password":"%s","new_password_confirm":"%s"}`, integrationStrongPassword, integrationWeakPassword, integrationWeakPassword),
+	)
+	if changePasswordResponse.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, changePasswordResponse.Code)
+	}
+
+	changePasswordPayload := decodeJSONResponse[httpresponse.ErrorResponse](t, changePasswordResponse.Body)
+	if changePasswordPayload.Message != "password must contain at least 8 characters, uppercase letter, lowercase letter, number and special character" {
+		t.Fatalf("expected strong password message, got %s", changePasswordPayload.Message)
+	}
+
+	resetPasswordResponse := env.doJSONRequest(
+		t,
+		http.MethodPatch,
+		fmt.Sprintf("/users/%d/reset-password", createUserPayload.ID),
+		adminToken,
+		fmt.Sprintf(`{"password":"%s","password_confirm":"%s"}`, integrationWeakPassword, integrationWeakPassword),
+	)
+	if resetPasswordResponse.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, resetPasswordResponse.Code)
+	}
+
+	resetPasswordPayload := decodeJSONResponse[httpresponse.ErrorResponse](t, resetPasswordResponse.Body)
+	if resetPasswordPayload.Message != "password must contain at least 8 characters, uppercase letter, lowercase letter, number and special character" {
+		t.Fatalf("expected strong password message, got %s", resetPasswordPayload.Message)
+	}
+}
+
+func TestAuthChangePasswordShouldUnlockFirstAccessUser(t *testing.T) {
+	env := newIntegrationTestEnv(t)
+	adminToken := env.createAdminToken(t)
+
+	createUserResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/users",
+		adminToken,
+		fmt.Sprintf(`{"name":"Primeiro Acesso","email":"first.access@local.dev","username":"first_access","password":"%s","password_confirm":"%s","role":"user"}`, integrationStrongPassword, integrationStrongPassword),
+	)
+	if createUserResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createUserResponse.Code)
+	}
+
+	loginResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/auth/login",
+		"",
+		fmt.Sprintf(`{"email":"first.access@local.dev","password":"%s"}`, integrationStrongPassword),
+	)
+	if loginResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, loginResponse.Code)
+	}
+
+	loginPayload := decodeJSONResponse[dto.LoginResponse](t, loginResponse.Body)
+
+	meResponse := env.doJSONRequest(t, http.MethodGet, "/users/me", loginPayload.Token, "")
+	if meResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, meResponse.Code)
+	}
+
+	mePayload := decodeJSONResponse[dto.UserResponse](t, meResponse.Body)
+	if !mePayload.MustChangePassword {
+		t.Fatal("expected first access user to require password change")
+	}
+
+	budgetsResponse := env.doJSONRequest(t, http.MethodGet, "/budgets", loginPayload.Token, "")
+	if budgetsResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected status %d, got %d", http.StatusForbidden, budgetsResponse.Code)
+	}
+
+	budgetsErrorPayload := decodeJSONResponse[httpresponse.ErrorResponse](t, budgetsResponse.Body)
+	if budgetsErrorPayload.Message != "password change required before accessing the system" {
+		t.Fatalf("expected password change required message, got %s", budgetsErrorPayload.Message)
+	}
+
+	changePasswordResponse := env.doJSONRequest(
+		t,
+		http.MethodPatch,
+		"/auth/change-password",
+		loginPayload.Token,
+		fmt.Sprintf(`{"current_password":"%s","new_password":"%s","new_password_confirm":"%s"}`, integrationStrongPassword, integrationResetPassword, integrationResetPassword),
+	)
+	if changePasswordResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, changePasswordResponse.Code)
+	}
+
+	changePasswordPayload := decodeJSONResponse[dto.ChangePasswordResponse](t, changePasswordResponse.Body)
+	if changePasswordPayload.Token == "" || changePasswordPayload.RefreshToken == "" {
+		t.Fatal("expected updated token pair after changing password")
+	}
+
+	updatedMeResponse := env.doJSONRequest(t, http.MethodGet, "/users/me", changePasswordPayload.Token, "")
+	if updatedMeResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, updatedMeResponse.Code)
+	}
+
+	updatedMePayload := decodeJSONResponse[dto.UserResponse](t, updatedMeResponse.Body)
+	if updatedMePayload.MustChangePassword {
+		t.Fatal("expected password change requirement to be cleared")
+	}
+
+	oldLoginResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/auth/login",
+		"",
+		fmt.Sprintf(`{"email":"first.access@local.dev","password":"%s"}`, integrationStrongPassword),
+	)
+	if oldLoginResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, oldLoginResponse.Code)
+	}
+
+	newLoginResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/auth/login",
+		"",
+		fmt.Sprintf(`{"email":"first.access@local.dev","password":"%s"}`, integrationResetPassword),
+	)
+	if newLoginResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, newLoginResponse.Code)
+	}
+}
+
+func TestUsersAdminUpdateRoutesShouldProtectLastAdminAndRespectAuthorization(t *testing.T) {
+	env := newIntegrationTestEnv(t)
+	adminToken := env.createAdminToken(t)
+	userToken := env.createUserToken(t, adminToken, uniqueSuffix(), "user")
+
+	forbiddenRoleResponse := env.doJSONRequest(
+		t,
+		http.MethodPatch,
+		"/users/1/role",
+		userToken,
+		`{"role":"admin"}`,
+	)
+	if forbiddenRoleResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected status %d, got %d", http.StatusForbidden, forbiddenRoleResponse.Code)
+	}
+
+	forbiddenRolePayload := decodeJSONResponse[httpresponse.ErrorResponse](t, forbiddenRoleResponse.Body)
+	if forbiddenRolePayload.Message != "insufficient permissions" {
+		t.Fatalf("expected forbidden message, got %s", forbiddenRolePayload.Message)
+	}
+
+	lastAdminRoleResponse := env.doJSONRequest(
+		t,
+		http.MethodPatch,
+		"/users/1/role",
+		adminToken,
+		`{"role":"user"}`,
+	)
+	if lastAdminRoleResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected status %d, got %d", http.StatusForbidden, lastAdminRoleResponse.Code)
+	}
+
+	lastAdminRolePayload := decodeJSONResponse[httpresponse.ErrorResponse](t, lastAdminRoleResponse.Body)
+	if lastAdminRolePayload.Message != "cannot change your own role" {
+		t.Fatalf("expected self role protection message, got %s", lastAdminRolePayload.Message)
+	}
+
+	lastAdminActiveResponse := env.doJSONRequest(
+		t,
+		http.MethodPatch,
+		"/users/1/active",
+		adminToken,
+		`{"active":false}`,
+	)
+	if lastAdminActiveResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected status %d, got %d", http.StatusForbidden, lastAdminActiveResponse.Code)
+	}
+
+	lastAdminActivePayload := decodeJSONResponse[httpresponse.ErrorResponse](t, lastAdminActiveResponse.Body)
+	if lastAdminActivePayload.Message != "cannot deactivate your own user" {
+		t.Fatalf("expected self active protection message, got %s", lastAdminActivePayload.Message)
+	}
+
+	resetOwnPasswordResponse := env.doJSONRequest(
+		t,
+		http.MethodPatch,
+		"/users/1/reset-password",
+		adminToken,
+		fmt.Sprintf(`{"password":"%s","password_confirm":"%s"}`, integrationResetPassword, integrationResetPassword),
+	)
+	if resetOwnPasswordResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected status %d, got %d", http.StatusForbidden, resetOwnPasswordResponse.Code)
+	}
+
+	resetOwnPasswordPayload := decodeJSONResponse[httpresponse.ErrorResponse](t, resetOwnPasswordResponse.Body)
+	if resetOwnPasswordPayload.Message != "cannot reset your own password" {
+		t.Fatalf("expected self reset protection message, got %s", resetOwnPasswordPayload.Message)
 	}
 }

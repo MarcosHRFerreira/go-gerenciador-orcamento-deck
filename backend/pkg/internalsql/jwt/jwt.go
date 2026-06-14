@@ -11,17 +11,19 @@ import (
 const accessTokenTTL = 60 * time.Minute
 
 type Claims struct {
-	UserID   int64  `json:"user_id"`
-	Username string `json:"username"`
-	Role     string `json:"role"`
+	UserID             int64  `json:"user_id"`
+	Username           string `json:"username"`
+	Role               string `json:"role"`
+	MustChangePassword bool   `json:"must_change_password"`
 	golangjwt.RegisteredClaims
 }
 
-func CreateToken(userID int64, username string, role string, secretKey string) (string, error) {
+func CreateToken(userID int64, username string, role string, mustChangePassword bool, secretKey string) (string, error) {
 	claims := Claims{
-		UserID:   userID,
-		Username: username,
-		Role:     role,
+		UserID:             userID,
+		Username:           username,
+		Role:               role,
+		MustChangePassword: mustChangePassword,
 		RegisteredClaims: golangjwt.RegisteredClaims{
 			ExpiresAt: golangjwt.NewNumericDate(time.Now().Add(accessTokenTTL)),
 			IssuedAt:  golangjwt.NewNumericDate(time.Now()),
@@ -33,7 +35,7 @@ func CreateToken(userID int64, username string, role string, secretKey string) (
 	return token.SignedString([]byte(secretKey))
 }
 
-func ValidateToken(tokenStr string, secretKey string, validateClaims bool) (int64, string, string, error) {
+func ValidateToken(tokenStr string, secretKey string, validateClaims bool) (int64, string, string, bool, error) {
 	claims := &Claims{}
 	parserOptions := make([]golangjwt.ParserOption, 0, 1)
 	if !validateClaims {
@@ -44,24 +46,24 @@ func ValidateToken(tokenStr string, secretKey string, validateClaims bool) (int6
 		return []byte(secretKey), nil
 	}, parserOptions...)
 	if err != nil {
-		return 0, "", "", err
+		return 0, "", "", false, err
 	}
 
 	if !token.Valid {
-		return 0, "", "", errors.New("token is not valid")
+		return 0, "", "", false, errors.New("token is not valid")
 	}
 
 	if claims.UserID == 0 {
-		return 0, "", "", errors.New("invalid token user_id")
+		return 0, "", "", false, errors.New("invalid token user_id")
 	}
 	if claims.Username == "" {
-		return 0, "", "", errors.New("invalid token username")
+		return 0, "", "", false, errors.New("invalid token username")
 	}
 	if claims.Role == "" {
-		return 0, "", "", errors.New("invalid token role")
+		return 0, "", "", false, errors.New("invalid token role")
 	}
 
-	return claims.UserID, claims.Username, claims.Role, nil
+	return claims.UserID, claims.Username, claims.Role, claims.MustChangePassword, nil
 }
 
 func extractToken(headerValue string) string {

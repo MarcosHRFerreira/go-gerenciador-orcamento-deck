@@ -5,31 +5,39 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/accessscope"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/apperror"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/dto"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/model"
 	budgetrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budget"
 	budgetfollowuprepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budgetfollowup"
+	salespersonrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/salesperson"
 )
 
 type Service interface {
-	Create(ctx context.Context, budgetID int64, userID int64, req *dto.CreateBudgetFollowUpRequest) (int64, error)
-	ListByBudgetID(ctx context.Context, budgetID int64) ([]dto.BudgetFollowUpResponse, error)
+	Create(ctx context.Context, budgetID int64, userID int64, role model.UserRole, username string, req *dto.CreateBudgetFollowUpRequest) (int64, error)
+	ListByBudgetID(ctx context.Context, budgetID int64, role model.UserRole, username string) ([]dto.BudgetFollowUpResponse, error)
 }
 
 type service struct {
-	repo       budgetfollowuprepository.Repository
-	budgetRepo budgetrepository.Repository
+	repo             budgetfollowuprepository.Repository
+	budgetRepo       budgetrepository.Repository
+	salespersonRepo salespersonrepository.Repository
 }
 
-func NewService(repo budgetfollowuprepository.Repository, budgetRepo budgetrepository.Repository) Service {
+func NewService(
+	repo budgetfollowuprepository.Repository,
+	budgetRepo budgetrepository.Repository,
+	salespersonRepo salespersonrepository.Repository,
+) Service {
 	return &service{
-		repo:       repo,
-		budgetRepo: budgetRepo,
+		repo:            repo,
+		budgetRepo:      budgetRepo,
+		salespersonRepo: salespersonRepo,
 	}
 }
 
-func (s *service) Create(ctx context.Context, budgetID int64, userID int64, req *dto.CreateBudgetFollowUpRequest) (int64, error) {
+func (s *service) Create(ctx context.Context, budgetID int64, userID int64, role model.UserRole, username string, req *dto.CreateBudgetFollowUpRequest) (int64, error) {
 	if budgetID <= 0 {
 		return 0, apperror.BadRequest("budget_id is required")
 	}
@@ -38,7 +46,12 @@ func (s *service) Create(ctx context.Context, budgetID int64, userID int64, req 
 		return 0, apperror.Unauthorized("authenticated user is required")
 	}
 
-	budget, err := s.budgetRepo.GetByID(ctx, budgetID)
+	restrictedSalespersonID, err := accessscope.ResolveRestrictedSalespersonID(ctx, role, username, s.salespersonRepo)
+	if err != nil {
+		return 0, err
+	}
+
+	budget, err := s.budgetRepo.GetByIDScoped(ctx, budgetID, restrictedSalespersonID)
 	if err != nil {
 		return 0, apperror.Internal("failed to check budget", err)
 	}
@@ -76,12 +89,17 @@ func (s *service) Create(ctx context.Context, budgetID int64, userID int64, req 
 	return id, nil
 }
 
-func (s *service) ListByBudgetID(ctx context.Context, budgetID int64) ([]dto.BudgetFollowUpResponse, error) {
+func (s *service) ListByBudgetID(ctx context.Context, budgetID int64, role model.UserRole, username string) ([]dto.BudgetFollowUpResponse, error) {
 	if budgetID <= 0 {
 		return nil, apperror.BadRequest("budget_id is required")
 	}
 
-	budget, err := s.budgetRepo.GetByID(ctx, budgetID)
+	restrictedSalespersonID, err := accessscope.ResolveRestrictedSalespersonID(ctx, role, username, s.salespersonRepo)
+	if err != nil {
+		return nil, err
+	}
+
+	budget, err := s.budgetRepo.GetByIDScoped(ctx, budgetID, restrictedSalespersonID)
 	if err != nil {
 		return nil, apperror.Internal("failed to check budget", err)
 	}

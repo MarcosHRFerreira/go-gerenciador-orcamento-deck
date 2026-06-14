@@ -32,6 +32,10 @@ func (h *Handler) RouteList() {
 	authRoutes.POST("/register", h.Register)
 	authRoutes.POST("/login", h.Login)
 
+	protectedRoutes := h.router.Group("/auth")
+	protectedRoutes.Use(middleware.Auth(h.secretKey))
+	protectedRoutes.PATCH("/change-password", h.ChangePassword)
+
 	refreshRoutes := h.router.Group("/auth")
 	refreshRoutes.Use(middleware.AuthRefresh(h.secretKey))
 	refreshRoutes.POST("/refresh", h.Refresh)
@@ -85,6 +89,24 @@ func (h *Handler) Refresh(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, dto.RefreshTokenResponse{
+		Token:        token,
+		RefreshToken: refreshToken,
+	})
+}
+
+func (h *Handler) ChangePassword(c *gin.Context) {
+	var req dto.ChangePasswordRequest
+	if !httpresponse.BindAndValidateJSON(c, h.validate, &req) {
+		return
+	}
+
+	token, refreshToken, err := h.authService.ChangePassword(c.Request.Context(), middleware.UserID(c), &req)
+	if err != nil {
+		httpresponse.JSONAppError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.ChangePasswordResponse{
 		Token:        token,
 		RefreshToken: refreshToken,
 	})

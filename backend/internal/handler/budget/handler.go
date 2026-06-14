@@ -66,7 +66,12 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 
-	items, err := h.service.List(c.Request.Context(), filters)
+	items, err := h.service.List(
+		c.Request.Context(),
+		filters,
+		middleware.Role(c),
+		middleware.Username(c),
+	)
 	if err != nil {
 		httpresponse.JSONAppError(c, err)
 		return
@@ -81,7 +86,12 @@ func (h *Handler) GetByID(c *gin.Context) {
 		return
 	}
 
-	item, err := h.service.GetByID(c.Request.Context(), budgetID)
+	item, err := h.service.GetByID(
+		c.Request.Context(),
+		budgetID,
+		middleware.Role(c),
+		middleware.Username(c),
+	)
 	if err != nil {
 		httpresponse.JSONAppError(c, err)
 		return

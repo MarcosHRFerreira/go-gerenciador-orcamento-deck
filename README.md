@@ -1,11 +1,34 @@
 # go-gerenciador-orcamento-deck
 
-Repositorio organizado em duas frentes:
+Sistema de gestao de orcamentos com backend em Go e frontend em React.
 
-- `backend/`: API em Go com PostgreSQL
-- `frontend/`: aplicacao web que ira consumir a API
+## Visao Geral
 
-## Estrutura Atual
+- `backend/`: API REST em Go com `Gin`, `PostgreSQL`, `JWT` e testes de unidade e integracao
+- `frontend/`: aplicacao web em `React`, `TypeScript`, `Vite`, `Material UI`, `React Query`, `React Hook Form` e `Zod`
+- `docs/`: estudos, backlog e especificacoes funcionais
+
+## Funcionalidades Entregues
+
+- autenticacao com `login`, `refresh token` e obtencao do usuario logado
+- troca obrigatoria de senha no primeiro acesso
+- reset de senha por administrador com nova troca obrigatoria no proximo login
+- politica de senha forte no backend e no frontend
+- gestao de usuarios com perfis `admin` e `user`
+- bloqueio de acesso administrativo para usuario comum
+- importacao de orcamentos por planilha
+- listagem, criacao, edicao e exclusao de orcamentos
+- historico de status e follow-ups de orcamentos
+- escopo por vendedor:
+  - `admin` acessa todos os orcamentos
+  - `user` acessa apenas os orcamentos vinculados ao vendedor resolvido pelo `username`
+- melhorias visuais no frontend:
+  - menu lateral recolhivel com tooltip nos icones
+  - redirecionamento inicial para `Orcamentos`
+  - tabela de orcamentos com cabecalho fixo
+  - area fixa com colunas `ID` e `Orcamento`
+
+## Estrutura
 
 ```text
 go-gerenciador-orcamento-deck/
@@ -17,45 +40,49 @@ go-gerenciador-orcamento-deck/
 
 ## Documentacao
 
-- estudo do backend: `docs/ESTUDO-SISTEMA-BACKEND-ORCAMENTOS.md`
-- backlog tecnico: `docs/BACKLOG-TECNICO-IMPLEMENTACAO.md`
-- arquitetura recomendada do frontend: `docs/ARQUITETURA-FRONTEND.md`
-- backlog de implementacao do frontend: `docs/BACKLOG-FRONTEND-IMPLEMENTACAO.md`
-- guia visual do frontend: `docs/GUIA-VISUAL-FRONTEND.md`
-
-## Como Trabalhar
-
-### Backend
-
-Entre na pasta `backend/` para:
-
-- subir banco local
-- configurar `.env`
-- rodar a API
-- executar testes
-
-### Frontend
-
-A pasta `frontend/` foi separada para receber a aplicacao web.
-
-A arquitetura recomendada, stack e organizacao inicial estao em:
-
+- `docs/ESTUDO-SISTEMA-BACKEND-ORCAMENTOS.md`
+- `docs/BACKLOG-TECNICO-IMPLEMENTACAO.md`
 - `docs/ARQUITETURA-FRONTEND.md`
 - `docs/BACKLOG-FRONTEND-IMPLEMENTACAO.md`
 - `docs/GUIA-VISUAL-FRONTEND.md`
+- `docs/ESTUDO-CARGA-PLANILHA-ORCAMENTOS.md`
+- `docs/ESPECIFICACAO-API-IMPORTACAO-ORCAMENTOS.md`
+- `docs/ESTUDO-CADASTRO-USUARIOS-E-PERFIS.md`
+- `docs/ESPECIFICACAO-TELA-USUARIOS.md`
 
-## Proximo Passo Recomendado
+## Como Rodar
 
-Depois desta separacao, o proximo passo natural e inicializar o frontend em `frontend/` com:
+### Backend
 
-- `React`
-- `TypeScript`
-- `Vite`
-- `Material UI`
-- `React Query`
-- `React Hook Form`
-- `Zod`
+Execute os comandos a partir de `backend/`:
 
-Para seguir com menor ambiguidade, use antes o plano pratico em:
+1. copie `.env.example` para `.env`
+2. suba o banco com `docker compose up -d`
+3. aplique as migrations da pasta `db/migrations`
+4. rode a API com `go run ./cmd`
 
-- `docs/BACKLOG-FRONTEND-IMPLEMENTACAO.md`
+### Frontend
+
+Execute os comandos a partir de `frontend/`:
+
+1. instale as dependencias com `yarn`
+2. rode o projeto com `yarn dev`
+
+## Testes E Validacao
+
+### Backend
+
+- `go test ./...`
+- `go test ./test/unit/...`
+- `go test ./test/integration/...`
+
+### Frontend
+
+- `yarn lint`
+- `yarn build`
+
+## Observacoes
+
+- a rota inicial autenticada do frontend aponta para `Orcamentos`
+- o fluxo de primeiro acesso redireciona o usuario para troca de senha antes de liberar o restante do sistema
+- o escopo por vendedor usa o `username` do usuario autenticado para resolver o vendedor correspondente

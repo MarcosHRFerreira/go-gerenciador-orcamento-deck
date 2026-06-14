@@ -10,12 +10,16 @@ import (
 
 type Repository interface {
 	CountUsers(ctx context.Context) (int64, error)
+	CountActiveAdmins(ctx context.Context) (int64, error)
 	CreateUser(ctx context.Context, user *model.UserModel) (int64, error)
 	GetUserByEmail(ctx context.Context, email string) (*model.UserModel, error)
 	GetUserByUsername(ctx context.Context, username string) (*model.UserModel, error)
 	GetUserByEmailOrUsername(ctx context.Context, email string, username string) (*model.UserModel, error)
 	GetUserByID(ctx context.Context, userID int64) (*model.UserModel, error)
 	ListUsers(ctx context.Context) ([]model.UserModel, error)
+	UpdateUserRole(ctx context.Context, userID int64, role model.UserRole, updatedAt time.Time) error
+	UpdateUserActive(ctx context.Context, userID int64, active bool, updatedAt time.Time) error
+	UpdateUserPassword(ctx context.Context, userID int64, passwordHash string, mustChangePassword bool, updatedAt time.Time) error
 	GetActiveRefreshTokenByUserID(ctx context.Context, userID int64, now time.Time) (*model.RefreshTokenModel, error)
 	StoreRefreshToken(ctx context.Context, token *model.RefreshTokenModel) error
 	DeleteRefreshTokensByUserID(ctx context.Context, userID int64) error
@@ -42,6 +46,17 @@ func (r *repository) CountUsers(ctx context.Context) (int64, error) {
 	return total, nil
 }
 
+func (r *repository) CountActiveAdmins(ctx context.Context) (int64, error) {
+	const query = `SELECT COUNT(*) FROM users WHERE role = 'admin' AND active = TRUE`
+
+	var total int64
+	if err := r.db.QueryRowContext(ctx, query).Scan(&total); err != nil {
+		return 0, err
+	}
+
+	return total, nil
+}
+
 func (r *repository) CreateUser(ctx context.Context, user *model.UserModel) (int64, error) {
 	const query = `
 		INSERT INTO users (
@@ -51,9 +66,10 @@ func (r *repository) CreateUser(ctx context.Context, user *model.UserModel) (int
 			password_hash,
 			role,
 			active,
+			must_change_password,
 			created_at,
 			updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id
 	`
 
@@ -67,6 +83,7 @@ func (r *repository) CreateUser(ctx context.Context, user *model.UserModel) (int
 		user.PasswordHash,
 		user.Role,
 		user.Active,
+		user.MustChangePassword,
 		user.CreatedAt,
 		user.UpdatedAt,
 	).Scan(&userID)
@@ -79,7 +96,7 @@ func (r *repository) CreateUser(ctx context.Context, user *model.UserModel) (int
 
 func (r *repository) GetUserByEmail(ctx context.Context, email string) (*model.UserModel, error) {
 	const query = `
-		SELECT id, name, email, username, password_hash, role, active, created_at, updated_at
+		SELECT id, name, email, username, password_hash, role, active, must_change_password, created_at, updated_at
 		FROM users
 		WHERE email = $1
 	`
@@ -89,7 +106,7 @@ func (r *repository) GetUserByEmail(ctx context.Context, email string) (*model.U
 
 func (r *repository) GetUserByUsername(ctx context.Context, username string) (*model.UserModel, error) {
 	const query = `
-		SELECT id, name, email, username, password_hash, role, active, created_at, updated_at
+		SELECT id, name, email, username, password_hash, role, active, must_change_password, created_at, updated_at
 		FROM users
 		WHERE username = $1
 	`
@@ -99,7 +116,7 @@ func (r *repository) GetUserByUsername(ctx context.Context, username string) (*m
 
 func (r *repository) GetUserByEmailOrUsername(ctx context.Context, email string, username string) (*model.UserModel, error) {
 	const query = `
-		SELECT id, name, email, username, password_hash, role, active, created_at, updated_at
+		SELECT id, name, email, username, password_hash, role, active, must_change_password, created_at, updated_at
 		FROM users
 		WHERE email = $1 OR username = $2
 	`
@@ -109,7 +126,7 @@ func (r *repository) GetUserByEmailOrUsername(ctx context.Context, email string,
 
 func (r *repository) GetUserByID(ctx context.Context, userID int64) (*model.UserModel, error) {
 	const query = `
-		SELECT id, name, email, username, password_hash, role, active, created_at, updated_at
+		SELECT id, name, email, username, password_hash, role, active, must_change_password, created_at, updated_at
 		FROM users
 		WHERE id = $1
 	`
@@ -119,7 +136,7 @@ func (r *repository) GetUserByID(ctx context.Context, userID int64) (*model.User
 
 func (r *repository) ListUsers(ctx context.Context) ([]model.UserModel, error) {
 	const query = `
-		SELECT id, name, email, username, password_hash, role, active, created_at, updated_at
+		SELECT id, name, email, username, password_hash, role, active, must_change_password, created_at, updated_at
 		FROM users
 		ORDER BY id ASC
 	`
@@ -141,6 +158,7 @@ func (r *repository) ListUsers(ctx context.Context) ([]model.UserModel, error) {
 			&user.PasswordHash,
 			&user.Role,
 			&user.Active,
+			&user.MustChangePassword,
 			&user.CreatedAt,
 			&user.UpdatedAt,
 		); err != nil {
@@ -155,6 +173,39 @@ func (r *repository) ListUsers(ctx context.Context) ([]model.UserModel, error) {
 	}
 
 	return users, nil
+}
+
+func (r *repository) UpdateUserRole(ctx context.Context, userID int64, role model.UserRole, updatedAt time.Time) error {
+	const query = `
+		UPDATE users
+		SET role = $2, updated_at = $3
+		WHERE id = $1
+	`
+
+	_, err := r.db.ExecContext(ctx, query, userID, role, updatedAt)
+	return err
+}
+
+func (r *repository) UpdateUserActive(ctx context.Context, userID int64, active bool, updatedAt time.Time) error {
+	const query = `
+		UPDATE users
+		SET active = $2, updated_at = $3
+		WHERE id = $1
+	`
+
+	_, err := r.db.ExecContext(ctx, query, userID, active, updatedAt)
+	return err
+}
+
+func (r *repository) UpdateUserPassword(ctx context.Context, userID int64, passwordHash string, mustChangePassword bool, updatedAt time.Time) error {
+	const query = `
+		UPDATE users
+		SET password_hash = $2, must_change_password = $3, updated_at = $4
+		WHERE id = $1
+	`
+
+	_, err := r.db.ExecContext(ctx, query, userID, passwordHash, mustChangePassword, updatedAt)
+	return err
 }
 
 func (r *repository) GetActiveRefreshTokenByUserID(ctx context.Context, userID int64, now time.Time) (*model.RefreshTokenModel, error) {
@@ -229,6 +280,7 @@ func (r *repository) getOne(ctx context.Context, query string, args ...interface
 		&user.PasswordHash,
 		&user.Role,
 		&user.Active,
+		&user.MustChangePassword,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)

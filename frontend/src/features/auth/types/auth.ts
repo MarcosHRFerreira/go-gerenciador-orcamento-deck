@@ -13,6 +13,17 @@ export type LoginResponse = {
   refresh_token: string;
 };
 
+export type ChangePasswordPayload = {
+  current_password: string;
+  new_password: string;
+  new_password_confirm: string;
+};
+
+export type ChangePasswordResponse = {
+  token: string;
+  refresh_token: string;
+};
+
 export type RefreshTokenPayload = {
   refresh_token: string;
 };
@@ -27,8 +38,9 @@ export type AuthUser = {
   name: string;
   email: string;
   username: string;
-  role: 'admin' | 'user';
+  role: "admin" | "user";
   active: boolean;
+  must_change_password: boolean;
   created_at: string;
   updated_at: string;
 };

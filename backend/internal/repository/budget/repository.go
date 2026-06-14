@@ -15,7 +15,9 @@ type Repository interface {
 	Create(ctx context.Context, item *model.BudgetModel) (int64, error)
 	List(ctx context.Context, filters *dto.ListBudgetsFilters) ([]model.BudgetModel, int64, error)
 	ExistsByNumberAndYear(ctx context.Context, budgetNumber string, yearBudget int) (bool, error)
+	GetByNumberAndYear(ctx context.Context, budgetNumber string, yearBudget int) (*model.BudgetModel, error)
 	GetByID(ctx context.Context, budgetID int64) (*model.BudgetModel, error)
+	GetByIDScoped(ctx context.Context, budgetID int64, restrictedSalespersonID *int64) (*model.BudgetModel, error)
 	Update(ctx context.Context, item *model.BudgetModel) error
 	Delete(ctx context.Context, budgetID int64) error
 	UpdateCurrentFollowUp(ctx context.Context, budgetID int64, currentFollowUp string, updatedAt time.Time) error
@@ -211,6 +213,10 @@ func buildListWhereClause(filters *dto.ListBudgetsFilters) (string, []interface{
 			args = append(args, *filters.StatusID)
 			conditions = append(conditions, fmt.Sprintf("b.status_id = $%d", len(args)))
 		}
+		if filters.RestrictedSalespersonID != nil {
+			args = append(args, *filters.RestrictedSalespersonID)
+			conditions = append(conditions, fmt.Sprintf("b.salesperson_id = $%d", len(args)))
+		}
 		if filters.SalespersonID != nil {
 			args = append(args, *filters.SalespersonID)
 			conditions = append(conditions, fmt.Sprintf("b.salesperson_id = $%d", len(args)))
@@ -303,7 +309,78 @@ func (r *repository) ExistsByNumberAndYear(ctx context.Context, budgetNumber str
 	return exists, nil
 }
 
+func (r *repository) GetByNumberAndYear(ctx context.Context, budgetNumber string, yearBudget int) (*model.BudgetModel, error) {
+	const query = `
+		SELECT
+			id,
+			budget_number,
+			year_budget,
+			revision,
+			sent_at,
+			gross_value,
+			commission_value,
+			area_m2,
+			status_id,
+			priority_id,
+			installer_id,
+			project_id,
+			salesperson_id,
+			contact_id,
+			loss_reason_id,
+			competitor_name,
+			competitor_price,
+			designer_name,
+			specification_details,
+			current_follow_up,
+			created_at,
+			updated_at
+		FROM budgets
+		WHERE budget_number = $1 AND year_budget = $2
+	`
+
+	row := r.db.QueryRowContext(ctx, query, budgetNumber, yearBudget)
+
+	var item model.BudgetModel
+	err := row.Scan(
+		&item.ID,
+		&item.BudgetNumber,
+		&item.YearBudget,
+		&item.Revision,
+		&item.SentAt,
+		&item.GrossValue,
+		&item.CommissionValue,
+		&item.AreaM2,
+		&item.StatusID,
+		&item.PriorityID,
+		&item.InstallerID,
+		&item.ProjectID,
+		&item.SalespersonID,
+		&item.ContactID,
+		&item.LossReasonID,
+		&item.CompetitorName,
+		&item.CompetitorPrice,
+		&item.DesignerName,
+		&item.SpecificationDetails,
+		&item.CurrentFollowUp,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	return &item, nil
+}
+
 func (r *repository) GetByID(ctx context.Context, budgetID int64) (*model.BudgetModel, error) {
+	return r.GetByIDScoped(ctx, budgetID, nil)
+}
+
+func (r *repository) GetByIDScoped(ctx context.Context, budgetID int64, restrictedSalespersonID *int64) (*model.BudgetModel, error) {
 	const query = `
 		SELECT
 			id,
@@ -331,8 +408,14 @@ func (r *repository) GetByID(ctx context.Context, budgetID int64) (*model.Budget
 		FROM budgets
 		WHERE id = $1
 	`
+	args := []interface{}{budgetID}
+	finalQuery := query
+	if restrictedSalespersonID != nil {
+		args = append(args, *restrictedSalespersonID)
+		finalQuery += " AND salesperson_id = $2"
+	}
 
-	row := r.db.QueryRowContext(ctx, query, budgetID)
+	row := r.db.QueryRowContext(ctx, finalQuery, args...)
 
 	var item model.BudgetModel
 	err := row.Scan(

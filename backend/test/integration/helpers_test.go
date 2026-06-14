@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,6 +26,15 @@ import (
 )
 
 const integrationRequestTimeout = 5 * time.Second
+
+const (
+	integrationStrongPassword  = "Strong@123"
+	integrationUpdatedPassword = "Updated@123"
+	integrationResetPassword   = "Reseted@123"
+	integrationWeakPassword    = "12345678"
+)
+
+var integrationUniqueCounter atomic.Uint64
 
 type integrationTestEnv struct {
 	db     *sql.DB
@@ -147,13 +157,13 @@ func decodeJSONResponse[T any](t *testing.T, body io.Reader) T {
 func (e *integrationTestEnv) createAdminToken(t *testing.T) string {
 	t.Helper()
 
-	registerBody := `{"name":"Admin Local","email":"admin@local.dev","username":"admin","password":"123456","password_confirm":"123456"}`
+	registerBody := fmt.Sprintf(`{"name":"Admin Local","email":"admin@local.dev","username":"admin","password":"%s","password_confirm":"%s"}`, integrationStrongPassword, integrationStrongPassword)
 	registerResponse := e.doJSONRequest(t, http.MethodPost, "/auth/register", "", registerBody)
 	if registerResponse.Code != http.StatusCreated {
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, registerResponse.Code)
 	}
 
-	loginBody := `{"email":"admin@local.dev","password":"123456"}`
+	loginBody := fmt.Sprintf(`{"email":"admin@local.dev","password":"%s"}`, integrationStrongPassword)
 	loginResponse := e.doJSONRequest(t, http.MethodPost, "/auth/login", "", loginBody)
 	if loginResponse.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, loginResponse.Code)
@@ -171,11 +181,33 @@ func (e *integrationTestEnv) createUserToken(t *testing.T, adminToken string, su
 	t.Helper()
 
 	emailSuffix := strings.ToLower(strings.NewReplacer("-", "", "_", "", " ", "").Replace(suffix))
+	return e.createUserTokenWithCredentials(
+		t,
+		adminToken,
+		fmt.Sprintf("User %s", suffix),
+		fmt.Sprintf("user.%s@local.dev", emailSuffix),
+		fmt.Sprintf("user_%s", emailSuffix),
+		role,
+	)
+}
+
+func (e *integrationTestEnv) createUserTokenWithCredentials(
+	t *testing.T,
+	adminToken string,
+	name string,
+	email string,
+	username string,
+	role string,
+) string {
+	t.Helper()
+
 	createUserBody := fmt.Sprintf(
-		`{"name":"User %s","email":"user.%s@local.dev","username":"user_%s","password":"123456","password_confirm":"123456","role":"%s"}`,
-		suffix,
-		emailSuffix,
-		emailSuffix,
+		`{"name":"%s","email":"%s","username":"%s","password":"%s","password_confirm":"%s","role":"%s"}`,
+		name,
+		email,
+		username,
+		integrationStrongPassword,
+		integrationStrongPassword,
 		role,
 	)
 	createUserResponse := e.doJSONRequest(t, http.MethodPost, "/users", adminToken, createUserBody)
@@ -183,7 +215,7 @@ func (e *integrationTestEnv) createUserToken(t *testing.T, adminToken string, su
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, createUserResponse.Code)
 	}
 
-	loginBody := fmt.Sprintf(`{"email":"user.%s@local.dev","password":"123456"}`, emailSuffix)
+	loginBody := fmt.Sprintf(`{"email":"%s","password":"%s"}`, email, integrationStrongPassword)
 	loginResponse := e.doJSONRequest(t, http.MethodPost, "/auth/login", "", loginBody)
 	if loginResponse.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, loginResponse.Code)
@@ -194,7 +226,23 @@ func (e *integrationTestEnv) createUserToken(t *testing.T, adminToken string, su
 		t.Fatal("expected access token to be returned")
 	}
 
-	return loginPayload.Token
+	changePasswordResponse := e.doJSONRequest(
+		t,
+		http.MethodPatch,
+		"/auth/change-password",
+		loginPayload.Token,
+		fmt.Sprintf(`{"current_password":"%s","new_password":"%s","new_password_confirm":"%s"}`, integrationStrongPassword, integrationUpdatedPassword, integrationUpdatedPassword),
+	)
+	if changePasswordResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, changePasswordResponse.Code)
+	}
+
+	changePasswordPayload := decodeJSONResponse[dto.ChangePasswordResponse](t, changePasswordResponse.Body)
+	if changePasswordPayload.Token == "" {
+		t.Fatal("expected updated access token to be returned")
+	}
+
+	return changePasswordPayload.Token
 }
 
 func (e *integrationTestEnv) seedBudgetData(t *testing.T, suffix string) budgetSeedData {
@@ -324,7 +372,7 @@ func (e *integrationTestEnv) insertReturningID(t *testing.T, ctx context.Context
 }
 
 func uniqueSuffix() string {
-	return fmt.Sprintf("%d", time.Now().UnixNano())
+	return fmt.Sprintf("%d%d", time.Now().UnixNano(), integrationUniqueCounter.Add(1))
 }
 
 func safePhoneSuffix(value string) string {

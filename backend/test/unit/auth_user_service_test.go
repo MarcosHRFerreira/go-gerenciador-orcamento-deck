@@ -14,9 +14,17 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+const (
+	testStrongPassword  = "Strong@123"
+	testUpdatedPassword = "Updated@123"
+	testWeakPassword    = "12345678"
+)
+
 type userRepositoryStub struct {
 	countUsersResult                 int64
 	countUsersErr                    error
+	countActiveAdminsResult          int64
+	countActiveAdminsErr             error
 	createUserID                     int64
 	createUserErr                    error
 	getUserByEmailItem               *model.UserModel
@@ -34,10 +42,21 @@ type userRepositoryStub struct {
 	capturedCreateUser               *model.UserModel
 	capturedStoreRefreshToken        *model.RefreshTokenModel
 	deletedRefreshTokensUserID       int64
+	updatedUserRole                  model.UserRole
+	updatedUserRoleUserID            int64
+	updatedUserActive                bool
+	updatedUserActiveUserID          int64
+	updatedUserPasswordHash          string
+	updatedUserPasswordUserID        int64
+	updatedUserMustChangePassword    bool
 }
 
 func (s *userRepositoryStub) CountUsers(_ context.Context) (int64, error) {
 	return s.countUsersResult, s.countUsersErr
+}
+
+func (s *userRepositoryStub) CountActiveAdmins(_ context.Context) (int64, error) {
+	return s.countActiveAdminsResult, s.countActiveAdminsErr
 }
 
 func (s *userRepositoryStub) CreateUser(_ context.Context, user *model.UserModel) (int64, error) {
@@ -65,6 +84,25 @@ func (s *userRepositoryStub) ListUsers(_ context.Context) ([]model.UserModel, er
 	return s.listUsersItems, s.listUsersErr
 }
 
+func (s *userRepositoryStub) UpdateUserRole(_ context.Context, userID int64, role model.UserRole, _ time.Time) error {
+	s.updatedUserRoleUserID = userID
+	s.updatedUserRole = role
+	return nil
+}
+
+func (s *userRepositoryStub) UpdateUserActive(_ context.Context, userID int64, active bool, _ time.Time) error {
+	s.updatedUserActiveUserID = userID
+	s.updatedUserActive = active
+	return nil
+}
+
+func (s *userRepositoryStub) UpdateUserPassword(_ context.Context, userID int64, passwordHash string, mustChangePassword bool, _ time.Time) error {
+	s.updatedUserPasswordUserID = userID
+	s.updatedUserPasswordHash = passwordHash
+	s.updatedUserMustChangePassword = mustChangePassword
+	return nil
+}
+
 func (s *userRepositoryStub) GetActiveRefreshTokenByUserID(_ context.Context, _ int64, _ time.Time) (*model.RefreshTokenModel, error) {
 	return s.getActiveRefreshTokenByUserID, s.getActiveRefreshTokenByUserIDErr
 }
@@ -89,8 +127,8 @@ func TestAuthServiceRegisterShouldCreateFirstUserAsAdmin(t *testing.T) {
 		Name:            "Administrador",
 		Email:           "admin@example.com",
 		Username:        "admin",
-		Password:        "123456",
-		PasswordConfirm: "123456",
+		Password:        testStrongPassword,
+		PasswordConfirm: testStrongPassword,
 	})
 
 	if err != nil {
@@ -105,12 +143,29 @@ func TestAuthServiceRegisterShouldCreateFirstUserAsAdmin(t *testing.T) {
 	if repo.capturedCreateUser.Role != model.RoleAdmin {
 		t.Fatalf("expected admin role, got %s", repo.capturedCreateUser.Role)
 	}
-	if repo.capturedCreateUser.PasswordHash == "123456" {
+	if repo.capturedCreateUser.MustChangePassword {
+		t.Fatal("expected first registered admin to skip forced password change")
+	}
+	if repo.capturedCreateUser.PasswordHash == testStrongPassword {
 		t.Fatal("expected password hash to be generated")
 	}
-	if err := bcrypt.CompareHashAndPassword([]byte(repo.capturedCreateUser.PasswordHash), []byte("123456")); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(repo.capturedCreateUser.PasswordHash), []byte(testStrongPassword)); err != nil {
 		t.Fatalf("expected valid password hash, got %v", err)
 	}
+}
+
+func TestAuthServiceRegisterShouldRejectWeakPassword(t *testing.T) {
+	service := authservice.NewService(&userRepositoryStub{}, &config.Config{SecretJWT: "local-secret"})
+
+	_, err := service.Register(context.Background(), &dto.RegisterRequest{
+		Name:            "Administrador",
+		Email:           "admin@example.com",
+		Username:        "admin",
+		Password:        testWeakPassword,
+		PasswordConfirm: testWeakPassword,
+	})
+
+	assertAppError(t, err, 400, "password must contain at least 8 characters, uppercase letter, lowercase letter, number and special character")
 }
 
 func TestAuthServiceRegisterShouldReturnForbiddenWhenUsersAlreadyExist(t *testing.T) {
@@ -122,8 +177,8 @@ func TestAuthServiceRegisterShouldReturnForbiddenWhenUsersAlreadyExist(t *testin
 		Name:            "Administrador",
 		Email:           "admin@example.com",
 		Username:        "admin",
-		Password:        "123456",
-		PasswordConfirm: "123456",
+		Password:        testStrongPassword,
+		PasswordConfirm: testStrongPassword,
 	})
 
 	assertAppError(t, err, 403, "public registration is no longer available")
@@ -153,7 +208,7 @@ func TestAuthServiceLoginShouldReturnUnauthorizedWhenPasswordIsWrong(t *testing.
 }
 
 func TestAuthServiceLoginShouldIssueTokenAndStoreRefreshToken(t *testing.T) {
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte("123456"), bcrypt.DefaultCost)
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(testStrongPassword), bcrypt.DefaultCost)
 	if err != nil {
 		t.Fatalf("failed to hash password: %v", err)
 	}
@@ -172,7 +227,7 @@ func TestAuthServiceLoginShouldIssueTokenAndStoreRefreshToken(t *testing.T) {
 
 	token, refreshToken, loginErr := service.Login(context.Background(), &dto.LoginRequest{
 		Email:    "user@example.com",
-		Password: "123456",
+		Password: testStrongPassword,
 	})
 
 	if loginErr != nil {
@@ -196,12 +251,15 @@ func TestAuthServiceLoginShouldIssueTokenAndStoreRefreshToken(t *testing.T) {
 	if repo.capturedStoreRefreshToken.RefreshToken != refreshToken {
 		t.Fatalf("expected stored refresh token %s, got %s", refreshToken, repo.capturedStoreRefreshToken.RefreshToken)
 	}
-	userID, username, role, validateErr := jwtutil.ValidateToken(token, "local-secret", true)
+	userID, username, role, mustChangePassword, validateErr := jwtutil.ValidateToken(token, "local-secret", true)
 	if validateErr != nil {
 		t.Fatalf("expected valid token, got %v", validateErr)
 	}
 	if userID != 7 || username != "user" || role != "user" {
 		t.Fatalf("expected token claims 7/user/user, got %d/%s/%s", userID, username, role)
+	}
+	if mustChangePassword {
+		t.Fatal("expected login token without forced password change for regular auth flow")
 	}
 }
 
@@ -263,8 +321,8 @@ func TestUserServiceCreateShouldReturnBadRequestWhenRoleIsInvalid(t *testing.T) 
 		Name:            "User",
 		Email:           "user@example.com",
 		Username:        "user",
-		Password:        "123456",
-		PasswordConfirm: "123456",
+		Password:        testWeakPassword,
+		PasswordConfirm: testWeakPassword,
 		Role:            "manager",
 	})
 
@@ -280,8 +338,8 @@ func TestUserServiceCreateShouldReturnConflictWhenUserAlreadyExists(t *testing.T
 		Name:            "User",
 		Email:           "user@example.com",
 		Username:        "user",
-		Password:        "123456",
-		PasswordConfirm: "123456",
+		Password:        testStrongPassword,
+		PasswordConfirm: testStrongPassword,
 		Role:            "user",
 	})
 
@@ -298,8 +356,8 @@ func TestUserServiceCreateShouldHashPasswordAndCreateUser(t *testing.T) {
 		Name:            "User",
 		Email:           "user@example.com",
 		Username:        "user",
-		Password:        "123456",
-		PasswordConfirm: "123456",
+		Password:        testStrongPassword,
+		PasswordConfirm: testStrongPassword,
 		Role:            "user",
 	})
 
@@ -315,9 +373,27 @@ func TestUserServiceCreateShouldHashPasswordAndCreateUser(t *testing.T) {
 	if repo.capturedCreateUser.Role != model.RoleUser {
 		t.Fatalf("expected role user, got %s", repo.capturedCreateUser.Role)
 	}
-	if err := bcrypt.CompareHashAndPassword([]byte(repo.capturedCreateUser.PasswordHash), []byte("123456")); err != nil {
+	if !repo.capturedCreateUser.MustChangePassword {
+		t.Fatal("expected admin-created user to require password change on first access")
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(repo.capturedCreateUser.PasswordHash), []byte(testStrongPassword)); err != nil {
 		t.Fatalf("expected valid password hash, got %v", err)
 	}
+}
+
+func TestUserServiceCreateShouldRejectWeakPassword(t *testing.T) {
+	service := userservice.NewService(&userRepositoryStub{})
+
+	_, err := service.Create(context.Background(), &dto.CreateUserRequest{
+		Name:            "User",
+		Email:           "user@example.com",
+		Username:        "user",
+		Password:        testWeakPassword,
+		PasswordConfirm: testWeakPassword,
+		Role:            "user",
+	})
+
+	assertAppError(t, err, 400, "password must contain at least 8 characters, uppercase letter, lowercase letter, number and special character")
 }
 
 func TestUserServiceListShouldMapResponse(t *testing.T) {
@@ -356,4 +432,290 @@ func TestUserServiceGetMeShouldReturnNotFoundWhenUserDoesNotExist(t *testing.T) 
 	_, err := service.GetMe(context.Background(), 9)
 
 	assertAppError(t, err, 404, "user not found")
+}
+
+func TestAuthServiceChangePasswordShouldUpdatePasswordAndIssueNewTokens(t *testing.T) {
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(testStrongPassword), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatalf("failed to hash password: %v", err)
+	}
+	repo := &userRepositoryStub{
+		getUserByIDItem: &model.UserModel{
+			ID:                 17,
+			Email:              "user@example.com",
+			Username:           "user",
+			PasswordHash:       string(passwordHash),
+			Role:               model.RoleUser,
+			Active:             true,
+			MustChangePassword: true,
+		},
+	}
+	service := authservice.NewService(repo, &config.Config{SecretJWT: "local-secret"})
+
+	token, refreshToken, changeErr := service.ChangePassword(context.Background(), 17, &dto.ChangePasswordRequest{
+		CurrentPassword:    testStrongPassword,
+		NewPassword:        testUpdatedPassword,
+		NewPasswordConfirm: testUpdatedPassword,
+	})
+
+	if changeErr != nil {
+		t.Fatalf("expected no error, got %v", changeErr)
+	}
+	if token == "" || refreshToken == "" {
+		t.Fatal("expected token pair after changing password")
+	}
+	if repo.updatedUserPasswordUserID != 17 {
+		t.Fatalf("expected password update for user 17, got %d", repo.updatedUserPasswordUserID)
+	}
+	if repo.updatedUserMustChangePassword {
+		t.Fatal("expected forced password change flag to be cleared")
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(repo.updatedUserPasswordHash), []byte(testUpdatedPassword)); err != nil {
+		t.Fatalf("expected updated password hash, got %v", err)
+	}
+
+	_, _, _, mustChangePassword, validateErr := jwtutil.ValidateToken(token, "local-secret", true)
+	if validateErr != nil {
+		t.Fatalf("expected valid token, got %v", validateErr)
+	}
+	if mustChangePassword {
+		t.Fatal("expected updated token without forced password change")
+	}
+}
+
+func TestAuthServiceChangePasswordShouldRejectSamePassword(t *testing.T) {
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(testStrongPassword), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatalf("failed to hash password: %v", err)
+	}
+	service := authservice.NewService(&userRepositoryStub{
+		getUserByIDItem: &model.UserModel{
+			ID:                 17,
+			Username:           "user",
+			PasswordHash:       string(passwordHash),
+			Role:               model.RoleUser,
+			Active:             true,
+			MustChangePassword: true,
+		},
+	}, &config.Config{SecretJWT: "local-secret"})
+
+	_, _, changeErr := service.ChangePassword(context.Background(), 17, &dto.ChangePasswordRequest{
+		CurrentPassword:    testStrongPassword,
+		NewPassword:        testStrongPassword,
+		NewPasswordConfirm: testStrongPassword,
+	})
+
+	assertAppError(t, changeErr, 400, "new password must be different from current password")
+}
+
+func TestAuthServiceChangePasswordShouldRejectWeakNewPassword(t *testing.T) {
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(testStrongPassword), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatalf("failed to hash password: %v", err)
+	}
+	service := authservice.NewService(&userRepositoryStub{
+		getUserByIDItem: &model.UserModel{
+			ID:                 17,
+			Username:           "user",
+			PasswordHash:       string(passwordHash),
+			Role:               model.RoleUser,
+			Active:             true,
+			MustChangePassword: true,
+		},
+	}, &config.Config{SecretJWT: "local-secret"})
+
+	_, _, changeErr := service.ChangePassword(context.Background(), 17, &dto.ChangePasswordRequest{
+		CurrentPassword:    testStrongPassword,
+		NewPassword:        testWeakPassword,
+		NewPasswordConfirm: testWeakPassword,
+	})
+
+	assertAppError(t, changeErr, 400, "password must contain at least 8 characters, uppercase letter, lowercase letter, number and special character")
+}
+
+func TestUserServiceUpdateRoleShouldPreventChangingOwnRole(t *testing.T) {
+	service := userservice.NewService(&userRepositoryStub{
+		getUserByIDItem: &model.UserModel{
+			ID:     7,
+			Role:   model.RoleAdmin,
+			Active: true,
+		},
+	})
+
+	err := service.UpdateRole(context.Background(), 7, 7, &dto.UpdateUserRoleRequest{
+		Role: "user",
+	})
+
+	assertAppError(t, err, 403, "cannot change your own role")
+}
+
+func TestUserServiceUpdateRoleShouldPreventRemovingLastActiveAdmin(t *testing.T) {
+	service := userservice.NewService(&userRepositoryStub{
+		countActiveAdminsResult: 1,
+		getUserByIDItem: &model.UserModel{
+			ID:     9,
+			Role:   model.RoleAdmin,
+			Active: true,
+		},
+	})
+
+	err := service.UpdateRole(context.Background(), 1, 9, &dto.UpdateUserRoleRequest{
+		Role: "user",
+	})
+
+	assertAppError(t, err, 403, "cannot remove role from last active admin")
+}
+
+func TestUserServiceUpdateRoleShouldUpdateRole(t *testing.T) {
+	repo := &userRepositoryStub{
+		countActiveAdminsResult: 2,
+		getUserByIDItem: &model.UserModel{
+			ID:     9,
+			Role:   model.RoleUser,
+			Active: true,
+		},
+	}
+	service := userservice.NewService(repo)
+
+	err := service.UpdateRole(context.Background(), 1, 9, &dto.UpdateUserRoleRequest{
+		Role: "admin",
+	})
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if repo.updatedUserRoleUserID != 9 {
+		t.Fatalf("expected role update for user 9, got %d", repo.updatedUserRoleUserID)
+	}
+	if repo.updatedUserRole != model.RoleAdmin {
+		t.Fatalf("expected role admin, got %s", repo.updatedUserRole)
+	}
+}
+
+func TestUserServiceUpdateActiveShouldPreventSelfDeactivation(t *testing.T) {
+	active := false
+	service := userservice.NewService(&userRepositoryStub{
+		getUserByIDItem: &model.UserModel{
+			ID:     7,
+			Role:   model.RoleAdmin,
+			Active: true,
+		},
+	})
+
+	err := service.UpdateActive(context.Background(), 7, 7, &dto.UpdateUserActiveRequest{
+		Active: &active,
+	})
+
+	assertAppError(t, err, 403, "cannot deactivate your own user")
+}
+
+func TestUserServiceUpdateActiveShouldPreventDeactivatingLastActiveAdmin(t *testing.T) {
+	active := false
+	service := userservice.NewService(&userRepositoryStub{
+		countActiveAdminsResult: 1,
+		getUserByIDItem: &model.UserModel{
+			ID:     9,
+			Role:   model.RoleAdmin,
+			Active: true,
+		},
+	})
+
+	err := service.UpdateActive(context.Background(), 1, 9, &dto.UpdateUserActiveRequest{
+		Active: &active,
+	})
+
+	assertAppError(t, err, 403, "cannot deactivate last active admin")
+}
+
+func TestUserServiceUpdateActiveShouldUpdateStatus(t *testing.T) {
+	active := false
+	repo := &userRepositoryStub{
+		countActiveAdminsResult: 2,
+		getUserByIDItem: &model.UserModel{
+			ID:     9,
+			Role:   model.RoleUser,
+			Active: true,
+		},
+	}
+	service := userservice.NewService(repo)
+
+	err := service.UpdateActive(context.Background(), 1, 9, &dto.UpdateUserActiveRequest{
+		Active: &active,
+	})
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if repo.updatedUserActiveUserID != 9 {
+		t.Fatalf("expected active update for user 9, got %d", repo.updatedUserActiveUserID)
+	}
+	if repo.updatedUserActive {
+		t.Fatal("expected user to be deactivated")
+	}
+}
+
+func TestUserServiceResetPasswordShouldPreventResettingOwnPassword(t *testing.T) {
+	service := userservice.NewService(&userRepositoryStub{
+		getUserByIDItem: &model.UserModel{
+			ID:       7,
+			Username: "admin",
+			Role:     model.RoleAdmin,
+			Active:   true,
+		},
+	})
+
+	err := service.ResetPassword(context.Background(), 7, 7, &dto.ResetUserPasswordRequest{
+		Password:        testUpdatedPassword,
+		PasswordConfirm: testUpdatedPassword,
+	})
+
+	assertAppError(t, err, 403, "cannot reset your own password")
+}
+
+func TestUserServiceResetPasswordShouldUpdatePasswordAndRequireChange(t *testing.T) {
+	repo := &userRepositoryStub{
+		getUserByIDItem: &model.UserModel{
+			ID:       9,
+			Username: "user",
+			Role:     model.RoleUser,
+			Active:   true,
+		},
+	}
+	service := userservice.NewService(repo)
+
+	err := service.ResetPassword(context.Background(), 1, 9, &dto.ResetUserPasswordRequest{
+		Password:        testUpdatedPassword,
+		PasswordConfirm: testUpdatedPassword,
+	})
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if repo.updatedUserPasswordUserID != 9 {
+		t.Fatalf("expected password reset for user 9, got %d", repo.updatedUserPasswordUserID)
+	}
+	if !repo.updatedUserMustChangePassword {
+		t.Fatal("expected forced password change after admin reset")
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(repo.updatedUserPasswordHash), []byte(testUpdatedPassword)); err != nil {
+		t.Fatalf("expected updated password hash, got %v", err)
+	}
+}
+
+func TestUserServiceResetPasswordShouldRejectWeakPassword(t *testing.T) {
+	service := userservice.NewService(&userRepositoryStub{
+		getUserByIDItem: &model.UserModel{
+			ID:       9,
+			Username: "user",
+			Role:     model.RoleUser,
+			Active:   true,
+		},
+	})
+
+	err := service.ResetPassword(context.Background(), 1, 9, &dto.ResetUserPasswordRequest{
+		Password:        testWeakPassword,
+		PasswordConfirm: testWeakPassword,
+	})
+
+	assertAppError(t, err, 400, "password must contain at least 8 characters, uppercase letter, lowercase letter, number and special character")
 }

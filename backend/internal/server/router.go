@@ -8,6 +8,7 @@ import (
 	authhandler "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/handler/auth"
 	budgethandler "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/handler/budget"
 	budgetfollowuphandler "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/handler/budgetfollowup"
+	budgetimporthandler "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/handler/budgetimport"
 	budgetstatushandler "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/handler/budgetstatus"
 	budgetstatushistoryhandler "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/handler/budgetstatushistory"
 	contacthandler "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/handler/contact"
@@ -34,6 +35,7 @@ import (
 	authservice "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/service/auth"
 	budgetservice "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/service/budget"
 	budgetfollowupservice "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/service/budgetfollowup"
+	budgetimportservice "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/service/budgetimport"
 	budgetstatusservice "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/service/budgetstatus"
 	budgetstatushistoryservice "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/service/budgetstatushistory"
 	contactservice "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/service/contact"
@@ -88,10 +90,21 @@ func NewRouter(validate *validator.Validate, deps Dependencies) *gin.Engine {
 
 	authService := authservice.NewService(userRepo, deps.Config)
 	userService := userservice.NewService(userRepo)
-	budgetService := budgetservice.NewService(budgetRepo)
-	budgetFollowUpService := budgetfollowupservice.NewService(budgetFollowUpRepo, budgetRepo)
+	budgetService := budgetservice.NewService(budgetRepo, salespersonRepo)
+	budgetImportService := budgetimportservice.NewService(
+		budgetRepo,
+		budgetStatusRepo,
+		priorityRepo,
+		installerRepo,
+		projectRepo,
+		projectTypeRepo,
+		salespersonRepo,
+		contactRepo,
+		lossReasonRepo,
+	)
+	budgetFollowUpService := budgetfollowupservice.NewService(budgetFollowUpRepo, budgetRepo, salespersonRepo)
 	budgetStatusService := budgetstatusservice.NewService(budgetStatusRepo)
-	budgetStatusHistoryService := budgetstatushistoryservice.NewService(budgetStatusHistoryRepo, budgetRepo, budgetStatusRepo)
+	budgetStatusHistoryService := budgetstatushistoryservice.NewService(budgetStatusHistoryRepo, budgetRepo, budgetStatusRepo, salespersonRepo)
 	installerService := installerservice.NewService(installerRepo)
 	contactService := contactservice.NewService(contactRepo, installerRepo)
 	lossReasonService := lossreasonservice.NewService(lossReasonRepo)
@@ -103,6 +116,7 @@ func NewRouter(validate *validator.Validate, deps Dependencies) *gin.Engine {
 	authhandler.NewHandler(router, validate, authService, deps.Config.SecretJWT).RouteList()
 	userhandler.NewHandler(router, validate, userService, deps.Config.SecretJWT).RouteList()
 	budgethandler.NewHandler(router, validate, budgetService, deps.Config.SecretJWT).RouteList()
+	budgetimporthandler.NewHandler(router, validate, budgetImportService, deps.Config.SecretJWT).RouteList()
 	budgetfollowuphandler.NewHandler(router, validate, budgetFollowUpService, deps.Config.SecretJWT).RouteList()
 	budgetstatushandler.NewHandler(router, validate, budgetStatusService, deps.Config.SecretJWT).RouteList()
 	budgetstatushistoryhandler.NewHandler(router, validate, budgetStatusHistoryService, deps.Config.SecretJWT).RouteList()

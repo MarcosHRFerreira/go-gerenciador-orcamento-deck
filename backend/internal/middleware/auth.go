@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/httpresponse"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/model"
@@ -10,14 +11,15 @@ import (
 )
 
 const (
-	contextUserIDKey   = "userID"
-	contextUsernameKey = "username"
-	contextRoleKey     = "role"
+	contextUserIDKey             = "userID"
+	contextUsernameKey           = "username"
+	contextRoleKey               = "role"
+	contextMustChangePasswordKey = "mustChangePassword"
 )
 
 func Auth(secretKey string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID, username, role, err := jwt.ValidateToken(c.GetHeader("Authorization"), secretKey, true)
+		userID, username, role, mustChangePassword, err := jwt.ValidateToken(c.GetHeader("Authorization"), secretKey, true)
 		if err != nil {
 			httpresponse.AbortJSONError(c, http.StatusUnauthorized, "invalid authorization token")
 			return
@@ -26,13 +28,20 @@ func Auth(secretKey string) gin.HandlerFunc {
 		c.Set(contextUserIDKey, userID)
 		c.Set(contextUsernameKey, username)
 		c.Set(contextRoleKey, role)
+		c.Set(contextMustChangePasswordKey, mustChangePassword)
+
+		if mustChangePassword && !isPasswordChangeAllowedPath(c.FullPath()) {
+			httpresponse.AbortJSONError(c, http.StatusForbidden, "password change required before accessing the system")
+			return
+		}
+
 		c.Next()
 	}
 }
 
 func AuthRefresh(secretKey string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID, username, role, err := jwt.ValidateToken(c.GetHeader("Authorization"), secretKey, false)
+		userID, username, role, mustChangePassword, err := jwt.ValidateToken(c.GetHeader("Authorization"), secretKey, false)
 		if err != nil {
 			httpresponse.AbortJSONError(c, http.StatusUnauthorized, "invalid authorization token")
 			return
@@ -41,6 +50,7 @@ func AuthRefresh(secretKey string) gin.HandlerFunc {
 		c.Set(contextUserIDKey, userID)
 		c.Set(contextUsernameKey, username)
 		c.Set(contextRoleKey, role)
+		c.Set(contextMustChangePasswordKey, mustChangePassword)
 		c.Next()
 	}
 }
@@ -82,4 +92,36 @@ func UserID(c *gin.Context) int64 {
 	}
 
 	return userID
+}
+
+func Username(c *gin.Context) string {
+	value, exists := c.Get(contextUsernameKey)
+	if !exists {
+		return ""
+	}
+
+	username, ok := value.(string)
+	if !ok {
+		return ""
+	}
+
+	return strings.TrimSpace(username)
+}
+
+func Role(c *gin.Context) model.UserRole {
+	value, exists := c.Get(contextRoleKey)
+	if !exists {
+		return ""
+	}
+
+	role, ok := value.(string)
+	if !ok {
+		return ""
+	}
+
+	return model.UserRole(strings.TrimSpace(role))
+}
+
+func isPasswordChangeAllowedPath(path string) bool {
+	return path == "/users/me" || path == "/auth/change-password"
 }

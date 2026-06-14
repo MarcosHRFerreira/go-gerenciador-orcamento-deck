@@ -54,7 +54,14 @@ func (h *Handler) ChangeStatus(c *gin.Context) {
 		return
 	}
 
-	id, err := h.service.ChangeStatus(c.Request.Context(), budgetID, middleware.UserID(c), &req)
+	id, err := h.service.ChangeStatus(
+		c.Request.Context(),
+		budgetID,
+		middleware.UserID(c),
+		middleware.Role(c),
+		middleware.Username(c),
+		&req,
+	)
 	if err != nil {
 		httpresponse.JSONAppError(c, err)
 		return
@@ -69,7 +76,12 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 
-	items, err := h.service.ListByBudgetID(c.Request.Context(), budgetID)
+	items, err := h.service.ListByBudgetID(
+		c.Request.Context(),
+		budgetID,
+		middleware.Role(c),
+		middleware.Username(c),
+	)
 	if err != nil {
 		httpresponse.JSONAppError(c, err)
 		return

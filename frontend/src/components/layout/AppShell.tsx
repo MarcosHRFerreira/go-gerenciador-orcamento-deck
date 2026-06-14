@@ -1,7 +1,11 @@
 import DashboardRoundedIcon from "@mui/icons-material/DashboardRounded";
+import DarkModeRoundedIcon from "@mui/icons-material/DarkModeRounded";
 import DescriptionRoundedIcon from "@mui/icons-material/DescriptionRounded";
+import LightModeRoundedIcon from "@mui/icons-material/LightModeRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
+import PeopleAltRoundedIcon from "@mui/icons-material/PeopleAltRounded";
+import UploadFileRoundedIcon from "@mui/icons-material/UploadFileRounded";
 import {
   AppBar,
   Avatar,
@@ -14,10 +18,11 @@ import {
   ListItemIcon,
   ListItemText,
   Toolbar,
+  Tooltip,
   Typography,
   useMediaQuery,
 } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { alpha, useTheme } from "@mui/material/styles";
 import { useEffect, useMemo, useState } from "react";
 import {
   Link as RouterLink,
@@ -25,20 +30,42 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
+import type { ReactElement } from "react";
 import { useAuth } from "../../features/auth/hooks/useAuth";
+import { useThemeMode } from "../../app/theme/useThemeMode";
+import BrandLogo from "../common/BrandLogo";
 
 const drawerWidth = 280;
 const collapsedDrawerWidth = 92;
 const desktopSidebarStorageKey = "app-shell-desktop-sidebar-collapsed";
 const autoCollapseDelayMs = 15_000;
 
-const navigationItems = [
-  { icon: <DashboardRoundedIcon />, label: "Dashboard", to: "/" },
+type NavigationItem = {
+  icon: ReactElement;
+  label: string;
+  requiresAdmin?: boolean;
+  to: string;
+};
+
+const navigationItems: NavigationItem[] = [
+  { icon: <DashboardRoundedIcon />, label: "Dashboard", to: "/dashboard" },
   { icon: <DescriptionRoundedIcon />, label: "Orçamentos", to: "/budgets" },
+  {
+    icon: <UploadFileRoundedIcon />,
+    label: "Importação",
+    to: "/budgets/import",
+  },
+  {
+    icon: <PeopleAltRoundedIcon />,
+    label: "Usuarios",
+    requiresAdmin: true,
+    to: "/users",
+  },
 ];
 
 export function AppShell() {
   const theme = useTheme();
+  const { mode, toggleThemeMode } = useThemeMode();
   const isDesktop = useMediaQuery(theme.breakpoints.up("lg"));
   const navigate = useNavigate();
   const location = useLocation();
@@ -52,23 +79,31 @@ export function AppShell() {
     return window.localStorage.getItem(desktopSidebarStorageKey) === "true";
   });
   const { logout, user } = useAuth();
+  const availableNavigationItems = useMemo(
+    () =>
+      navigationItems.filter(
+        (item) => !item.requiresAdmin || user?.role === "admin",
+      ),
+    [user?.role],
+  );
   const currentDrawerWidth = desktopSidebarCollapsed
     ? collapsedDrawerWidth
     : drawerWidth;
 
   const currentPageLabel = useMemo(() => {
-    const activeItem = navigationItems.find(
+    const activeItem = availableNavigationItems.find(
       (item) =>
         location.pathname === item.to ||
         location.pathname.startsWith(`${item.to}/`),
     );
     return activeItem?.label ?? "Painel";
-  }, [location.pathname]);
+  }, [availableNavigationItems, location.pathname]);
 
   const userInitial = user?.name?.charAt(0).toUpperCase() ?? "A";
   const userLabel = user?.name ?? "Usuario";
   const userRoleLabel =
     user?.role === "admin" ? "Perfil administrador" : "Perfil usuario";
+  const themeModeLabel = mode === "light" ? "Modo claro" : "Modo escuro";
 
   const handleLogout = () => {
     logout();
@@ -124,19 +159,25 @@ export function AppShell() {
         sx={{
           display: "flex",
           flexDirection: "column",
-          gap: 0.5,
+          gap: 1,
           px: collapsed ? 0.75 : 1.5,
           py: 1,
           transition: "padding 0.2s ease",
         }}
       >
-        <Typography
-          color="common.white"
-          sx={{ textAlign: collapsed ? "center" : "left" }}
-          variant="h5"
-        >
-          {collapsed ? "GO" : "Gestão de Orçamentos"}
-        </Typography>
+        {collapsed ? (
+          <Typography
+            color="common.white"
+            sx={{ textAlign: "center" }}
+            variant="h5"
+          >
+            GO
+          </Typography>
+        ) : (
+          <Typography color="common.white" variant="h5">
+            Gestão de Orçamentos
+          </Typography>
+        )}
         {!collapsed ? (
           <Typography color="rgba(226, 232, 240, 0.75)" variant="body2">
             Painel administrativo moderno e limpo.
@@ -145,58 +186,72 @@ export function AppShell() {
       </Box>
       <Divider sx={{ borderColor: "rgba(148, 163, 184, 0.16)", my: 2 }} />
       <List sx={{ flexGrow: 1 }}>
-        {navigationItems.map((item) => {
+        {availableNavigationItems.map((item) => {
           const isSelected =
             location.pathname === item.to ||
             location.pathname.startsWith(`${item.to}/`);
 
           return (
-            <ListItemButton
+            <Tooltip
+              arrow
+              disableHoverListener={!collapsed}
               key={item.to}
-              component={RouterLink}
-              onClick={() => setMobileOpen(false)}
-              selected={isSelected}
-              sx={{
-                color: "#E2E8F0",
-                justifyContent: collapsed ? "center" : "flex-start",
-                px: collapsed ? 1 : 1.5,
-              }}
-              to={item.to}
+              placement="right"
+              title={item.label}
             >
-              <ListItemIcon
+              <ListItemButton
+                component={RouterLink}
+                onClick={() => setMobileOpen(false)}
+                selected={isSelected}
                 sx={{
-                  color: "inherit",
-                  justifyContent: "center",
-                  minWidth: collapsed ? 0 : 40,
+                  color: "#E2E8F0",
+                  justifyContent: collapsed ? "center" : "flex-start",
+                  px: collapsed ? 1 : 1.5,
                 }}
+                to={item.to}
               >
-                {item.icon}
-              </ListItemIcon>
-              {!collapsed ? <ListItemText primary={item.label} /> : null}
-            </ListItemButton>
+                <ListItemIcon
+                  sx={{
+                    color: "inherit",
+                    justifyContent: "center",
+                    minWidth: collapsed ? 0 : 40,
+                  }}
+                >
+                  {item.icon}
+                </ListItemIcon>
+                {!collapsed ? <ListItemText primary={item.label} /> : null}
+              </ListItemButton>
+            </Tooltip>
           );
         })}
       </List>
       <Divider sx={{ borderColor: "rgba(148, 163, 184, 0.16)", my: 2 }} />
-      <ListItemButton
-        onClick={handleLogout}
-        sx={{
-          color: "#E2E8F0",
-          justifyContent: collapsed ? "center" : "flex-start",
-          px: collapsed ? 1 : 1.5,
-        }}
+      <Tooltip
+        arrow
+        disableHoverListener={!collapsed}
+        placement="right"
+        title="Sair"
       >
-        <ListItemIcon
+        <ListItemButton
+          onClick={handleLogout}
           sx={{
-            color: "inherit",
-            justifyContent: "center",
-            minWidth: collapsed ? 0 : 40,
+            color: "#E2E8F0",
+            justifyContent: collapsed ? "center" : "flex-start",
+            px: collapsed ? 1 : 1.5,
           }}
         >
-          <LogoutRoundedIcon />
-        </ListItemIcon>
-        {!collapsed ? <ListItemText primary="Sair" /> : null}
-      </ListItemButton>
+          <ListItemIcon
+            sx={{
+              color: "inherit",
+              justifyContent: "center",
+              minWidth: collapsed ? 0 : 40,
+            }}
+          >
+            <LogoutRoundedIcon />
+          </ListItemIcon>
+          {!collapsed ? <ListItemText primary="Sair" /> : null}
+        </ListItemButton>
+      </Tooltip>
     </Box>
   );
 
@@ -209,7 +264,7 @@ export function AppShell() {
         sx={{
           borderBottom: "1px solid",
           borderColor: "divider",
-          bgcolor: "rgba(255,255,255,0.82)",
+          bgcolor: alpha(theme.palette.background.paper, 0.82),
           backdropFilter: "blur(14px)",
           ml: { lg: `${currentDrawerWidth}px` },
           transition: "margin-left 0.2s ease, width 0.2s ease",
@@ -229,6 +284,15 @@ export function AppShell() {
               <IconButton onClick={handleToggleSidebar}>
                 <MenuRoundedIcon />
               </IconButton>
+              <BrandLogo
+                imageSx={{ width: { sm: 88, xs: 72 } }}
+                wrapperSx={{
+                  border: "1px solid",
+                  borderColor: "divider",
+                  display: { sm: "inline-flex", xs: "none" },
+                  p: 0.5,
+                }}
+              />
               <Box>
                 <Typography variant="h5">{currentPageLabel}</Typography>
                 <Typography color="text.secondary" variant="body2">
@@ -237,6 +301,27 @@ export function AppShell() {
               </Box>
             </Box>
             <Box sx={{ alignItems: "center", display: "flex", gap: 1.5 }}>
+              <Tooltip title={themeModeLabel}>
+                <IconButton
+                  aria-label={themeModeLabel}
+                  color="inherit"
+                  onClick={toggleThemeMode}
+                  sx={{
+                    bgcolor: alpha(theme.palette.primary.main, 0.08),
+                    border: "1px solid",
+                    borderColor: "divider",
+                    "&:hover": {
+                      bgcolor: alpha(theme.palette.primary.main, 0.16),
+                    },
+                  }}
+                >
+                  {mode === "light" ? (
+                    <DarkModeRoundedIcon />
+                  ) : (
+                    <LightModeRoundedIcon />
+                  )}
+                </IconButton>
+              </Tooltip>
               <Avatar
                 sx={{
                   bgcolor: "primary.light",
@@ -294,7 +379,10 @@ export function AppShell() {
         sx={{
           flexGrow: 1,
           ml: { lg: `${currentDrawerWidth}px` },
-          p: { md: 4, xs: 2 },
+          minWidth: 0,
+          pb: { md: 4, xs: 2 },
+          pl: { lg: 0.5, md: 1.5, xs: 2 },
+          pr: { lg: 3, md: 3, xs: 2 },
           pt: { md: 13, xs: 12 },
           transition: "margin-left 0.2s ease",
         }}

@@ -10,15 +10,16 @@ const (
 )
 
 type UserModel struct {
-	ID           int64
-	Name         string
-	Email        string
-	Username     string
-	PasswordHash string
-	Role         UserRole
-	Active       bool
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID                 int64
+	Name               string
+	Email              string
+	Username           string
+	PasswordHash       string
+	Role               UserRole
+	Active             bool
+	MustChangePassword bool
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 type RefreshTokenModel struct {
