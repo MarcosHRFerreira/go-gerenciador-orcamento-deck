@@ -1,0 +1,13 @@
+-- migrate:up
+CREATE TABLE IF NOT EXISTS salespeople (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(150) NOT NULL,
+    email VARCHAR(250) NOT NULL UNIQUE,
+    phone VARCHAR(30) NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- migrate:down
+DROP TABLE IF EXISTS salespeople;

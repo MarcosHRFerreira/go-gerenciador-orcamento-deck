@@ -1,0 +1,17 @@
+-- migrate:up
+CREATE TABLE IF NOT EXISTS installers (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(150) NOT NULL,
+    document VARCHAR(30) UNIQUE,
+    email VARCHAR(250) NOT NULL,
+    phone VARCHAR(30) NOT NULL,
+    city VARCHAR(100) NOT NULL DEFAULT '',
+    state VARCHAR(50) NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- migrate:down
+DROP TABLE IF EXISTS installers;

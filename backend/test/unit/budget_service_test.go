@@ -1,0 +1,316 @@
+package unit
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/apperror"
+	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/dto"
+	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/model"
+	budgetservice "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/service/budget"
+	"github.com/jackc/pgx/v5/pgconn"
+)
+
+type budgetRepositoryStub struct {
+	createID                   int64
+	createErr                  error
+	listItems                  []model.BudgetModel
+	listTotal                  int64
+	listErr                    error
+	existsByNumberAndYear      bool
+	existsByNumberAndYearErr   error
+	getByIDItem                *model.BudgetModel
+	getByIDErr                 error
+	updateErr                  error
+	deleteErr                  error
+	capturedCreateItem         *model.BudgetModel
+	capturedUpdateItem         *model.BudgetModel
+	capturedListFilters        *dto.ListBudgetsFilters
+	capturedCurrentFollowUp    string
+	capturedStatusID           int64
+	existsByNumberAndYearCalls int
+	updateCurrentFollowUpErr   error
+	updateStatusErr            error
+}
+
+func (s *budgetRepositoryStub) Create(_ context.Context, item *model.BudgetModel) (int64, error) {
+	s.capturedCreateItem = item
+	return s.createID, s.createErr
+}
+
+func (s *budgetRepositoryStub) List(_ context.Context, filters *dto.ListBudgetsFilters) ([]model.BudgetModel, int64, error) {
+	s.capturedListFilters = filters
+	return s.listItems, s.listTotal, s.listErr
+}
+
+func (s *budgetRepositoryStub) ExistsByNumberAndYear(_ context.Context, _ string, _ int) (bool, error) {
+	s.existsByNumberAndYearCalls++
+	return s.existsByNumberAndYear, s.existsByNumberAndYearErr
+}
+
+func (s *budgetRepositoryStub) GetByID(_ context.Context, _ int64) (*model.BudgetModel, error) {
+	return s.getByIDItem, s.getByIDErr
+}
+
+func (s *budgetRepositoryStub) Update(_ context.Context, item *model.BudgetModel) error {
+	s.capturedUpdateItem = item
+	return s.updateErr
+}
+
+func (s *budgetRepositoryStub) Delete(_ context.Context, _ int64) error {
+	return s.deleteErr
+}
+
+func (s *budgetRepositoryStub) UpdateCurrentFollowUp(_ context.Context, _ int64, currentFollowUp string, _ time.Time) error {
+	s.capturedCurrentFollowUp = currentFollowUp
+	return s.updateCurrentFollowUpErr
+}
+
+func (s *budgetRepositoryStub) UpdateStatus(_ context.Context, _ int64, statusID int64, _ time.Time) error {
+	s.capturedStatusID = statusID
+	return s.updateStatusErr
+}
+
+func TestBudgetServiceCreateShouldReturnBadRequestWhenBudgetNumberIsMissing(t *testing.T) {
+	service := budgetservice.NewService(&budgetRepositoryStub{})
+
+	_, err := service.Create(context.Background(), &dto.CreateBudgetRequest{})
+
+	assertAppError(t, err, 400, "budget_number is required")
+}
+
+func TestBudgetServiceCreateShouldReturnConflictWhenBudgetAlreadyExists(t *testing.T) {
+	repo := &budgetRepositoryStub{
+		existsByNumberAndYear: true,
+	}
+	service := budgetservice.NewService(repo)
+
+	_, err := service.Create(context.Background(), validCreateBudgetRequest())
+
+	assertAppError(t, err, 409, "budget already exists for informed budget_number and year_budget")
+}
+
+func TestBudgetServiceCreateShouldTrimFieldsAndMapNullableValues(t *testing.T) {
+	priorityID := int64(11)
+	projectID := int64(22)
+	competitorPrice := 890.5
+	repo := &budgetRepositoryStub{
+		createID: 77,
+	}
+	service := budgetservice.NewService(repo)
+
+	req := validCreateBudgetRequest()
+	req.BudgetNumber = "  ORC-100  "
+	req.PriorityID = &priorityID
+	req.ProjectID = &projectID
+	req.CompetitorPrice = &competitorPrice
+	req.CompetitorName = "  Concorrente X  "
+	req.DesignerName = "  Projetista Y  "
+	req.SpecificationDetails = "  detalhe tecnico  "
+	req.CurrentFollowUp = "  retorno agendado  "
+
+	id, err := service.Create(context.Background(), req)
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if id != 77 {
+		t.Fatalf("expected id 77, got %d", id)
+	}
+	if repo.capturedCreateItem == nil {
+		t.Fatal("expected create item to be captured")
+	}
+	if repo.capturedCreateItem.BudgetNumber != "ORC-100" {
+		t.Fatalf("expected trimmed budget number, got %s", repo.capturedCreateItem.BudgetNumber)
+	}
+	if repo.capturedCreateItem.CompetitorName != "Concorrente X" {
+		t.Fatalf("expected trimmed competitor name, got %s", repo.capturedCreateItem.CompetitorName)
+	}
+	if repo.capturedCreateItem.DesignerName != "Projetista Y" {
+		t.Fatalf("expected trimmed designer name, got %s", repo.capturedCreateItem.DesignerName)
+	}
+	if repo.capturedCreateItem.SpecificationDetails != "detalhe tecnico" {
+		t.Fatalf("expected trimmed specification details, got %s", repo.capturedCreateItem.SpecificationDetails)
+	}
+	if repo.capturedCreateItem.CurrentFollowUp != "retorno agendado" {
+		t.Fatalf("expected trimmed current follow up, got %s", repo.capturedCreateItem.CurrentFollowUp)
+	}
+	if !repo.capturedCreateItem.PriorityID.Valid || repo.capturedCreateItem.PriorityID.Int64 != priorityID {
+		t.Fatalf("expected priority id %d, got %+v", priorityID, repo.capturedCreateItem.PriorityID)
+	}
+	if !repo.capturedCreateItem.ProjectID.Valid || repo.capturedCreateItem.ProjectID.Int64 != projectID {
+		t.Fatalf("expected project id %d, got %+v", projectID, repo.capturedCreateItem.ProjectID)
+	}
+	if !repo.capturedCreateItem.CompetitorPrice.Valid || repo.capturedCreateItem.CompetitorPrice.Float64 != competitorPrice {
+		t.Fatalf("expected competitor price %.2f, got %+v", competitorPrice, repo.capturedCreateItem.CompetitorPrice)
+	}
+}
+
+func TestBudgetServiceListShouldNormalizeFiltersAndReturnPaginatedResponse(t *testing.T) {
+	repo := &budgetRepositoryStub{
+		listItems: []model.BudgetModel{
+			{
+				ID:           9,
+				BudgetNumber: "ORC-9",
+				YearBudget:   2026,
+				SentAt:       time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
+				GrossValue:   1500,
+				StatusID:     1,
+			},
+		},
+		listTotal: 1,
+	}
+	service := budgetservice.NewService(repo)
+	yearBudget := 2026
+
+	response, err := service.List(context.Background(), &dto.ListBudgetsFilters{
+		BudgetNumber: "  ORC  ",
+		YearBudget:   &yearBudget,
+	})
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if response.Total != 1 {
+		t.Fatalf("expected total 1, got %d", response.Total)
+	}
+	if response.Page != 1 {
+		t.Fatalf("expected page 1, got %d", response.Page)
+	}
+	if response.PageSize != 20 {
+		t.Fatalf("expected page size 20, got %d", response.PageSize)
+	}
+	if len(response.Items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(response.Items))
+	}
+	if repo.capturedListFilters == nil {
+		t.Fatal("expected filters to be captured")
+	}
+	if repo.capturedListFilters.BudgetNumber != "ORC" {
+		t.Fatalf("expected trimmed budget number filter, got %s", repo.capturedListFilters.BudgetNumber)
+	}
+	if repo.capturedListFilters.SortBy != "sent_at" {
+		t.Fatalf("expected default sort by sent_at, got %s", repo.capturedListFilters.SortBy)
+	}
+	if repo.capturedListFilters.SortOrder != "desc" {
+		t.Fatalf("expected default sort order desc, got %s", repo.capturedListFilters.SortOrder)
+	}
+}
+
+func TestBudgetServiceListShouldReturnBadRequestWhenPageSizeIsTooLarge(t *testing.T) {
+	service := budgetservice.NewService(&budgetRepositoryStub{})
+
+	_, err := service.List(context.Background(), &dto.ListBudgetsFilters{
+		PageSize: 101,
+	})
+
+	assertAppError(t, err, 400, "page_size cannot be greater than 100")
+}
+
+func TestBudgetServiceGetByIDShouldReturnNotFoundWhenBudgetDoesNotExist(t *testing.T) {
+	service := budgetservice.NewService(&budgetRepositoryStub{})
+
+	_, err := service.GetByID(context.Background(), 10)
+
+	assertAppError(t, err, 404, "budget not found")
+}
+
+func TestBudgetServiceUpdateShouldReturnConflictWhenNumberAndYearAlreadyExist(t *testing.T) {
+	repo := &budgetRepositoryStub{
+		getByIDItem: &model.BudgetModel{
+			ID:           5,
+			BudgetNumber: "ORC-OLD",
+			YearBudget:   2025,
+			StatusID:     1,
+		},
+		existsByNumberAndYear: true,
+	}
+	service := budgetservice.NewService(repo)
+
+	err := service.Update(context.Background(), 5, &dto.UpdateBudgetRequest{
+		BudgetNumber: "ORC-NEW",
+		YearBudget:   2026,
+		SentAt:       time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
+		GrossValue:   1000,
+		StatusID:     1,
+	})
+
+	assertAppError(t, err, 409, "budget already exists for informed budget_number and year_budget")
+}
+
+func TestBudgetServiceUpdateShouldSkipUniquenessCheckWhenNumberAndYearDoNotChange(t *testing.T) {
+	repo := &budgetRepositoryStub{
+		getByIDItem: &model.BudgetModel{
+			ID:           5,
+			BudgetNumber: "ORC-100",
+			YearBudget:   2026,
+			StatusID:     1,
+		},
+	}
+	service := budgetservice.NewService(repo)
+
+	err := service.Update(context.Background(), 5, &dto.UpdateBudgetRequest{
+		BudgetNumber: "  ORC-100  ",
+		YearBudget:   2026,
+		SentAt:       time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
+		GrossValue:   1000,
+		StatusID:     1,
+	})
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if repo.existsByNumberAndYearCalls != 0 {
+		t.Fatalf("expected uniqueness check to be skipped, got %d calls", repo.existsByNumberAndYearCalls)
+	}
+	if repo.capturedUpdateItem == nil {
+		t.Fatal("expected update item to be captured")
+	}
+	if repo.capturedUpdateItem.BudgetNumber != "ORC-100" {
+		t.Fatalf("expected trimmed budget number, got %s", repo.capturedUpdateItem.BudgetNumber)
+	}
+}
+
+func TestBudgetServiceDeleteShouldReturnNotFoundWhenBudgetDoesNotExist(t *testing.T) {
+	service := budgetservice.NewService(&budgetRepositoryStub{})
+
+	err := service.Delete(context.Background(), 8)
+
+	assertAppError(t, err, 404, "budget not found")
+}
+
+func TestBudgetServiceCreateShouldMapPersistenceErrorFromForeignKey(t *testing.T) {
+	repo := &budgetRepositoryStub{
+		createErr: &pgconn.PgError{ConstraintName: "fk_budgets_status_id"},
+	}
+	service := budgetservice.NewService(repo)
+
+	_, err := service.Create(context.Background(), validCreateBudgetRequest())
+
+	assertAppError(t, err, 400, "budget status not found")
+}
+
+func validCreateBudgetRequest() *dto.CreateBudgetRequest {
+	return &dto.CreateBudgetRequest{
+		BudgetNumber: "ORC-001",
+		YearBudget:   2026,
+		SentAt:       time.Date(2026, time.January, 1, 10, 0, 0, 0, time.UTC),
+		GrossValue:   1000,
+		StatusID:     1,
+	}
+}
+
+func assertAppError(t *testing.T, err error, expectedStatusCode int, expectedMessage string) {
+	t.Helper()
+
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if apperror.StatusCode(err) != expectedStatusCode {
+		t.Fatalf("expected status code %d, got %d", expectedStatusCode, apperror.StatusCode(err))
+	}
+	if err.Error() != expectedMessage {
+		t.Fatalf("expected message %s, got %s", expectedMessage, err.Error())
+	}
+}
