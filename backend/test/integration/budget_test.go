@@ -3,6 +3,7 @@ package integration
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -215,6 +216,176 @@ func TestBudgetsListShouldSupportFiltersPaginationAndSorting(t *testing.T) {
 	}
 	if listPayload.Items[0].BudgetNumber != "AAA-001" {
 		t.Fatalf("expected first listed budget AAA-001, got %s", listPayload.Items[0].BudgetNumber)
+	}
+}
+
+func TestBudgetsListShouldSupportProjectIDFilter(t *testing.T) {
+	env := newIntegrationTestEnv(t)
+	token := env.createAdminToken(t)
+	seedA := env.seedBudgetData(t, uniqueSuffix())
+	seedB := env.seedBudgetData(t, uniqueSuffix())
+
+	createBudgetResponseA := env.doJSONRequest(t, http.MethodPost, "/budgets", token, buildBudgetRequestBody(
+		"PRJ-001",
+		2026,
+		time.Date(2026, time.March, 5, 10, 0, 0, 0, time.UTC),
+		1600,
+		seedA,
+		"Designer Projeto A",
+		"Concorrente Projeto A",
+	))
+	if createBudgetResponseA.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createBudgetResponseA.Code)
+	}
+
+	createBudgetResponseB := env.doJSONRequest(t, http.MethodPost, "/budgets", token, buildBudgetRequestBody(
+		"PRJ-002",
+		2026,
+		time.Date(2026, time.March, 6, 10, 0, 0, 0, time.UTC),
+		2600,
+		seedB,
+		"Designer Projeto B",
+		"Concorrente Projeto B",
+	))
+	if createBudgetResponseB.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createBudgetResponseB.Code)
+	}
+
+	listResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		fmt.Sprintf("/budgets?project_id=%d", seedA.projectID),
+		token,
+		"",
+	)
+	if listResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, listResponse.Code)
+	}
+
+	listPayload := decodeJSONResponse[dto.ListBudgetsResponse](t, listResponse.Body)
+	if listPayload.Total != 1 {
+		t.Fatalf("expected total 1, got %d", listPayload.Total)
+	}
+	if len(listPayload.Items) != 1 {
+		t.Fatalf("expected 1 listed item, got %d", len(listPayload.Items))
+	}
+	if listPayload.Items[0].ProjectID == nil || *listPayload.Items[0].ProjectID != seedA.projectID {
+		t.Fatalf("expected project_id %d, got %v", seedA.projectID, listPayload.Items[0].ProjectID)
+	}
+	if listPayload.Items[0].BudgetNumber != "PRJ-001" {
+		t.Fatalf("expected filtered budget PRJ-001, got %s", listPayload.Items[0].BudgetNumber)
+	}
+}
+
+func TestBudgetsListShouldSupportProjectNameFilter(t *testing.T) {
+	env := newIntegrationTestEnv(t)
+	token := env.createAdminToken(t)
+	seedA := env.seedBudgetData(t, uniqueSuffix())
+	seedB := env.seedBudgetData(t, uniqueSuffix())
+
+	createBudgetResponseA := env.doJSONRequest(t, http.MethodPost, "/budgets", token, buildBudgetRequestBody(
+		"NOME-001",
+		2026,
+		time.Date(2026, time.March, 10, 10, 0, 0, 0, time.UTC),
+		2200,
+		seedA,
+		"Designer Nome A",
+		"Concorrente Nome A",
+	))
+	if createBudgetResponseA.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createBudgetResponseA.Code)
+	}
+
+	createBudgetResponseB := env.doJSONRequest(t, http.MethodPost, "/budgets", token, buildBudgetRequestBody(
+		"NOME-002",
+		2026,
+		time.Date(2026, time.March, 11, 10, 0, 0, 0, time.UTC),
+		2600,
+		seedB,
+		"Designer Nome B",
+		"Concorrente Nome B",
+	))
+	if createBudgetResponseB.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createBudgetResponseB.Code)
+	}
+
+	projectNameFragment := url.QueryEscape(seedA.projectName)
+	listResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		"/budgets?project_name="+projectNameFragment+"&page=1&page_size=20&sort_by=budget_number&sort_order=asc",
+		token,
+		"",
+	)
+	if listResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, listResponse.Code)
+	}
+
+	listPayload := decodeJSONResponse[dto.ListBudgetsResponse](t, listResponse.Body)
+	if listPayload.Total != 1 {
+		t.Fatalf("expected total 1, got %d", listPayload.Total)
+	}
+	if len(listPayload.Items) != 1 {
+		t.Fatalf("expected 1 listed item, got %d", len(listPayload.Items))
+	}
+	if listPayload.Items[0].BudgetNumber != "NOME-001" {
+		t.Fatalf("expected listed budget NOME-001, got %s", listPayload.Items[0].BudgetNumber)
+	}
+}
+
+func TestBudgetsListShouldSupportNormalizedProjectNameFilter(t *testing.T) {
+	env := newIntegrationTestEnv(t)
+	token := env.createAdminToken(t)
+	seedA := env.seedBudgetData(t, uniqueSuffix())
+	seedB := env.seedBudgetData(t, uniqueSuffix())
+
+	createBudgetResponseA := env.doJSONRequest(t, http.MethodPost, "/budgets", token, buildBudgetRequestBody(
+		"NORM-001",
+		2026,
+		time.Date(2026, time.March, 12, 10, 0, 0, 0, time.UTC),
+		2200,
+		seedA,
+		"Designer Normalizado A",
+		"Concorrente Normalizado A",
+	))
+	if createBudgetResponseA.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createBudgetResponseA.Code)
+	}
+
+	createBudgetResponseB := env.doJSONRequest(t, http.MethodPost, "/budgets", token, buildBudgetRequestBody(
+		"NORM-002",
+		2026,
+		time.Date(2026, time.March, 13, 10, 0, 0, 0, time.UTC),
+		2600,
+		seedB,
+		"Designer Normalizado B",
+		"Concorrente Normalizado B",
+	))
+	if createBudgetResponseB.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createBudgetResponseB.Code)
+	}
+
+	normalizedProjectNameFragment := url.QueryEscape(strings.ReplaceAll(seedA.projectName, " ", ""))
+	listResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		"/budgets?project_name="+normalizedProjectNameFragment+"&page=1&page_size=20&sort_by=budget_number&sort_order=asc",
+		token,
+		"",
+	)
+	if listResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, listResponse.Code)
+	}
+
+	listPayload := decodeJSONResponse[dto.ListBudgetsResponse](t, listResponse.Body)
+	if listPayload.Total != 1 {
+		t.Fatalf("expected total 1, got %d", listPayload.Total)
+	}
+	if len(listPayload.Items) != 1 {
+		t.Fatalf("expected 1 listed item, got %d", len(listPayload.Items))
+	}
+	if listPayload.Items[0].BudgetNumber != "NORM-001" {
+		t.Fatalf("expected listed budget NORM-001, got %s", listPayload.Items[0].BudgetNumber)
 	}
 }
 

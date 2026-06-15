@@ -57,6 +57,7 @@ type budgetSeedData struct {
 	contactID     int64
 	projectTypeID int64
 	projectID     int64
+	projectName   string
 	salespersonID int64
 	lossReasonID  int64
 }
@@ -406,6 +407,7 @@ func (e *integrationTestEnv) seedBudgetData(t *testing.T, suffix string) budgetS
 		contactID:     contactID,
 		projectTypeID: projectTypeID,
 		projectID:     projectID,
+		projectName:   "Projeto " + suffix,
 		salespersonID: salespersonID,
 		lossReasonID:  lossReasonID,
 	}

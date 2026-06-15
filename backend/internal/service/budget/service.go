@@ -278,6 +278,7 @@ func normalizeListFilters(filters *dto.ListBudgetsFilters) (*dto.ListBudgetsFilt
 
 	normalized := *filters
 	normalized.BudgetNumber = strings.TrimSpace(filters.BudgetNumber)
+	normalized.ProjectName = strings.TrimSpace(filters.ProjectName)
 	normalized.DesignerName = strings.TrimSpace(filters.DesignerName)
 	normalized.CompetitorName = strings.TrimSpace(filters.CompetitorName)
 	normalized.SortBy = strings.TrimSpace(strings.ToLower(filters.SortBy))
@@ -313,6 +314,9 @@ func normalizeListFilters(filters *dto.ListBudgetsFilters) (*dto.ListBudgetsFilt
 	}
 	if normalized.PriorityID != nil && *normalized.PriorityID <= 0 {
 		return nil, apperror.BadRequest("priority_id deve ser maior que zero")
+	}
+	if normalized.ProjectID != nil && *normalized.ProjectID <= 0 {
+		return nil, apperror.BadRequest("project_id deve ser maior que zero")
 	}
 	if normalized.ProjectTypeID != nil && *normalized.ProjectTypeID <= 0 {
 		return nil, apperror.BadRequest("project_type_id deve ser maior que zero")
@@ -382,9 +386,13 @@ func mapBudgetResponse(item *model.BudgetModel) dto.BudgetResponse {
 		CompetitorName:       item.CompetitorName,
 		CompetitorPrice:      nullableFloat64Pointer(item.CompetitorPrice),
 		DesignerName:         item.DesignerName,
+		StatusName:           nullableStringPointer(item.StatusName),
+		PriorityName:         nullableStringPointer(item.PriorityName),
+		InstallerName:        nullableStringPointer(item.InstallerName),
 		ProjectName:          nullableStringPointer(item.ProjectName),
 		SalespersonName:      nullableStringPointer(item.SalespersonName),
 		ContactName:          nullableStringPointer(item.ContactName),
+		LossReasonName:       nullableStringPointer(item.LossReasonName),
 		SpecificationDetails: item.SpecificationDetails,
 		CurrentFollowUp:      item.CurrentFollowUp,
 		CreatedAt:            item.CreatedAt,

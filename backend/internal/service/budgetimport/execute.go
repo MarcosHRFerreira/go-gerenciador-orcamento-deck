@@ -174,11 +174,17 @@ func (s *service) importBudgetRow(
 	}
 	catalogsCreated += created
 
-	projectTypeID, created, err := s.ensureProjectTypeID(ctx, catalogs, row.projectTypeName, options)
-	if err != nil {
-		return importRowResult{}, err
+	projectTypeID := int64(0)
+	projectID := int64(0)
+	shouldAssociateProject := !shouldSkipProjectAssociation(row.projectName)
+
+	if shouldAssociateProject {
+		projectTypeID, created, err = s.ensureProjectTypeID(ctx, catalogs, row.projectTypeName, options)
+		if err != nil {
+			return importRowResult{}, err
+		}
+		catalogsCreated += created
 	}
-	catalogsCreated += created
 
 	installerID, created, err := s.ensureInstallerID(ctx, catalogs, row.installerName, options)
 	if err != nil {
@@ -186,11 +192,13 @@ func (s *service) importBudgetRow(
 	}
 	catalogsCreated += created
 
-	projectID, created, err := s.ensureProjectID(ctx, catalogs, row.projectName, projectTypeID, options)
-	if err != nil {
-		return importRowResult{}, err
+	if shouldAssociateProject {
+		projectID, created, err = s.ensureProjectID(ctx, catalogs, row.projectName, projectTypeID, options)
+		if err != nil {
+			return importRowResult{}, err
+		}
+		catalogsCreated += created
 	}
-	catalogsCreated += created
 
 	salespersonID, created, err := s.ensureSalespersonID(ctx, catalogs, row.salespersonName, options)
 	if err != nil {
@@ -331,6 +339,10 @@ func fallbackName(raw string) string {
 		return notInformedName
 	}
 	return normalizeCellText(raw)
+}
+
+func shouldSkipProjectAssociation(projectName string) bool {
+	return normalizeLookupKey(projectName) == normalizeLookupKey(notInformedName)
 }
 
 func (s *service) loadCatalogRuntime(ctx context.Context) (*catalogRuntime, error) {

@@ -145,6 +145,8 @@ type BudgetFormProps = {
   initialDataError?: string | null;
   initialValues: BudgetFormValues;
   isInitialDataLoading?: boolean;
+  lockedProjectId?: number | null;
+  lockedProjectLabel?: string | null;
   mode: "create" | "edit";
   onCancel: () => void;
   onSubmit: (payload: BudgetCreatePayload) => Promise<void>;
@@ -257,6 +259,8 @@ export function BudgetForm({
   initialDataError = null,
   initialValues,
   isInitialDataLoading = false,
+  lockedProjectId = null,
+  lockedProjectLabel = null,
   mode,
   onCancel,
   onSubmit,
@@ -514,8 +518,14 @@ export function BudgetForm({
                 )}
               </TextField>
               <TextField
+                disabled={lockedProjectId !== null}
                 error={Boolean(errors.projectId)}
-                helperText={errors.projectId?.message}
+                helperText={
+                  errors.projectId?.message ??
+                  (lockedProjectId !== null
+                    ? `Projeto predefinido neste fluxo: ${lockedProjectLabel ?? `#${lockedProjectId}`}.`
+                    : undefined)
+                }
                 label="Projeto"
                 select
                 {...register("projectId")}

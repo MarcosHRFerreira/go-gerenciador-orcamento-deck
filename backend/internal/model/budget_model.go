@@ -28,7 +28,11 @@ type BudgetModel struct {
 	CurrentFollowUp      string
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
+	StatusName           sql.NullString
+	PriorityName         sql.NullString
+	InstallerName        sql.NullString
 	ProjectName          sql.NullString
 	SalespersonName      sql.NullString
 	ContactName          sql.NullString
+	LossReasonName       sql.NullString
 }

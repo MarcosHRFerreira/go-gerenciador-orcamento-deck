@@ -1,6 +1,7 @@
 import DashboardRoundedIcon from "@mui/icons-material/DashboardRounded";
 import DarkModeRoundedIcon from "@mui/icons-material/DarkModeRounded";
 import DescriptionRoundedIcon from "@mui/icons-material/DescriptionRounded";
+import ManageAccountsRoundedIcon from "@mui/icons-material/ManageAccountsRounded";
 import LightModeRoundedIcon from "@mui/icons-material/LightModeRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
@@ -57,6 +58,12 @@ const navigationItems: NavigationItem[] = [
   },
   {
     icon: <PeopleAltRoundedIcon />,
+    label: "Vendedores",
+    requiresAdmin: true,
+    to: "/salespeople",
+  },
+  {
+    icon: <ManageAccountsRoundedIcon />,
     label: "Usuarios",
     requiresAdmin: true,
     to: "/users",

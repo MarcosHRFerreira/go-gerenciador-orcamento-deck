@@ -566,6 +566,104 @@ func TestBudgetImportExecuteShouldCreateBudgetFromStoredPreview(t *testing.T) {
 	if budgetRepo.capturedCreateItem.BudgetNumber != "1001" {
 		t.Fatalf("expected budget number 1001, got %s", budgetRepo.capturedCreateItem.BudgetNumber)
 	}
+	if budgetRepo.capturedCreateItem.ProjectID.Valid {
+		t.Fatalf("expected budget project_id to remain null when obra is '-', got %d", budgetRepo.capturedCreateItem.ProjectID.Int64)
+	}
+}
+
+func TestBudgetImportExecuteShouldNotAssociateProjectWhenObraIsNaoInformado(t *testing.T) {
+	budgetRepo := &budgetImportBudgetRepositoryStub{}
+	service := budgetimportservice.NewService(
+		budgetRepo,
+		&budgetImportStatusRepositoryStub{
+			items: []model.BudgetStatusModel{
+				{ID: 1, Name: "FECHADO"},
+				{ID: 2, Name: "Nao informado"},
+			},
+		},
+		&budgetImportPriorityRepositoryStub{
+			items: []model.PriorityModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		&budgetImportInstallerRepositoryStub{
+			items: []model.InstallerModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		&budgetImportProjectRepositoryStub{
+			items: []model.ProjectModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		&budgetImportProjectTypeRepositoryStub{
+			items: []model.ProjectTypeModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		&budgetImportSalespersonRepositoryStub{
+			items: []model.SalespersonModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		&budgetImportContactRepositoryStub{
+			items: []model.ContactModel{
+				{ID: 1, InstallerID: 1, Name: "Nao informado"},
+			},
+		},
+		&budgetImportLossReasonRepositoryStub{
+			items: []model.LossReasonModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+	)
+
+	previewResponse, err := service.Preview(
+		context.Background(),
+		"orcamentos.xlsx",
+		buildImportWorkbook(t, []map[string]string{
+			{
+				"A": "45661",
+				"B": "1002",
+				"C": "R1",
+				"D": "-",
+				"E": "Nao informado",
+				"F": "Nao informado",
+				"G": "-",
+				"H": "-",
+				"I": "1234.56",
+				"J": "0.05",
+				"K": "10",
+				"L": "FECHADO",
+				"M": "-",
+				"N": "-",
+				"O": "-",
+				"P": "1000",
+				"Q": "-",
+				"R": "-",
+			},
+		}),
+		dto.PreviewBudgetImportOptions{
+			CreateMissingCatalogs: true,
+			UseDefaultNotInformed: true,
+		},
+	)
+	if err != nil {
+		t.Fatalf("expected preview without error, got %v", err)
+	}
+
+	_, err = service.ExecuteImport(context.Background(), &dto.ExecuteBudgetImportRequest{
+		PreviewID: previewResponse.PreviewID,
+	})
+	if err != nil {
+		t.Fatalf("expected import without error, got %v", err)
+	}
+	if budgetRepo.capturedCreateItem == nil {
+		t.Fatal("expected captured create budget item")
+	}
+	if budgetRepo.capturedCreateItem.ProjectID.Valid {
+		t.Fatalf("expected budget project_id to remain null when obra is 'Nao informado', got %d", budgetRepo.capturedCreateItem.ProjectID.Int64)
+	}
 }
 
 func buildImportWorkbook(t *testing.T, rowValues []map[string]string) []byte {

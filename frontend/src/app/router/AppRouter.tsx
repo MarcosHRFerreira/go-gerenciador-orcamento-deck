@@ -10,6 +10,8 @@ import { BudgetEditPage } from "../../features/budgets/pages/BudgetEditPage";
 import { BudgetImportPage } from "../../features/budgets/pages/BudgetImportPage";
 import { BudgetListPage } from "../../features/budgets/pages/BudgetListPage";
 import { DashboardPage } from "../../features/dashboard/pages/DashboardPage";
+import ProjectDetailPage from "../../features/projects/pages/ProjectDetailPage";
+import SalespersonListPage from "../../features/salespeople/pages/SalespersonListPage";
 import { UserCreatePage } from "../../features/users/pages/UserCreatePage";
 import { UserListPage } from "../../features/users/pages/UserListPage";
 
@@ -26,12 +28,17 @@ export function AppRouter() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/budgets" element={<BudgetListPage />} />
           <Route element={<AdminRoute />}>
+            <Route
+              path="/projects/:projectId"
+              element={<ProjectDetailPage />}
+            />
             <Route path="/budgets/import" element={<BudgetImportPage />} />
             <Route path="/budgets/new" element={<BudgetCreatePage />} />
             <Route
               path="/budgets/:budgetId/edit"
               element={<BudgetEditPage />}
             />
+            <Route path="/salespeople" element={<SalespersonListPage />} />
             <Route path="/users" element={<UserListPage />} />
             <Route path="/users/new" element={<UserCreatePage />} />
           </Route>

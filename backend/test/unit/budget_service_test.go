@@ -9,6 +9,7 @@ import (
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/apperror"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/dto"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/model"
+	budgetrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budget"
 	budgetservice "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/service/budget"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -16,6 +17,8 @@ import (
 type budgetRepositoryStub struct {
 	createID                   int64
 	createErr                  error
+	changeStatusID             int64
+	changeStatusErr            error
 	listItems                  []model.BudgetModel
 	listTotal                  int64
 	listErr                    error
@@ -26,6 +29,7 @@ type budgetRepositoryStub struct {
 	updateErr                  error
 	deleteErr                  error
 	capturedCreateItem         *model.BudgetModel
+	capturedChangeStatusParams *budgetrepository.ChangeStatusParams
 	capturedUpdateItem         *model.BudgetModel
 	capturedListFilters        *dto.ListBudgetsFilters
 	capturedCurrentFollowUp    string
@@ -116,6 +120,11 @@ func (s *budgetRepositoryStub) UpdateCurrentFollowUp(_ context.Context, _ int64,
 func (s *budgetRepositoryStub) UpdateStatus(_ context.Context, _ int64, statusID int64, _ time.Time) error {
 	s.capturedStatusID = statusID
 	return s.updateStatusErr
+}
+
+func (s *budgetRepositoryStub) ChangeStatus(_ context.Context, params *budgetrepository.ChangeStatusParams) (int64, error) {
+	s.capturedChangeStatusParams = params
+	return s.changeStatusID, s.changeStatusErr
 }
 
 func TestBudgetServiceCreateShouldReturnBadRequestWhenBudgetNumberIsMissing(t *testing.T) {
@@ -224,6 +233,7 @@ func TestBudgetServiceListShouldNormalizeFiltersAndReturnPaginatedResponse(t *te
 
 	response, err := service.List(context.Background(), &dto.ListBudgetsFilters{
 		BudgetNumber: "  ORC  ",
+		ProjectName:  "  Centro  ",
 		YearBudget:   &yearBudget,
 	}, model.RoleAdmin, "")
 
@@ -256,6 +266,9 @@ func TestBudgetServiceListShouldNormalizeFiltersAndReturnPaginatedResponse(t *te
 	}
 	if repo.capturedListFilters.BudgetNumber != "ORC" {
 		t.Fatalf("expected trimmed budget number filter, got %s", repo.capturedListFilters.BudgetNumber)
+	}
+	if repo.capturedListFilters.ProjectName != "Centro" {
+		t.Fatalf("expected trimmed project name filter, got %s", repo.capturedListFilters.ProjectName)
 	}
 	if repo.capturedListFilters.SortBy != "sent_at" {
 		t.Fatalf("expected default sort by sent_at, got %s", repo.capturedListFilters.SortBy)

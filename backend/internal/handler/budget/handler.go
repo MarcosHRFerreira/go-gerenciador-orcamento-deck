@@ -154,6 +154,10 @@ func parseListFilters(c *gin.Context) (*dto.ListBudgetsFilters, error) {
 	if err != nil {
 		return nil, err
 	}
+	projectID, err := parseOptionalInt64(c.Query("project_id"))
+	if err != nil {
+		return nil, err
+	}
 	projectTypeID, err := parseOptionalInt64(c.Query("project_type_id"))
 	if err != nil {
 		return nil, err
@@ -190,6 +194,8 @@ func parseListFilters(c *gin.Context) (*dto.ListBudgetsFilters, error) {
 		SalespersonID:  salespersonID,
 		InstallerID:    installerID,
 		PriorityID:     priorityID,
+		ProjectID:      projectID,
+		ProjectName:    c.Query("project_name"),
 		ProjectTypeID:  projectTypeID,
 		DesignerName:   c.Query("designer_name"),
 		CompetitorName: c.Query("competitor_name"),

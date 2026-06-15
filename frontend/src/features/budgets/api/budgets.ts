@@ -8,11 +8,15 @@ import type {
   BudgetImportPreviewResult,
   BudgetCreatePayload,
   BudgetDetailItem,
+  BudgetStatusHistoryApiItem,
+  BudgetStatusHistoryItem,
   ExecuteBudgetImportPayload,
   BudgetListApiResponse,
   BudgetListFilters,
   BudgetListResult,
 } from "../types/budget";
+
+const maxBudgetProjectViewPageSize = 100;
 
 function mapBudgetListItem(item: BudgetApiItem) {
   return {
@@ -34,11 +38,31 @@ function mapBudgetListItem(item: BudgetApiItem) {
     designerName: item.designer_name,
     competitorName: item.competitor_name,
     competitorPrice: item.competitor_price ?? null,
+    statusName: item.status_name ?? null,
+    priorityName: item.priority_name ?? null,
+    installerName: item.installer_name ?? null,
     projectName: item.project_name ?? null,
     salespersonName: item.salesperson_name ?? null,
     contactName: item.contact_name ?? null,
+    lossReasonName: item.loss_reason_name ?? null,
     specificationDetails: item.specification_details,
     currentFollowUp: item.current_follow_up,
+    createdAt: item.created_at,
+    updatedAt: item.updated_at,
+  };
+}
+
+function mapBudgetStatusHistoryItem(
+  item: BudgetStatusHistoryApiItem,
+): BudgetStatusHistoryItem {
+  return {
+    id: item.id,
+    budgetId: item.budget_id,
+    fromStatusId: item.from_status_id ?? null,
+    toStatusId: item.to_status_id,
+    changedByUserId: item.changed_by_user_id,
+    notes: item.notes,
+    changedAt: item.changed_at,
     createdAt: item.created_at,
     updatedAt: item.updated_at,
   };
@@ -265,21 +289,47 @@ function mapCreateBudgetPayload(
   };
 }
 
+function buildBudgetListParams(filters: BudgetListFilters) {
+  return {
+    budget_number: filters.budgetNumber || undefined,
+    year_budget: filters.yearBudget || undefined,
+    status_id: filters.statusId || undefined,
+    installer_id: filters.installerId || undefined,
+    project_name: filters.projectName || undefined,
+    salesperson_id: filters.salespersonId || undefined,
+    project_id: filters.projectId || undefined,
+    page: filters.page,
+    page_size: filters.pageSize,
+    sort_by: filters.sortBy,
+    sort_order: filters.sortOrder,
+  };
+}
+
+async function fetchAllBudgetPages(
+  filters: BudgetListFilters,
+  page: number,
+): Promise<BudgetListResult["items"]> {
+  const response = await getBudgetListRequest({
+    ...filters,
+    page,
+    pageSize: maxBudgetProjectViewPageSize,
+  });
+  const loadedItemCount = page * response.pageSize;
+
+  if (loadedItemCount >= response.total) {
+    return response.items;
+  }
+
+  const nextPageItems = await fetchAllBudgetPages(filters, page + 1);
+
+  return [...response.items, ...nextPageItems];
+}
+
 export async function getBudgetListRequest(
   filters: BudgetListFilters,
 ): Promise<BudgetListResult> {
   const response = await api.get<BudgetListApiResponse>("/budgets", {
-    params: {
-      budget_number: filters.budgetNumber || undefined,
-      year_budget: filters.yearBudget || undefined,
-      status_id: filters.statusId || undefined,
-      installer_id: filters.installerId || undefined,
-      salesperson_id: filters.salespersonId || undefined,
-      page: filters.page,
-      page_size: filters.pageSize,
-      sort_by: filters.sortBy,
-      sort_order: filters.sortOrder,
-    },
+    params: buildBudgetListParams(filters),
   });
 
   return {
@@ -290,12 +340,24 @@ export async function getBudgetListRequest(
   };
 }
 
+export async function getBudgetProjectListRequest(
+  filters: BudgetListFilters,
+): Promise<BudgetListResult> {
+  const items = await fetchAllBudgetPages(filters, 1);
+
+  return {
+    items,
+    page: 1,
+    pageSize: items.length,
+    total: items.length,
+  };
+}
+
 export async function getBudgetCatalogsRequest(): Promise<BudgetCatalogsResult> {
   const [
     statusesResponse,
     prioritiesResponse,
     installersResponse,
-    projectsResponse,
     salespeopleResponse,
     contactsResponse,
     lossReasonsResponse,
@@ -303,7 +365,6 @@ export async function getBudgetCatalogsRequest(): Promise<BudgetCatalogsResult> 
     api.get<NamedCatalogApiItem[]>("/budget-statuses"),
     api.get<NamedCatalogApiItem[]>("/priorities"),
     api.get<NamedCatalogApiItem[]>("/installers"),
-    api.get<NamedCatalogApiItem[]>("/projects"),
     api.get<NamedCatalogApiItem[]>("/salespeople"),
     api.get<NamedCatalogApiItem[]>("/contacts"),
     api.get<NamedCatalogApiItem[]>("/loss-reasons"),
@@ -313,7 +374,7 @@ export async function getBudgetCatalogsRequest(): Promise<BudgetCatalogsResult> 
     statuses: statusesResponse.data.map(mapNamedCatalogItem),
     priorities: prioritiesResponse.data.map(mapNamedCatalogItem),
     installers: installersResponse.data.map(mapNamedCatalogItem),
-    projects: projectsResponse.data.map(mapNamedCatalogItem),
+    projects: [],
     salespeople: salespeopleResponse.data.map(mapNamedCatalogItem),
     contacts: contactsResponse.data.map(mapNamedCatalogItem),
     lossReasons: lossReasonsResponse.data.map(mapNamedCatalogItem),
@@ -350,6 +411,16 @@ export async function getBudgetByIdRequest(
   const response = await api.get<BudgetApiItem>(`/budgets/${budgetId}`);
 
   return mapBudgetListItem(response.data);
+}
+
+export async function getBudgetStatusHistoryRequest(
+  budgetId: number,
+): Promise<BudgetStatusHistoryItem[]> {
+  const response = await api.get<BudgetStatusHistoryApiItem[]>(
+    `/budgets/${budgetId}/status-history`,
+  );
+
+  return response.data.map(mapBudgetStatusHistoryItem);
 }
 
 export async function createBudgetRequest(

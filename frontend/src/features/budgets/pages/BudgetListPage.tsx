@@ -1,9 +1,16 @@
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
+import ApartmentRoundedIcon from "@mui/icons-material/ApartmentRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
+import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
+import TableRowsRoundedIcon from "@mui/icons-material/TableRowsRounded";
 import UploadFileRoundedIcon from "@mui/icons-material/UploadFileRounded";
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
   Button,
@@ -23,6 +30,8 @@ import {
   TableHead,
   TableRow,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from "@mui/material";
 import {
@@ -48,10 +57,12 @@ import {
   getBudgetCatalogsRequest,
   getBudgetListCatalogsRequest,
   getBudgetListRequest,
+  getBudgetProjectListRequest,
 } from "../api/budgets";
 import type {
   BudgetCatalogItem,
   BudgetListFilters,
+  BudgetListItem,
   BudgetSortBy,
   BudgetSortOrder,
 } from "../types/budget";
@@ -82,6 +93,7 @@ const defaultFilters: BudgetListFilters = {
   yearBudget: "",
   statusId: "",
   installerId: "",
+  projectName: "",
   salespersonId: "",
   page: 1,
   pageSize,
@@ -126,6 +138,7 @@ function getFiltersFromSearchParams(
     yearBudget: searchParams.get("yearBudget") ?? defaultFilters.yearBudget,
     statusId: searchParams.get("statusId") ?? defaultFilters.statusId,
     installerId: searchParams.get("installerId") ?? defaultFilters.installerId,
+    projectName: searchParams.get("projectName") ?? defaultFilters.projectName,
     salespersonId:
       searchParams.get("salespersonId") ?? defaultFilters.salespersonId,
     page: parsePositiveInteger(searchParams.get("page"), defaultFilters.page),
@@ -152,6 +165,9 @@ function buildSearchParams(filters: BudgetListFilters) {
   }
   if (filters.installerId) {
     nextSearchParams.set("installerId", filters.installerId);
+  }
+  if (filters.projectName) {
+    nextSearchParams.set("projectName", filters.projectName);
   }
   if (filters.salespersonId) {
     nextSearchParams.set("salespersonId", filters.salespersonId);
@@ -205,6 +221,14 @@ function formatOptionalText(value: string) {
   return value.trim() ? value : "Nao informado";
 }
 
+function normalizeText(value: string | null | undefined) {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
 function createCatalogMap(items: BudgetCatalogItem[]) {
   return new Map(items.map((item) => [item.id, item.name]));
 }
@@ -234,30 +258,101 @@ function formatResolvedCatalogName(
   return formatCatalogName(value, catalogMap, fallbackWhenMissing);
 }
 
+function hasProjectAssociation(
+  budget: Pick<BudgetListItem, "projectId" | "projectName">,
+) {
+  if (budget.projectId === null) {
+    return false;
+  }
+
+  return normalizeText(budget.projectName) !== "nao informado";
+}
+
+type BudgetViewMode = "project" | "list";
+
+type BudgetStatusCategory = "pedido" | "cancelado" | "orcamento" | "other";
+
+type BudgetProjectGroup = {
+  key: string;
+  projectId: number | null;
+  projectName: string;
+  items: BudgetListItem[];
+  latestActivityAt: string;
+  winnerBudgetId: number | null;
+  cancelledCount: number;
+  activeCount: number;
+  needsAttention: boolean;
+};
+
+function normalizeValue(value: string | null | undefined) {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function getBudgetStatusCategory(statusName: string): BudgetStatusCategory {
+  const normalizedStatusName = normalizeValue(statusName);
+
+  if (normalizedStatusName === "pedido") {
+    return "pedido";
+  }
+
+  if (normalizedStatusName === "cancelado") {
+    return "cancelado";
+  }
+
+  if (normalizedStatusName === "orcamento") {
+    return "orcamento";
+  }
+
+  return "other";
+}
+
 const tableHeadCellSx = {
   backgroundColor: "rgba(37, 99, 235, 0.08)",
   borderBottomColor: "primary.main",
+  borderBottomStyle: "solid",
   borderBottomWidth: 2,
   color: "text.primary",
-  fontSize: "0.75rem",
+  fontSize: "0.72rem",
   fontWeight: 700,
   letterSpacing: "0.04em",
-  py: 1.5,
+  py: 1,
   textTransform: "uppercase",
   whiteSpace: "nowrap",
 };
 
 const tableDetailCellSx = {
+  borderBottomColor: "divider",
+  borderBottomStyle: "solid",
+  borderBottomWidth: 1,
   color: "text.secondary",
-  fontSize: "0.78rem",
-  lineHeight: 1.45,
-  py: 1.25,
-  verticalAlign: "top",
+  fontSize: "0.74rem",
+  lineHeight: 1.25,
+  py: 0.7,
+  verticalAlign: "middle",
 };
 
-const stickyIdColumnWidth = 72;
-const stickyBudgetColumnWidth = 150;
-const frozenColumnsWidth = stickyIdColumnWidth + stickyBudgetColumnWidth;
+const singleLineTableCellSx = {
+  ...tableDetailCellSx,
+  maxWidth: 220,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const frozenBudgetTableCellSx = {
+  ...singleLineTableCellSx,
+  height: "100%",
+  px: 1.5,
+  py: 2.1,
+  textAlign: "center",
+};
+
+const stickyBudgetColumnWidth = 140;
+const frozenColumnsWidth = stickyBudgetColumnWidth;
 const tableMaxHeight = "calc(100vh - 280px)";
 
 const compactFilterFieldSx = {
@@ -310,6 +405,8 @@ export function BudgetListPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const frozenTableContainerRef = useRef<HTMLDivElement | null>(null);
   const mainTableContainerRef = useRef<HTMLDivElement | null>(null);
+  const frozenTableRef = useRef<HTMLTableElement | null>(null);
+  const mainTableRef = useRef<HTMLTableElement | null>(null);
   const frozenHeaderRowRef = useRef<HTMLTableRowElement | null>(null);
   const mainHeaderRowRef = useRef<HTMLTableRowElement | null>(null);
   const frozenBodyRowRefs = useRef<Array<HTMLTableRowElement | null>>([]);
@@ -320,8 +417,10 @@ export function BudgetListPage() {
     yearBudget: effectiveFilters.yearBudget,
     statusId: effectiveFilters.statusId,
     installerId: effectiveFilters.installerId,
+    projectName: effectiveFilters.projectName,
     salespersonId: effectiveFilters.salespersonId,
   }));
+  const [viewMode, setViewMode] = useState<BudgetViewMode>("project");
 
   useEffect(() => {
     if (isAdmin || !filters.salespersonId) {
@@ -334,6 +433,25 @@ export function BudgetListPage() {
   const budgetListQuery = useQuery({
     queryKey: ["budgets", user?.id ?? "anonymous", effectiveFilters],
     queryFn: () => getBudgetListRequest(effectiveFilters),
+    placeholderData: keepPreviousData,
+  });
+  const projectBudgetFilters = useMemo(
+    () => ({
+      ...effectiveFilters,
+      page: 1,
+      pageSize: 100,
+    }),
+    [effectiveFilters],
+  );
+  const projectBudgetListQuery = useQuery({
+    enabled: viewMode === "project",
+    queryKey: [
+      "budgets",
+      "project-view",
+      user?.id ?? "anonymous",
+      projectBudgetFilters,
+    ],
+    queryFn: () => getBudgetProjectListRequest(projectBudgetFilters),
     placeholderData: keepPreviousData,
   });
   const budgetCatalogsQuery = useQuery({
@@ -399,6 +517,136 @@ export function BudgetListPage() {
     () => budgetListQuery.data?.items ?? [],
     [budgetListQuery.data?.items],
   );
+  const projectBudgetItems = useMemo(
+    () => projectBudgetListQuery.data?.items ?? [],
+    [projectBudgetListQuery.data?.items],
+  );
+  const projectGroups = useMemo<BudgetProjectGroup[]>(() => {
+    const groupedBudgets = projectBudgetItems.reduce<
+      Map<string, BudgetProjectGroup>
+    >((currentGroups, budget) => {
+      if (!hasProjectAssociation(budget)) {
+        return currentGroups;
+      }
+
+      const projectName = formatResolvedCatalogName(
+        budget.projectId,
+        budget.projectName,
+        projectMap,
+        "Projeto nao informado",
+      );
+      const groupKey = `project-${budget.projectId}`;
+      const existingGroup = currentGroups.get(groupKey);
+
+      if (existingGroup) {
+        existingGroup.items.push(budget);
+        return currentGroups;
+      }
+
+      currentGroups.set(groupKey, {
+        key: groupKey,
+        projectId: budget.projectId,
+        projectName,
+        items: [budget],
+        latestActivityAt: budget.updatedAt,
+        winnerBudgetId: null,
+        cancelledCount: 0,
+        activeCount: 0,
+        needsAttention: true,
+      });
+
+      return currentGroups;
+    }, new Map<string, BudgetProjectGroup>());
+
+    const recentGroups = Array.from(groupedBudgets.values())
+      .map((group) => {
+        const winner = group.items.find((budget) => {
+          const statusLabel = formatCatalogName(budget.statusId, statusMap);
+          return getBudgetStatusCategory(statusLabel) === "pedido";
+        });
+        const cancelledCount = group.items.filter((budget) => {
+          const statusLabel = formatCatalogName(budget.statusId, statusMap);
+          return getBudgetStatusCategory(statusLabel) === "cancelado";
+        }).length;
+        const activeCount = group.items.length - cancelledCount;
+        const latestActivityAt = group.items.reduce((currentLatest, budget) => {
+          if (new Date(budget.updatedAt) > new Date(currentLatest)) {
+            return budget.updatedAt;
+          }
+
+          return currentLatest;
+        }, group.items[0]?.updatedAt ?? group.latestActivityAt);
+
+        return {
+          ...group,
+          items: [...group.items].sort((firstItem, secondItem) =>
+            firstItem.budgetNumber.localeCompare(secondItem.budgetNumber),
+          ),
+          latestActivityAt,
+          winnerBudgetId: winner?.id ?? null,
+          cancelledCount,
+          activeCount,
+          needsAttention: winner === undefined,
+        };
+      })
+      .filter((group) => group.needsAttention)
+      .sort((firstGroup, secondGroup) => {
+        const latestActivityDifference =
+          new Date(secondGroup.latestActivityAt).getTime() -
+          new Date(firstGroup.latestActivityAt).getTime();
+
+        if (latestActivityDifference !== 0) {
+          return latestActivityDifference;
+        }
+
+        if (firstGroup.projectId === null && secondGroup.projectId !== null) {
+          return 1;
+        }
+
+        if (firstGroup.projectId !== null && secondGroup.projectId === null) {
+          return -1;
+        }
+
+        return firstGroup.projectName.localeCompare(secondGroup.projectName);
+      })
+      .slice(0, 20);
+
+    return recentGroups.sort((firstGroup, secondGroup) => {
+      const budgetCountDifference =
+        secondGroup.items.length - firstGroup.items.length;
+
+      if (budgetCountDifference !== 0) {
+        return budgetCountDifference;
+      }
+
+      const latestActivityDifference =
+        new Date(secondGroup.latestActivityAt).getTime() -
+        new Date(firstGroup.latestActivityAt).getTime();
+
+      if (latestActivityDifference !== 0) {
+        return latestActivityDifference;
+      }
+
+      if (firstGroup.projectId === null && secondGroup.projectId !== null) {
+        return 1;
+      }
+
+      if (firstGroup.projectId !== null && secondGroup.projectId === null) {
+        return -1;
+      }
+
+      return firstGroup.projectName.localeCompare(secondGroup.projectName);
+    });
+  }, [projectBudgetItems, projectMap, statusMap]);
+  const groupedProjectsCount = useMemo(
+    () => projectGroups.length,
+    [projectGroups],
+  );
+  const isProjectView = viewMode === "project";
+  const activeBudgetItems = isProjectView ? projectBudgetItems : budgetItems;
+  const activeBudgetQuery = isProjectView
+    ? projectBudgetListQuery
+    : budgetListQuery;
 
   useEffect(() => {
     frozenBodyRowRefs.current = frozenBodyRowRefs.current.slice(
@@ -412,7 +660,13 @@ export function BudgetListPage() {
   }, [budgetItems.length]);
 
   useLayoutEffect(() => {
+    let isCancelled = false;
+
     const syncRowHeights = () => {
+      if (isCancelled) {
+        return;
+      }
+
       resetTableRowHeight(frozenHeaderRowRef.current);
       resetTableRowHeight(mainHeaderRowRef.current);
       frozenBodyRowRefs.current.forEach((row) => resetTableRowHeight(row));
@@ -443,11 +697,46 @@ export function BudgetListPage() {
       });
     };
 
+    const scheduleSyncRowHeights = () => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          syncRowHeights();
+        });
+      });
+    };
+
     syncRowHeights();
-    window.addEventListener("resize", syncRowHeights);
+    scheduleSyncRowHeights();
+    window.addEventListener("resize", scheduleSyncRowHeights);
+
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => {
+            scheduleSyncRowHeights();
+          });
+
+    [
+      frozenTableContainerRef.current,
+      mainTableContainerRef.current,
+      frozenTableRef.current,
+      mainTableRef.current,
+    ].forEach((element) => {
+      if (element !== null) {
+        resizeObserver?.observe(element);
+      }
+    });
+
+    if ("fonts" in document) {
+      void document.fonts.ready.then(() => {
+        scheduleSyncRowHeights();
+      });
+    }
 
     return () => {
-      window.removeEventListener("resize", syncRowHeights);
+      isCancelled = true;
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", scheduleSyncRowHeights);
     };
   }, [budgetCatalogsQuery.data, budgetItems, isAdmin]);
 
@@ -516,6 +805,7 @@ export function BudgetListPage() {
       yearBudget: defaultFilters.yearBudget,
       statusId: defaultFilters.statusId,
       installerId: defaultFilters.installerId,
+      projectName: defaultFilters.projectName,
       salespersonId: isAdmin ? defaultFilters.salespersonId : "",
     });
     setSearchParams(
@@ -556,6 +846,17 @@ export function BudgetListPage() {
     };
 
     setSearchParams(buildSearchParams(nextFilters));
+  };
+
+  const handleViewModeChange = (
+    _event: React.MouseEvent<HTMLElement>,
+    nextViewMode: BudgetViewMode | null,
+  ) => {
+    if (nextViewMode === null) {
+      return;
+    }
+
+    setViewMode(nextViewMode);
   };
 
   const handleOpenDeleteDialog = (budgetId: number, budgetNumber: string) => {
@@ -627,7 +928,7 @@ export function BudgetListPage() {
             display: "grid",
             gap: 2,
             gridTemplateColumns: {
-              lg: "minmax(240px, 300px) minmax(100px, 120px) minmax(130px, 160px) minmax(140px, 180px) minmax(140px, 180px)",
+              lg: "minmax(220px, 280px) minmax(100px, 120px) minmax(130px, 160px) minmax(140px, 180px) minmax(180px, 240px) minmax(140px, 180px)",
               md: "repeat(2, minmax(0, 1fr))",
               xs: "minmax(0, 1fr)",
             },
@@ -690,6 +991,16 @@ export function BudgetListPage() {
               </MenuItem>
             ))}
           </TextField>
+          <TextField
+            label="Obra"
+            onChange={(event) =>
+              handleDraftChange("projectName", event.target.value)
+            }
+            placeholder="Digite parte do nome da obra"
+            size="small"
+            sx={compactFilterFieldSx}
+            value={draftFilters.projectName}
+          />
           {isAdmin ? (
             <TextField
               label="Vendedor"
@@ -774,7 +1085,7 @@ export function BudgetListPage() {
       </SectionCard>
 
       <SectionCard>
-        {budgetListQuery.isLoading ? (
+        {activeBudgetQuery.isLoading ? (
           <Box
             sx={{
               alignItems: "center",
@@ -787,9 +1098,9 @@ export function BudgetListPage() {
           </Box>
         ) : null}
 
-        {budgetListQuery.isError ? (
+        {activeBudgetQuery.isError ? (
           <Alert severity="error">
-            {getBudgetErrorMessage(budgetListQuery.error)}
+            {getBudgetErrorMessage(activeBudgetQuery.error)}
           </Alert>
         ) : null}
 
@@ -802,7 +1113,7 @@ export function BudgetListPage() {
 
         {deleteError ? <Alert severity="error">{deleteError}</Alert> : null}
 
-        {!budgetListQuery.isLoading && !budgetListQuery.isError ? (
+        {!activeBudgetQuery.isLoading && !activeBudgetQuery.isError ? (
           <Box
             sx={{
               display: "flex",
@@ -813,25 +1124,432 @@ export function BudgetListPage() {
           >
             <Box
               sx={{
-                alignItems: { md: "center", xs: "flex-start" },
+                alignItems: { lg: "center", xs: "flex-start" },
                 display: "flex",
-                flexDirection: { md: "row", xs: "column" },
-                gap: 1,
-                justifyContent: "flex-end",
+                flexDirection: { lg: "row", xs: "column" },
+                gap: 1.5,
+                justifyContent: "space-between",
               }}
             >
-              <Typography color="text.secondary" variant="body2">
-                Pagina {budgetListQuery.data?.page ?? filters.page} de{" "}
-                {totalPages}
-              </Typography>
+              <Box>
+                {!isProjectView ? (
+                  <Typography color="text.secondary" variant="body2">
+                    Pagina {budgetListQuery.data?.page ?? filters.page} de{" "}
+                    {totalPages}
+                  </Typography>
+                ) : null}
+                <Typography color="text.secondary" variant="body2">
+                  {isProjectView
+                    ? `${groupedProjectsCount} projeto(s) sem PEDIDO definido entre os 20 mais recentes, com prioridade para quem tem mais orcamentos`
+                    : `${budgetListQuery.data?.total ?? 0} orçamento(s) encontrado(s)`}
+                </Typography>
+              </Box>
+
+              <ToggleButtonGroup
+                exclusive
+                onChange={handleViewModeChange}
+                size="small"
+                value={viewMode}
+              >
+                <ToggleButton value="project">
+                  <ApartmentRoundedIcon fontSize="small" sx={{ mr: 1 }} />
+                  Por projeto
+                </ToggleButton>
+                <ToggleButton value="list">
+                  <TableRowsRoundedIcon fontSize="small" sx={{ mr: 1 }} />
+                  Lista completa
+                </ToggleButton>
+              </ToggleButtonGroup>
             </Box>
 
-            {budgetListQuery.data?.items.length ? (
+            {isProjectView ? (
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <Alert severity="info" variant="outlined">
+                  Nesta visualizacao aparecem apenas projetos sem{" "}
+                  <strong>PEDIDO</strong> definido, limitados aos 20 mais
+                  recentes pela ultima atualizacao dos orcamentos do grupo e
+                  ordenados no topo por quantidade de orcamentos vinculados.
+                </Alert>
+
+                {projectBudgetItems.length === 0 ? (
+                  <Alert severity="info" variant="outlined">
+                    Nenhum orçamento foi encontrado para os filtros informados.
+                  </Alert>
+                ) : projectGroups.length === 0 ? (
+                  <Alert severity="info" variant="outlined">
+                    Foram encontrados{" "}
+                    <strong>{projectBudgetItems.length} orçamento(s)</strong> na
+                    busca atual, mas todos os projetos ja possuem{" "}
+                    <strong>PEDIDO</strong> definido e por isso nao aparecem
+                    nesta visualizacao.
+                  </Alert>
+                ) : (
+                  projectGroups.map((group) => (
+                    <Accordion
+                      defaultExpanded={group.items.length > 1}
+                      disableGutters
+                      key={group.key}
+                      sx={{
+                        border: (theme) => `1px solid ${theme.palette.divider}`,
+                        borderRadius: "20px !important",
+                        overflow: "hidden",
+                        "&::before": {
+                          display: "none",
+                        },
+                      }}
+                    >
+                      <AccordionSummary expandIcon={<ExpandMoreRoundedIcon />}>
+                        <Box
+                          sx={{
+                            alignItems: { md: "center", xs: "flex-start" },
+                            display: "flex",
+                            flexDirection: { md: "row", xs: "column" },
+                            gap: 1.5,
+                            justifyContent: "space-between",
+                            width: "100%",
+                          }}
+                        >
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography sx={{ fontWeight: 700 }} variant="h6">
+                              {group.projectName}
+                            </Typography>
+                            <Typography color="text.secondary" variant="body2">
+                              {`Projeto #${group.projectId} · ${group.items.length} orcamento(s) vinculado(s)`}
+                            </Typography>
+                          </Box>
+
+                          <Box
+                            sx={{
+                              alignItems: "center",
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: 1,
+                            }}
+                          >
+                            <Chip
+                              label={`${group.items.length} orcamento(s)`}
+                              size="small"
+                              variant="outlined"
+                            />
+                            <Chip
+                              color={
+                                group.needsAttention ? "warning" : "success"
+                              }
+                              label={
+                                group.needsAttention
+                                  ? "Sem PEDIDO definido"
+                                  : "Com vencedor definido"
+                              }
+                              size="small"
+                              variant="outlined"
+                            />
+                            <Chip
+                              label={`${group.cancelledCount} cancelado(s)`}
+                              size="small"
+                              variant="outlined"
+                            />
+                            {isAdmin && group.projectId !== null ? (
+                              <Button
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  navigate(`/projects/${group.projectId}`);
+                                }}
+                                size="small"
+                                startIcon={<VisibilityRoundedIcon />}
+                                variant="text"
+                              >
+                                Abrir projeto
+                              </Button>
+                            ) : null}
+                          </Box>
+                        </Box>
+                      </AccordionSummary>
+
+                      <AccordionDetails>
+                        <Box
+                          sx={{
+                            display: "grid",
+                            gap: 1.5,
+                            gridTemplateColumns: "minmax(0, 1fr)",
+                          }}
+                        >
+                          {group.items.map((budget) => {
+                            const statusLabel = formatCatalogName(
+                              budget.statusId,
+                              statusMap,
+                            );
+                            const statusCategory =
+                              getBudgetStatusCategory(statusLabel);
+                            const isWinner = group.winnerBudgetId === budget.id;
+
+                            return (
+                              <Box
+                                key={budget.id}
+                                sx={{
+                                  backgroundColor: (theme) => {
+                                    if (isWinner) {
+                                      return theme.palette.success.main + "12";
+                                    }
+
+                                    if (statusCategory === "cancelado") {
+                                      return theme.palette.grey[500] + "12";
+                                    }
+
+                                    return theme.palette.background.paper;
+                                  },
+                                  border: (theme) => {
+                                    if (isWinner) {
+                                      return `1px solid ${theme.palette.success.main}`;
+                                    }
+
+                                    return `1px solid ${theme.palette.divider}`;
+                                  },
+                                  borderRadius: 3,
+                                  p: 2,
+                                }}
+                              >
+                                <Box
+                                  sx={{
+                                    alignItems: {
+                                      md: "center",
+                                      xs: "flex-start",
+                                    },
+                                    display: "flex",
+                                    flexDirection: {
+                                      md: "row",
+                                      xs: "column",
+                                    },
+                                    gap: 1.5,
+                                    justifyContent: "space-between",
+                                    mb: 1.5,
+                                  }}
+                                >
+                                  <Box sx={{ minWidth: 0 }}>
+                                    <Typography
+                                      sx={{ fontWeight: 700 }}
+                                      variant="subtitle1"
+                                    >
+                                      {budget.budgetNumber}
+                                    </Typography>
+                                    <Typography
+                                      color="text.secondary"
+                                      variant="body2"
+                                    >
+                                      ID {budget.id} · envio{" "}
+                                      {dateFormatter.format(
+                                        new Date(budget.sentAt),
+                                      )}
+                                    </Typography>
+                                  </Box>
+
+                                  <Box
+                                    sx={{
+                                      display: "flex",
+                                      flexWrap: "wrap",
+                                      gap: 1,
+                                    }}
+                                  >
+                                    <Chip
+                                      color={
+                                        isWinner
+                                          ? "success"
+                                          : statusCategory === "cancelado"
+                                            ? "default"
+                                            : "primary"
+                                      }
+                                      label={statusLabel}
+                                      size="small"
+                                      variant={isWinner ? "filled" : "outlined"}
+                                    />
+                                    {isWinner ? (
+                                      <Chip
+                                        color="success"
+                                        label="Vencedor do projeto"
+                                        size="small"
+                                      />
+                                    ) : null}
+                                    {statusCategory === "cancelado" ? (
+                                      <Chip
+                                        label="Sem necessidade de atencao"
+                                        size="small"
+                                        variant="outlined"
+                                      />
+                                    ) : null}
+                                  </Box>
+                                </Box>
+
+                                <Box
+                                  sx={{
+                                    display: "grid",
+                                    gap: 1.5,
+                                    gridTemplateColumns: {
+                                      lg: "repeat(4, minmax(0, 1fr))",
+                                      md: "repeat(2, minmax(0, 1fr))",
+                                      xs: "minmax(0, 1fr)",
+                                    },
+                                  }}
+                                >
+                                  <Box>
+                                    <Typography
+                                      color="text.secondary"
+                                      variant="caption"
+                                    >
+                                      Valor bruto
+                                    </Typography>
+                                    <Typography variant="body2">
+                                      {currencyFormatter.format(
+                                        budget.grossValue,
+                                      )}
+                                    </Typography>
+                                  </Box>
+                                  <Box>
+                                    <Typography
+                                      color="text.secondary"
+                                      variant="caption"
+                                    >
+                                      Vendedor
+                                    </Typography>
+                                    <Typography variant="body2">
+                                      {formatResolvedCatalogName(
+                                        budget.salespersonId,
+                                        budget.salespersonName,
+                                        salespersonMap,
+                                      )}
+                                    </Typography>
+                                  </Box>
+                                  <Box>
+                                    <Typography
+                                      color="text.secondary"
+                                      variant="caption"
+                                    >
+                                      Contato
+                                    </Typography>
+                                    <Typography variant="body2">
+                                      {formatResolvedCatalogName(
+                                        budget.contactId,
+                                        budget.contactName,
+                                        contactMap,
+                                      )}
+                                    </Typography>
+                                  </Box>
+                                  <Box>
+                                    <Typography
+                                      color="text.secondary"
+                                      variant="caption"
+                                    >
+                                      Instalador
+                                    </Typography>
+                                    <Typography variant="body2">
+                                      {formatCatalogName(
+                                        budget.installerId,
+                                        installerMap,
+                                        "Sem instalador vinculado",
+                                      )}
+                                    </Typography>
+                                  </Box>
+                                  <Box>
+                                    <Typography
+                                      color="text.secondary"
+                                      variant="caption"
+                                    >
+                                      Prioridade
+                                    </Typography>
+                                    <Typography variant="body2">
+                                      {formatCatalogName(
+                                        budget.priorityId,
+                                        priorityMap,
+                                      )}
+                                    </Typography>
+                                  </Box>
+                                  <Box>
+                                    <Typography
+                                      color="text.secondary"
+                                      variant="caption"
+                                    >
+                                      Area m2
+                                    </Typography>
+                                    <Typography variant="body2">
+                                      {decimalFormatter.format(budget.areaM2)}
+                                    </Typography>
+                                  </Box>
+                                  <Box>
+                                    <Typography
+                                      color="text.secondary"
+                                      variant="caption"
+                                    >
+                                      Designer
+                                    </Typography>
+                                    <Typography variant="body2">
+                                      {formatOptionalText(budget.designerName)}
+                                    </Typography>
+                                  </Box>
+                                  <Box>
+                                    <Typography
+                                      color="text.secondary"
+                                      variant="caption"
+                                    >
+                                      Follow-up atual
+                                    </Typography>
+                                    <Typography variant="body2">
+                                      {formatOptionalText(
+                                        budget.currentFollowUp,
+                                      )}
+                                    </Typography>
+                                  </Box>
+                                </Box>
+
+                                {isAdmin ? (
+                                  <Box
+                                    sx={{
+                                      display: "flex",
+                                      gap: 1,
+                                      justifyContent: "flex-end",
+                                      mt: 1.5,
+                                    }}
+                                  >
+                                    <Button
+                                      onClick={() =>
+                                        navigate(`/budgets/${budget.id}/edit`)
+                                      }
+                                      size="small"
+                                      startIcon={<EditRoundedIcon />}
+                                      variant="text"
+                                    >
+                                      Editar
+                                    </Button>
+                                    <Button
+                                      color="error"
+                                      onClick={() =>
+                                        handleOpenDeleteDialog(
+                                          budget.id,
+                                          budget.budgetNumber,
+                                        )
+                                      }
+                                      size="small"
+                                      startIcon={<DeleteOutlineRoundedIcon />}
+                                      variant="text"
+                                    >
+                                      Excluir
+                                    </Button>
+                                  </Box>
+                                ) : null}
+                              </Box>
+                            );
+                          })}
+                        </Box>
+                      </AccordionDetails>
+                    </Accordion>
+                  ))
+                )}
+              </Box>
+            ) : activeBudgetItems.length ? (
               <Box
                 sx={{
+                  alignItems: "stretch",
                   border: (theme) => `1px solid ${theme.palette.divider}`,
                   borderRadius: 3,
                   display: "flex",
+                  height: tableMaxHeight,
                   minWidth: 0,
                   overflow: "hidden",
                   width: "100%",
@@ -843,8 +1561,9 @@ export function BudgetListPage() {
                   sx={{
                     borderRight: (theme) =>
                       `1px solid ${theme.palette.divider}`,
+                    boxSizing: "border-box",
                     flex: "0 0 auto",
-                    maxHeight: tableMaxHeight,
+                    height: "100%",
                     overflowX: "hidden",
                     overflowY: "auto",
                     scrollbarWidth: "none",
@@ -855,6 +1574,7 @@ export function BudgetListPage() {
                   }}
                 >
                   <Table
+                    ref={frozenTableRef}
                     size="small"
                     stickyHeader
                     sx={{
@@ -874,16 +1594,8 @@ export function BudgetListPage() {
                         <TableCell
                           sx={{
                             ...tableHeadCellSx,
-                            minWidth: stickyIdColumnWidth,
-                            width: stickyIdColumnWidth,
-                          }}
-                        >
-                          ID
-                        </TableCell>
-                        <TableCell
-                          sx={{
-                            ...tableHeadCellSx,
                             minWidth: stickyBudgetColumnWidth,
+                            textAlign: "center",
                             width: stickyBudgetColumnWidth,
                           }}
                         >
@@ -900,26 +1612,27 @@ export function BudgetListPage() {
                             frozenBodyRowRefs.current[index] = element;
                           }}
                         >
-                          <TableCell
-                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
-                          >
-                            {budget.id}
-                          </TableCell>
-                          <TableCell
-                            sx={{
-                              ...tableDetailCellSx,
-                              whiteSpace: "nowrap",
-                            }}
-                          >
+                          <TableCell sx={frozenBudgetTableCellSx}>
                             <Box
                               sx={{
+                                alignItems: "center",
                                 display: "flex",
                                 flexDirection: "column",
                                 gap: 0.5,
+                                height: "100%",
+                                justifyContent: "center",
+                                minWidth: 0,
                               }}
                             >
                               <Typography
-                                sx={{ fontSize: "0.8rem", fontWeight: 600 }}
+                                noWrap
+                                sx={{
+                                  fontSize: "0.75rem",
+                                  fontWeight: 600,
+                                  textAlign: "center",
+                                  width: "100%",
+                                }}
+                                title={budget.budgetNumber}
                                 variant="body2"
                               >
                                 {budget.budgetNumber}
@@ -936,13 +1649,15 @@ export function BudgetListPage() {
                   onScroll={handleMainTableScroll}
                   ref={mainTableContainerRef}
                   sx={{
+                    boxSizing: "border-box",
                     flex: 1,
-                    maxHeight: tableMaxHeight,
+                    height: "100%",
                     minWidth: 0,
                     overflow: "auto",
                   }}
                 >
                   <Table
+                    ref={mainTableRef}
                     size="small"
                     stickyHeader
                     sx={{
@@ -1008,45 +1723,65 @@ export function BudgetListPage() {
                             mainBodyRowRefs.current[index] = element;
                           }}
                         >
-                          <TableCell
-                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
-                          >
+                          <TableCell sx={singleLineTableCellSx}>
                             {budget.yearBudget}
                           </TableCell>
-                          <TableCell
-                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
-                          >
+                          <TableCell sx={singleLineTableCellSx}>
                             {budget.revision}
                           </TableCell>
-                          <TableCell sx={tableDetailCellSx}>
+                          <TableCell sx={singleLineTableCellSx}>
                             {dateFormatter.format(new Date(budget.sentAt))}
                           </TableCell>
                           <TableCell sx={tableDetailCellSx}>
                             <Chip
                               color="primary"
-                              label={formatCatalogName(
+                              label={formatResolvedCatalogName(
                                 budget.statusId,
+                                budget.statusName,
                                 statusMap,
                               )}
                               size="small"
-                              sx={{ fontSize: "0.72rem", height: 24 }}
+                              sx={{ fontSize: "0.68rem", height: 20 }}
                               variant="outlined"
                             />
                           </TableCell>
                           <TableCell
-                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
+                            sx={singleLineTableCellSx}
+                            title={formatResolvedCatalogName(
+                              budget.priorityId,
+                              budget.priorityName,
+                              priorityMap,
+                            )}
                           >
-                            {formatCatalogName(budget.priorityId, priorityMap)}
+                            {formatResolvedCatalogName(
+                              budget.priorityId,
+                              budget.priorityName,
+                              priorityMap,
+                            )}
                           </TableCell>
-                          <TableCell sx={tableDetailCellSx}>
-                            {formatCatalogName(
+                          <TableCell
+                            sx={singleLineTableCellSx}
+                            title={formatResolvedCatalogName(
                               budget.installerId,
+                              budget.installerName,
+                              installerMap,
+                              "Sem instalador vinculado",
+                            )}
+                          >
+                            {formatResolvedCatalogName(
+                              budget.installerId,
+                              budget.installerName,
                               installerMap,
                               "Sem instalador vinculado",
                             )}
                           </TableCell>
                           <TableCell
-                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
+                            sx={singleLineTableCellSx}
+                            title={formatResolvedCatalogName(
+                              budget.projectId,
+                              budget.projectName,
+                              projectMap,
+                            )}
                           >
                             {formatResolvedCatalogName(
                               budget.projectId,
@@ -1055,7 +1790,12 @@ export function BudgetListPage() {
                             )}
                           </TableCell>
                           <TableCell
-                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
+                            sx={singleLineTableCellSx}
+                            title={formatResolvedCatalogName(
+                              budget.salespersonId,
+                              budget.salespersonName,
+                              salespersonMap,
+                            )}
                           >
                             {formatResolvedCatalogName(
                               budget.salespersonId,
@@ -1064,7 +1804,12 @@ export function BudgetListPage() {
                             )}
                           </TableCell>
                           <TableCell
-                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
+                            sx={singleLineTableCellSx}
+                            title={formatResolvedCatalogName(
+                              budget.contactId,
+                              budget.contactName,
+                              contactMap,
+                            )}
                           >
                             {formatResolvedCatalogName(
                               budget.contactId,
@@ -1073,60 +1818,63 @@ export function BudgetListPage() {
                             )}
                           </TableCell>
                           <TableCell
-                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
-                          >
-                            {formatCatalogName(
+                            sx={singleLineTableCellSx}
+                            title={formatResolvedCatalogName(
                               budget.lossReasonId,
+                              budget.lossReasonName,
+                              lossReasonMap,
+                            )}
+                          >
+                            {formatResolvedCatalogName(
+                              budget.lossReasonId,
+                              budget.lossReasonName,
                               lossReasonMap,
                             )}
                           </TableCell>
-                          <TableCell sx={tableDetailCellSx}>
+                          <TableCell
+                            sx={singleLineTableCellSx}
+                            title={formatOptionalText(budget.designerName)}
+                          >
                             {formatOptionalText(budget.designerName)}
                           </TableCell>
-                          <TableCell sx={tableDetailCellSx}>
+                          <TableCell
+                            sx={singleLineTableCellSx}
+                            title={formatOptionalText(budget.competitorName)}
+                          >
                             {formatOptionalText(budget.competitorName)}
                           </TableCell>
-                          <TableCell
-                            align="right"
-                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
-                          >
+                          <TableCell align="right" sx={singleLineTableCellSx}>
                             {formatOptionalCurrency(budget.competitorPrice)}
                           </TableCell>
                           <TableCell
-                            sx={{ ...tableDetailCellSx, minWidth: 220 }}
+                            sx={{ ...singleLineTableCellSx, minWidth: 220 }}
+                            title={formatOptionalText(
+                              budget.specificationDetails,
+                            )}
                           >
                             {formatOptionalText(budget.specificationDetails)}
                           </TableCell>
                           <TableCell
-                            sx={{ ...tableDetailCellSx, minWidth: 220 }}
+                            sx={{ ...singleLineTableCellSx, minWidth: 220 }}
+                            title={formatOptionalText(budget.currentFollowUp)}
                           >
                             {formatOptionalText(budget.currentFollowUp)}
                           </TableCell>
-                          <TableCell
-                            align="right"
-                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
-                          >
+                          <TableCell align="right" sx={singleLineTableCellSx}>
                             {decimalFormatter.format(budget.areaM2)}
                           </TableCell>
-                          <TableCell
-                            align="right"
-                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
-                          >
+                          <TableCell align="right" sx={singleLineTableCellSx}>
                             {currencyFormatter.format(budget.commissionValue)}
                           </TableCell>
-                          <TableCell align="right" sx={tableDetailCellSx}>
+                          <TableCell align="right" sx={singleLineTableCellSx}>
                             {currencyFormatter.format(budget.grossValue)}
                           </TableCell>
-                          <TableCell
-                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
-                          >
+                          <TableCell sx={singleLineTableCellSx}>
                             {dateTimeFormatter.format(
                               new Date(budget.createdAt),
                             )}
                           </TableCell>
-                          <TableCell
-                            sx={{ ...tableDetailCellSx, whiteSpace: "nowrap" }}
-                          >
+                          <TableCell sx={singleLineTableCellSx}>
                             {dateTimeFormatter.format(
                               new Date(budget.updatedAt),
                             )}
@@ -1144,6 +1892,7 @@ export function BudgetListPage() {
                                 }
                                 size="small"
                                 startIcon={<EditRoundedIcon />}
+                                sx={{ minWidth: "auto", px: 0.75, py: 0.25 }}
                                 variant="text"
                               >
                                 Editar
@@ -1158,6 +1907,7 @@ export function BudgetListPage() {
                                 }
                                 size="small"
                                 startIcon={<DeleteOutlineRoundedIcon />}
+                                sx={{ minWidth: "auto", px: 0.75, py: 0.25 }}
                                 variant="text"
                               >
                                 Excluir
@@ -1187,15 +1937,19 @@ export function BudgetListPage() {
               }}
             >
               <Typography color="text.secondary" variant="body2">
-                {budgetListQuery.data?.total ?? 0} resultado(s) encontrado(s)
+                {isProjectView
+                  ? `${projectBudgetListQuery.data?.total ?? 0} orçamento(s) carregado(s) para agrupamento`
+                  : `${budgetListQuery.data?.total ?? 0} resultado(s) encontrado(s)`}
               </Typography>
-              <Pagination
-                color="primary"
-                count={totalPages}
-                onChange={handlePageChange}
-                page={budgetListQuery.data?.page ?? filters.page}
-                shape="rounded"
-              />
+              {!isProjectView ? (
+                <Pagination
+                  color="primary"
+                  count={totalPages}
+                  onChange={handlePageChange}
+                  page={budgetListQuery.data?.page ?? filters.page}
+                  shape="rounded"
+                />
+              ) : null}
             </Box>
           </Box>
         ) : null}

@@ -3,6 +3,7 @@ package budgetstatushistory
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
 	"time"
 
@@ -82,25 +83,34 @@ func (s *service) ChangeStatus(ctx context.Context, budgetID int64, userID int64
 
 	notes := strings.TrimSpace(req.Notes)
 	now := time.Now()
-	id, err := s.repo.Create(ctx, &model.BudgetStatusHistoryModel{
-		BudgetID: budgetID,
-		FromStatusID: sql.NullInt64{
-			Int64: budget.StatusID,
-			Valid: true,
-		},
-		ToStatusID:      req.StatusID,
-		ChangedByUserID: userID,
-		Notes:           notes,
-		ChangedAt:       now,
-		CreatedAt:       now,
-		UpdatedAt:       now,
-	})
-	if err != nil {
-		return 0, apperror.Internal("failed to create budget status history", err)
+	changeStatusParams := &budgetrepository.ChangeStatusParams{
+		BudgetID:  budgetID,
+		StatusID:  req.StatusID,
+		UserID:    userID,
+		Notes:     notes,
+		ChangedAt: now,
 	}
 
-	if err := s.budgetRepo.UpdateStatus(ctx, budgetID, req.StatusID, now); err != nil {
-		return 0, apperror.Internal("failed to update budget status", err)
+	if isPedidoStatus(status) && budget.ProjectID.Valid {
+		cancelledStatus, getCancelledStatusErr := s.budgetStatusRepo.GetByCodeOrName(ctx, "CANCELADO", "CANCELADO")
+		if getCancelledStatusErr != nil {
+			return 0, apperror.Internal("failed to check cancelled budget status", getCancelledStatusErr)
+		}
+		if cancelledStatus == nil {
+			return 0, apperror.BadRequest("Status CANCELADO nao encontrado")
+		}
+
+		changeStatusParams.EnforceProjectWinnerRule = true
+		changeStatusParams.CancelledStatusID = cancelledStatus.ID
+	}
+
+	id, err := s.budgetRepo.ChangeStatus(ctx, changeStatusParams)
+	if err != nil {
+		if errors.Is(err, budgetrepository.ErrProjectAlreadyHasPedido) {
+			return 0, apperror.Conflict("Ja existe outro orcamento do projeto marcado como PEDIDO")
+		}
+
+		return 0, apperror.Internal("failed to change budget status", err)
 	}
 
 	return id, nil
@@ -153,4 +163,12 @@ func nullableInt64Pointer(value sql.NullInt64) *int64 {
 	}
 
 	return &value.Int64
+}
+
+func isPedidoStatus(status *model.BudgetStatusModel) bool {
+	if status == nil {
+		return false
+	}
+
+	return strings.EqualFold(strings.TrimSpace(status.Code), "PEDIDO") || strings.EqualFold(strings.TrimSpace(status.Name), "PEDIDO")
 }

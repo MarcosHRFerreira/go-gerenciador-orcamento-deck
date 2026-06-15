@@ -13,7 +13,9 @@ export type BudgetListFilters = {
   yearBudget: string;
   statusId: string;
   installerId: string;
+  projectName: string;
   salespersonId: string;
+  projectId?: string;
   page: number;
   pageSize: number;
   sortBy: BudgetSortBy;
@@ -39,9 +41,13 @@ export type BudgetApiItem = {
   competitor_name: string;
   competitor_price?: number | null;
   designer_name: string;
+  status_name?: string | null;
+  priority_name?: string | null;
+  installer_name?: string | null;
   project_name?: string | null;
   salesperson_name?: string | null;
   contact_name?: string | null;
+  loss_reason_name?: string | null;
   specification_details: string;
   current_follow_up: string;
   created_at: string;
@@ -74,9 +80,13 @@ export type BudgetListItem = {
   designerName: string;
   competitorName: string;
   competitorPrice: number | null;
+  statusName: string | null;
+  priorityName: string | null;
+  installerName: string | null;
   projectName: string | null;
   salespersonName: string | null;
   contactName: string | null;
+  lossReasonName: string | null;
   specificationDetails: string;
   currentFollowUp: string;
   createdAt: string;
@@ -90,6 +100,30 @@ export type BudgetListResult = {
   page: number;
   pageSize: number;
   total: number;
+};
+
+export type BudgetStatusHistoryApiItem = {
+  id: number;
+  budget_id: number;
+  from_status_id?: number | null;
+  to_status_id: number;
+  changed_by_user_id: number;
+  notes: string;
+  changed_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BudgetStatusHistoryItem = {
+  id: number;
+  budgetId: number;
+  fromStatusId: number | null;
+  toStatusId: number;
+  changedByUserId: number;
+  notes: string;
+  changedAt: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type BudgetCatalogItem = {

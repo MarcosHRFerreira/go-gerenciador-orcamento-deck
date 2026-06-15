@@ -54,6 +54,8 @@ type ListBudgetsFilters struct {
 	RestrictedSalespersonID *int64
 	InstallerID             *int64
 	PriorityID              *int64
+	ProjectID               *int64
+	ProjectName             string
 	ProjectTypeID           *int64
 	DesignerName            string
 	CompetitorName          string
@@ -86,9 +88,13 @@ type BudgetResponse struct {
 	CompetitorName       string    `json:"competitor_name"`
 	CompetitorPrice      *float64  `json:"competitor_price,omitempty"`
 	DesignerName         string    `json:"designer_name"`
+	StatusName           *string   `json:"status_name,omitempty"`
+	PriorityName         *string   `json:"priority_name,omitempty"`
+	InstallerName        *string   `json:"installer_name,omitempty"`
 	ProjectName          *string   `json:"project_name,omitempty"`
 	SalespersonName      *string   `json:"salesperson_name,omitempty"`
 	ContactName          *string   `json:"contact_name,omitempty"`
+	LossReasonName       *string   `json:"loss_reason_name,omitempty"`
 	SpecificationDetails string    `json:"specification_details"`
 	CurrentFollowUp      string    `json:"current_follow_up"`
 	CreatedAt            time.Time `json:"created_at"`
