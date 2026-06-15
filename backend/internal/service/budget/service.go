@@ -278,6 +278,7 @@ func normalizeListFilters(filters *dto.ListBudgetsFilters) (*dto.ListBudgetsFilt
 
 	normalized := *filters
 	normalized.BudgetNumber = strings.TrimSpace(filters.BudgetNumber)
+	normalized.SourceCompany = strings.TrimSpace(filters.SourceCompany)
 	normalized.ProjectName = strings.TrimSpace(filters.ProjectName)
 	normalized.DesignerName = strings.TrimSpace(filters.DesignerName)
 	normalized.CompetitorName = strings.TrimSpace(filters.CompetitorName)
@@ -386,6 +387,7 @@ func mapBudgetResponse(item *model.BudgetModel) dto.BudgetResponse {
 		CompetitorName:       item.CompetitorName,
 		CompetitorPrice:      nullableFloat64Pointer(item.CompetitorPrice),
 		DesignerName:         item.DesignerName,
+		SourceCompany:        item.SourceCompany,
 		StatusName:           nullableStringPointer(item.StatusName),
 		PriorityName:         nullableStringPointer(item.PriorityName),
 		InstallerName:        nullableStringPointer(item.InstallerName),

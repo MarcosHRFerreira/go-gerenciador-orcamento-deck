@@ -44,18 +44,43 @@ type BudgetImportPreviewRow struct {
 	Messages     []string `json:"messages"`
 }
 
+type BudgetImportPreviewLayoutInfo struct {
+	Key           string `json:"key"`
+	Name          string `json:"name"`
+	SourceCompany string `json:"source_company"`
+	Description   string `json:"description"`
+}
+
+type BudgetImportPreviewFieldGroup struct {
+	Key         string   `json:"key"`
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	Fields      []string `json:"fields"`
+}
+
+type BudgetImportPreviewGovernance struct {
+	DuplicateScope      string   `json:"duplicate_scope"`
+	DuplicatePolicy     string   `json:"duplicate_policy"`
+	MissingValuePolicy  string   `json:"missing_value_policy"`
+	DefaultCatalogs     []string `json:"default_catalogs"`
+	LegacyMatchingScope string   `json:"legacy_matching_scope"`
+}
+
 type PreviewBudgetImportResponse struct {
-	PreviewID         string                       `json:"preview_id"`
-	FileName          string                       `json:"file_name"`
-	SheetName         string                       `json:"sheet_name"`
-	HeaderRow         int                          `json:"header_row"`
-	Options           PreviewBudgetImportOptions   `json:"options"`
-	Summary           BudgetImportPreviewSummary   `json:"summary"`
-	CatalogActions    BudgetImportCatalogActions   `json:"catalog_actions"`
-	Warnings          []BudgetImportPreviewMessage `json:"warnings"`
-	Errors            []BudgetImportPreviewMessage `json:"errors"`
-	SampleRows        []BudgetImportPreviewRow     `json:"sample_rows"`
-	InconsistencyRows []BudgetImportPreviewRow     `json:"inconsistency_rows"`
+	PreviewID         string                          `json:"preview_id"`
+	FileName          string                          `json:"file_name"`
+	SheetName         string                          `json:"sheet_name"`
+	HeaderRow         int                             `json:"header_row"`
+	Layout            BudgetImportPreviewLayoutInfo   `json:"layout"`
+	FieldGroups       []BudgetImportPreviewFieldGroup `json:"field_groups"`
+	Governance        BudgetImportPreviewGovernance   `json:"governance"`
+	Options           PreviewBudgetImportOptions      `json:"options"`
+	Summary           BudgetImportPreviewSummary      `json:"summary"`
+	CatalogActions    BudgetImportCatalogActions      `json:"catalog_actions"`
+	Warnings          []BudgetImportPreviewMessage    `json:"warnings"`
+	Errors            []BudgetImportPreviewMessage    `json:"errors"`
+	SampleRows        []BudgetImportPreviewRow        `json:"sample_rows"`
+	InconsistencyRows []BudgetImportPreviewRow        `json:"inconsistency_rows"`
 }
 
 type ExecuteBudgetImportSummary struct {

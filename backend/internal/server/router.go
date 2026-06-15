@@ -23,6 +23,7 @@ import (
 	userhandler "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/handler/user"
 	budgetrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budget"
 	budgetfollowuprepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budgetfollowup"
+	budgetimportrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budgetimport"
 	budgetstatusrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budgetstatus"
 	budgetstatushistoryrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budgetstatushistory"
 	contactrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/contact"
@@ -93,6 +94,7 @@ func NewRouter(validate *validator.Validate, deps Dependencies) *gin.Engine {
 	userRepo := userrepository.NewRepository(deps.DB)
 	budgetRepo := budgetrepository.NewRepository(deps.DB)
 	budgetFollowUpRepo := budgetfollowuprepository.NewRepository(deps.DB)
+	budgetImportRepo := budgetimportrepository.NewRepository(deps.DB)
 	budgetStatusRepo := budgetstatusrepository.NewRepository(deps.DB)
 	budgetStatusHistoryRepo := budgetstatushistoryrepository.NewRepository(deps.DB)
 	installerRepo := installerrepository.NewRepository(deps.DB)
@@ -116,6 +118,7 @@ func NewRouter(validate *validator.Validate, deps Dependencies) *gin.Engine {
 		salespersonRepo,
 		contactRepo,
 		lossReasonRepo,
+		budgetImportRepo,
 	)
 	budgetFollowUpService := budgetfollowupservice.NewService(budgetFollowUpRepo, budgetRepo, salespersonRepo)
 	budgetStatusService := budgetstatusservice.NewService(budgetStatusRepo)

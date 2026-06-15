@@ -90,6 +90,7 @@ const pageSize = 20;
 
 const defaultFilters: BudgetListFilters = {
   budgetNumber: "",
+  sourceCompany: "",
   yearBudget: "",
   statusId: "",
   installerId: "",
@@ -135,6 +136,8 @@ function getFiltersFromSearchParams(
   return {
     budgetNumber:
       searchParams.get("budgetNumber") ?? defaultFilters.budgetNumber,
+    sourceCompany:
+      searchParams.get("sourceCompany") ?? defaultFilters.sourceCompany,
     yearBudget: searchParams.get("yearBudget") ?? defaultFilters.yearBudget,
     statusId: searchParams.get("statusId") ?? defaultFilters.statusId,
     installerId: searchParams.get("installerId") ?? defaultFilters.installerId,
@@ -156,6 +159,9 @@ function buildSearchParams(filters: BudgetListFilters) {
 
   if (filters.budgetNumber) {
     nextSearchParams.set("budgetNumber", filters.budgetNumber);
+  }
+  if (filters.sourceCompany) {
+    nextSearchParams.set("sourceCompany", filters.sourceCompany);
   }
   if (filters.yearBudget) {
     nextSearchParams.set("yearBudget", filters.yearBudget);
@@ -414,6 +420,7 @@ export function BudgetListPage() {
   const scrollSyncSourceRef = useRef<"frozen" | "main" | null>(null);
   const [draftFilters, setDraftFilters] = useState(() => ({
     budgetNumber: effectiveFilters.budgetNumber,
+    sourceCompany: effectiveFilters.sourceCompany,
     yearBudget: effectiveFilters.yearBudget,
     statusId: effectiveFilters.statusId,
     installerId: effectiveFilters.installerId,
@@ -802,6 +809,7 @@ export function BudgetListPage() {
   const handleClearFilters = () => {
     setDraftFilters({
       budgetNumber: defaultFilters.budgetNumber,
+      sourceCompany: defaultFilters.sourceCompany,
       yearBudget: defaultFilters.yearBudget,
       statusId: defaultFilters.statusId,
       installerId: defaultFilters.installerId,
@@ -928,7 +936,7 @@ export function BudgetListPage() {
             display: "grid",
             gap: 2,
             gridTemplateColumns: {
-              lg: "minmax(220px, 280px) minmax(100px, 120px) minmax(130px, 160px) minmax(140px, 180px) minmax(180px, 240px) minmax(140px, 180px)",
+              lg: "minmax(220px, 280px) minmax(100px, 120px) minmax(140px, 170px) minmax(130px, 160px) minmax(140px, 180px) minmax(180px, 240px) minmax(140px, 180px)",
               md: "repeat(2, minmax(0, 1fr))",
               xs: "minmax(0, 1fr)",
             },
@@ -957,6 +965,20 @@ export function BudgetListPage() {
             type="number"
             value={draftFilters.yearBudget}
           />
+          <TextField
+            label="Empresa"
+            onChange={(event) =>
+              handleDraftChange("sourceCompany", event.target.value)
+            }
+            select
+            size="small"
+            sx={compactFilterFieldSx}
+            value={draftFilters.sourceCompany}
+          >
+            <MenuItem value="">Todas</MenuItem>
+            <MenuItem value="Rocktec">ROCKTEC</MenuItem>
+            <MenuItem value="Trox">TROX</MenuItem>
+          </TextField>
           <TextField
             label="Status"
             onChange={(event) =>
@@ -1214,7 +1236,7 @@ export function BudgetListPage() {
                               {group.projectName}
                             </Typography>
                             <Typography color="text.secondary" variant="body2">
-                              {`Projeto #${group.projectId} · ${group.items.length} orcamento(s) vinculado(s)`}
+                              {`Projeto #${group.projectId} · ${group.items.length} orcamento(s) vinculado(s) · ${group.items[0]?.sourceCompany || "Nao informado"}`}
                             </Typography>
                           </Box>
 
@@ -1349,6 +1371,13 @@ export function BudgetListPage() {
                                       gap: 1,
                                     }}
                                   >
+                                    <Chip
+                                      label={
+                                        budget.sourceCompany || "Sem origem"
+                                      }
+                                      size="small"
+                                      variant="outlined"
+                                    />
                                     <Chip
                                       color={
                                         isWinner
@@ -1674,6 +1703,7 @@ export function BudgetListPage() {
                     <TableHead>
                       <TableRow ref={mainHeaderRowRef}>
                         <TableCell sx={tableHeadCellSx}>Ano</TableCell>
+                        <TableCell sx={tableHeadCellSx}>Empresa</TableCell>
                         <TableCell sx={tableHeadCellSx}>Revisão</TableCell>
                         <TableCell sx={tableHeadCellSx}>Envio</TableCell>
                         <TableCell sx={tableHeadCellSx}>Status</TableCell>
@@ -1725,6 +1755,12 @@ export function BudgetListPage() {
                         >
                           <TableCell sx={singleLineTableCellSx}>
                             {budget.yearBudget}
+                          </TableCell>
+                          <TableCell
+                            sx={singleLineTableCellSx}
+                            title={budget.sourceCompany || "Nao informado"}
+                          >
+                            {budget.sourceCompany || "Nao informado"}
                           </TableCell>
                           <TableCell sx={singleLineTableCellSx}>
                             {budget.revision}

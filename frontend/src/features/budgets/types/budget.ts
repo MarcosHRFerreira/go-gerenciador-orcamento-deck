@@ -10,6 +10,7 @@ export type BudgetSortOrder = "asc" | "desc";
 
 export type BudgetListFilters = {
   budgetNumber: string;
+  sourceCompany: string;
   yearBudget: string;
   statusId: string;
   installerId: string;
@@ -41,6 +42,7 @@ export type BudgetApiItem = {
   competitor_name: string;
   competitor_price?: number | null;
   designer_name: string;
+  source_company: string;
   status_name?: string | null;
   priority_name?: string | null;
   installer_name?: string | null;
@@ -81,6 +83,7 @@ export type BudgetListItem = {
   competitorName: string;
   competitorPrice: number | null;
   statusName: string | null;
+  sourceCompany: string;
   priorityName: string | null;
   installerName: string | null;
   projectName: string | null;
@@ -203,11 +206,36 @@ export type BudgetImportPreviewRow = {
   messages: string[];
 };
 
+export type BudgetImportPreviewLayoutInfo = {
+  key: string;
+  name: string;
+  sourceCompany: string;
+  description: string;
+};
+
+export type BudgetImportPreviewFieldGroup = {
+  key: string;
+  title: string;
+  description: string;
+  fields: string[];
+};
+
+export type BudgetImportPreviewGovernance = {
+  duplicateScope: string;
+  duplicatePolicy: string;
+  missingValuePolicy: string;
+  defaultCatalogs: string[];
+  legacyMatchingScope: string;
+};
+
 export type BudgetImportPreviewResult = {
   previewId: string;
   fileName: string;
   sheetName: string;
   headerRow: number;
+  layout: BudgetImportPreviewLayoutInfo;
+  fieldGroups: BudgetImportPreviewFieldGroup[];
+  governance: BudgetImportPreviewGovernance;
   options: BudgetImportPreviewOptions;
   summary: BudgetImportPreviewSummary;
   catalogActions: BudgetImportCatalogActions;

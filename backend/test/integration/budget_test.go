@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -386,6 +387,81 @@ func TestBudgetsListShouldSupportNormalizedProjectNameFilter(t *testing.T) {
 	}
 	if listPayload.Items[0].BudgetNumber != "NORM-001" {
 		t.Fatalf("expected listed budget NORM-001, got %s", listPayload.Items[0].BudgetNumber)
+	}
+}
+
+func TestBudgetsListShouldSupportSourceCompanyFilter(t *testing.T) {
+	env := newIntegrationTestEnv(t)
+	token := env.createAdminToken(t)
+	seed := env.seedBudgetData(t, uniqueSuffix())
+
+	createRocktecResponse := env.doJSONRequest(t, http.MethodPost, "/budgets", token, buildBudgetRequestBody(
+		"SRC-001",
+		2026,
+		time.Date(2026, time.March, 20, 10, 0, 0, 0, time.UTC),
+		2100,
+		seed,
+		"Designer Rocktec",
+		"Concorrente Rocktec",
+	))
+	if createRocktecResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createRocktecResponse.Code)
+	}
+
+	createTroxResponse := env.doJSONRequest(t, http.MethodPost, "/budgets", token, buildBudgetRequestBody(
+		"SRC-002",
+		2026,
+		time.Date(2026, time.March, 21, 10, 0, 0, 0, time.UTC),
+		2200,
+		seed,
+		"Designer Trox",
+		"Concorrente Trox",
+	))
+	if createTroxResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createTroxResponse.Code)
+	}
+
+	rocktecBudget := decodeJSONResponse[createResourceResponse](t, createRocktecResponse.Body)
+	troxBudget := decodeJSONResponse[createResourceResponse](t, createTroxResponse.Body)
+
+	if _, err := env.db.ExecContext(
+		context.Background(),
+		`UPDATE budgets SET source_company = 'Rocktec', source_layout = 'rocktec' WHERE id = $1`,
+		rocktecBudget.ID,
+	); err != nil {
+		t.Fatalf("failed to mark Rocktec budget source: %v", err)
+	}
+	if _, err := env.db.ExecContext(
+		context.Background(),
+		`UPDATE budgets SET source_company = 'Trox', source_layout = 'trox' WHERE id = $1`,
+		troxBudget.ID,
+	); err != nil {
+		t.Fatalf("failed to mark Trox budget source: %v", err)
+	}
+
+	listResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		"/budgets?source_company=Trox&page=1&page_size=20&sort_by=budget_number&sort_order=asc",
+		token,
+		"",
+	)
+	if listResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, listResponse.Code)
+	}
+
+	listPayload := decodeJSONResponse[dto.ListBudgetsResponse](t, listResponse.Body)
+	if listPayload.Total != 1 {
+		t.Fatalf("expected total 1, got %d", listPayload.Total)
+	}
+	if len(listPayload.Items) != 1 {
+		t.Fatalf("expected 1 listed item, got %d", len(listPayload.Items))
+	}
+	if listPayload.Items[0].BudgetNumber != "SRC-002" {
+		t.Fatalf("expected listed budget SRC-002, got %s", listPayload.Items[0].BudgetNumber)
+	}
+	if listPayload.Items[0].SourceCompany != "Trox" {
+		t.Fatalf("expected source company Trox, got %s", listPayload.Items[0].SourceCompany)
 	}
 }
 

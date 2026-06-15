@@ -38,6 +38,7 @@ function mapBudgetListItem(item: BudgetApiItem) {
     designerName: item.designer_name,
     competitorName: item.competitor_name,
     competitorPrice: item.competitor_price ?? null,
+    sourceCompany: item.source_company,
     statusName: item.status_name ?? null,
     priorityName: item.priority_name ?? null,
     installerName: item.installer_name ?? null,
@@ -139,11 +140,36 @@ type BudgetImportPreviewRowApi = {
   messages: string[];
 };
 
+type BudgetImportPreviewLayoutApi = {
+  key: string;
+  name: string;
+  source_company: string;
+  description: string;
+};
+
+type BudgetImportPreviewFieldGroupApi = {
+  key: string;
+  title: string;
+  description: string;
+  fields: string[];
+};
+
+type BudgetImportPreviewGovernanceApi = {
+  duplicate_scope: string;
+  duplicate_policy: string;
+  missing_value_policy: string;
+  default_catalogs: string[];
+  legacy_matching_scope: string;
+};
+
 type BudgetImportPreviewApiResponse = {
   preview_id: string;
   file_name: string;
   sheet_name: string;
   header_row: number;
+  layout: BudgetImportPreviewLayoutApi;
+  field_groups: BudgetImportPreviewFieldGroupApi[];
+  governance: BudgetImportPreviewGovernanceApi;
   options: BudgetImportPreviewApiOptions;
   summary: BudgetImportPreviewApiSummary;
   catalog_actions: BudgetImportCatalogActionsApi;
@@ -202,6 +228,25 @@ function mapBudgetImportPreviewResult(
     fileName: response.file_name,
     sheetName: response.sheet_name,
     headerRow: response.header_row,
+    layout: {
+      key: response.layout.key,
+      name: response.layout.name,
+      sourceCompany: response.layout.source_company,
+      description: response.layout.description,
+    },
+    fieldGroups: (response.field_groups ?? []).map((item) => ({
+      key: item.key,
+      title: item.title,
+      description: item.description,
+      fields: item.fields ?? [],
+    })),
+    governance: {
+      duplicateScope: response.governance.duplicate_scope,
+      duplicatePolicy: response.governance.duplicate_policy,
+      missingValuePolicy: response.governance.missing_value_policy,
+      defaultCatalogs: response.governance.default_catalogs ?? [],
+      legacyMatchingScope: response.governance.legacy_matching_scope,
+    },
     options: mapBudgetImportPreviewOptions(response.options),
     summary: {
       rowsRead: response.summary.rows_read,
@@ -292,6 +337,7 @@ function mapCreateBudgetPayload(
 function buildBudgetListParams(filters: BudgetListFilters) {
   return {
     budget_number: filters.budgetNumber || undefined,
+    source_company: filters.sourceCompany || undefined,
     year_budget: filters.yearBudget || undefined,
     status_id: filters.statusId || undefined,
     installer_id: filters.installerId || undefined,

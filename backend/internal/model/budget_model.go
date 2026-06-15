@@ -26,6 +26,9 @@ type BudgetModel struct {
 	DesignerName         string
 	SpecificationDetails string
 	CurrentFollowUp      string
+	SourceCompany        string
+	SourceLayout         string
+	ImportBatchID        sql.NullInt64
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 	StatusName           sql.NullString

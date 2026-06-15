@@ -4,9 +4,11 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/xml"
 	"fmt"
 	"io"
+	"log/slog"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -17,12 +19,11 @@ import (
 
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/apperror"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/dto"
+	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/logger"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/model"
 )
 
 const (
-	previewSheetName        = "ORCAMENTOS"
-	previewHeaderRowNumber  = 10
 	notInformedName         = "Nao informado"
 	duplicateStrategyIgnore = "ignore"
 	duplicateStrategyUpdate = "update"
@@ -33,7 +34,9 @@ var revisionDigitsPattern = regexp.MustCompile(`\d+`)
 type budgetRepository interface {
 	Create(ctx context.Context, item *model.BudgetModel) (int64, error)
 	ExistsByNumberAndYear(ctx context.Context, budgetNumber string, yearBudget int) (bool, error)
+	ExistsBySourceAndNumberAndYear(ctx context.Context, sourceCompany string, budgetNumber string, yearBudget int) (bool, error)
 	GetByNumberAndYear(ctx context.Context, budgetNumber string, yearBudget int) (*model.BudgetModel, error)
+	GetBySourceAndNumberAndYear(ctx context.Context, sourceCompany string, budgetNumber string, yearBudget int) (*model.BudgetModel, error)
 	Update(ctx context.Context, item *model.BudgetModel) error
 }
 
@@ -81,6 +84,12 @@ type lossReasonRepository interface {
 	List(ctx context.Context) ([]model.LossReasonModel, error)
 }
 
+type importAuditRepository interface {
+	CreateBatch(ctx context.Context, item *model.BudgetImportBatchModel) (int64, error)
+	UpdateBatch(ctx context.Context, item *model.BudgetImportBatchModel) error
+	CreateRowRaw(ctx context.Context, item *model.BudgetImportRowRawModel) (int64, error)
+}
+
 type Service interface {
 	Preview(
 		ctx context.Context,
@@ -101,6 +110,7 @@ type service struct {
 	salespersonRepo salespersonRepository
 	contactRepo     contactRepository
 	lossReasonRepo  lossReasonRepository
+	auditRepo       importAuditRepository
 	mu              sync.Mutex
 	previews        map[string]previewSnapshot
 }
@@ -183,7 +193,12 @@ func NewService(
 	salespersonRepo salespersonRepository,
 	contactRepo contactRepository,
 	lossReasonRepo lossReasonRepository,
+	auditRepo importAuditRepository,
 ) Service {
+	if auditRepo == nil {
+		auditRepo = noopImportAuditRepository{}
+	}
+
 	return &service{
 		budgetRepo:      budgetRepo,
 		statusRepo:      statusRepo,
@@ -194,7 +209,33 @@ func NewService(
 		salespersonRepo: salespersonRepo,
 		contactRepo:     contactRepo,
 		lossReasonRepo:  lossReasonRepo,
+		auditRepo:       auditRepo,
 		previews:        make(map[string]previewSnapshot),
+	}
+}
+
+type noopImportAuditRepository struct{}
+
+func (noopImportAuditRepository) CreateBatch(_ context.Context, _ *model.BudgetImportBatchModel) (int64, error) {
+	return 0, nil
+}
+
+func (noopImportAuditRepository) UpdateBatch(_ context.Context, _ *model.BudgetImportBatchModel) error {
+	return nil
+}
+
+func (noopImportAuditRepository) CreateRowRaw(_ context.Context, _ *model.BudgetImportRowRawModel) (int64, error) {
+	return 0, nil
+}
+
+func validNullTime(value time.Time) sql.NullTime {
+	if value.IsZero() {
+		return sql.NullTime{}
+	}
+
+	return sql.NullTime{
+		Time:  value,
+		Valid: true,
 	}
 }
 
@@ -217,15 +258,17 @@ func (s *service) Preview(
 		return nil, err
 	}
 
-	workbook, err := parseWorkbook(fileData, previewSheetName)
+	layout, workbook, err := resolveImportLayout(fileData)
 	if err != nil {
 		return nil, err
 	}
-
-	header := workbook.rows[previewHeaderRowNumber]
-	if !isExpectedHeader(header) {
-		return nil, apperror.BadRequest("Cabecalho invalido na aba ORCAMENTOS")
-	}
+	importLogger := logger.FromContext(ctx).With(
+		slog.String("import_action", "preview"),
+		slog.String("source_layout", layout.Key()),
+		slog.String("source_company", layout.SourceCompany()),
+		slog.String("file_name", fileName),
+	)
+	importLogger.InfoContext(ctx, "preview de importacao iniciado")
 
 	catalogs, err := s.loadCatalogIndex(ctx)
 	if err != nil {
@@ -235,19 +278,18 @@ func (s *service) Preview(
 	response := &dto.PreviewBudgetImportResponse{
 		PreviewID: fmt.Sprintf("preview_%d", time.Now().UnixNano()),
 		FileName:  fileName,
-		SheetName: previewSheetName,
-		HeaderRow: previewHeaderRowNumber,
-		Options:   normalizedOptions,
-		Warnings: []dto.BudgetImportPreviewMessage{
-			{
-				Code:    "COMMISSION_INTERPRETATION_ASSUMED",
-				Message: "A coluna COMISSAO foi tratada como valor numerico simples.",
-			},
-			{
-				Code:    "COLUMN_MAPPING_ASSUMED",
-				Message: "A coluna PRIORIDADE foi tratada como status catalogado e a coluna STATUS como follow-up atual.",
-			},
+		SheetName: layout.SheetName(),
+		HeaderRow: layout.HeaderRowNumber(),
+		Layout: dto.BudgetImportPreviewLayoutInfo{
+			Key:           layout.Key(),
+			Name:          layout.Name(),
+			SourceCompany: layout.SourceCompany(),
+			Description:   layout.Description(),
 		},
+		FieldGroups:       clonePreviewFieldGroups(layout.FieldGroups()),
+		Governance:        clonePreviewGovernance(layout.Governance()),
+		Options:           normalizedOptions,
+		Warnings:          clonePreviewWarnings(layout.PreviewWarnings()),
 		Errors:            []dto.BudgetImportPreviewMessage{},
 		SampleRows:        make([]dto.BudgetImportPreviewRow, 0, 20),
 		InconsistencyRows: make([]dto.BudgetImportPreviewRow, 0),
@@ -304,9 +346,9 @@ func (s *service) Preview(
 		normalizedOptions,
 	)
 
-	for rowNumber := previewHeaderRowNumber + 1; rowNumber <= workbook.maxRow; rowNumber++ {
+	for rowNumber := layout.HeaderRowNumber() + 1; rowNumber <= workbook.maxRow; rowNumber++ {
 		rowValues := workbook.rows[rowNumber]
-		if isRowEmpty(rowValues) {
+		if layout.IsRowEmpty(rowValues) {
 			response.Summary.RowsEmptyIgnored++
 			continue
 		}
@@ -315,6 +357,7 @@ func (s *service) Preview(
 
 		rowPreview, result, rowErr := s.buildRowPreview(
 			ctx,
+			layout,
 			rowNumber,
 			rowValues,
 			catalogs,
@@ -355,7 +398,7 @@ func (s *service) Preview(
 	}
 
 	if response.Summary.RowsRead == 0 {
-		return nil, apperror.BadRequest("A aba ORCAMENTOS nao contem linhas importaveis")
+		return nil, apperror.BadRequest(fmt.Sprintf("A aba %s nao contem linhas importaveis", layout.SheetName()))
 	}
 
 	response.CatalogActions = dto.BudgetImportCatalogActions{
@@ -373,8 +416,21 @@ func (s *service) Preview(
 		previewID: response.PreviewID,
 		fileName:  fileName,
 		fileData:  append([]byte(nil), fileData...),
+		layoutKey: layout.Key(),
 		options:   normalizedOptions,
 	})
+
+	importLogger.InfoContext(
+		ctx,
+		"preview de importacao concluido",
+		slog.String("preview_id", response.PreviewID),
+		slog.Int("rows_read", response.Summary.RowsRead),
+		slog.Int("rows_valid", response.Summary.RowsValid),
+		slog.Int("rows_with_warning", response.Summary.RowsWithWarning),
+		slog.Int("rows_with_error", response.Summary.RowsWithError),
+		slog.Int("new_budgets", response.Summary.NewBudgets),
+		slog.Int("existing_budgets", response.Summary.ExistingBudgets),
+	)
 
 	return response, nil
 }
@@ -387,6 +443,7 @@ type rowPreviewResult struct {
 
 func (s *service) buildRowPreview(
 	ctx context.Context,
+	layout importLayout,
 	rowNumber int,
 	rowValues []string,
 	catalogs *catalogIndex,
@@ -401,87 +458,25 @@ func (s *service) buildRowPreview(
 	missingContacts map[string]struct{},
 	missingLossReasons map[string]struct{},
 ) (dto.BudgetImportPreviewRow, rowPreviewResult, error) {
+	normalizedRow, parseErr := layout.ParseNormalizedRow(rowNumber, rowValues)
+	if parseErr != nil {
+		return markRowError(dto.BudgetImportPreviewRow{
+			RowNumber:    rowNumber,
+			BudgetNumber: normalizedRow.budgetNumber,
+			Messages:     []string{},
+		}, parseErr.Error()), resultWithError(), nil
+	}
+
 	previewRow := dto.BudgetImportPreviewRow{
-		RowNumber: rowNumber,
-		Messages:  []string{},
+		RowNumber:    rowNumber,
+		BudgetNumber: normalizedRow.budgetNumber,
+		Messages:     append([]string{}, normalizedRow.warnings...),
 	}
 	result := rowPreviewResult{}
-
-	rawDate := getCell(rowValues, 0)
-	rawBudgetNumber := normalizeCellText(getCell(rowValues, 1))
-	rawRevision := getCell(rowValues, 2)
-	rawInstaller := getCell(rowValues, 3)
-	rawProject := getCell(rowValues, 4)
-	rawProjectType := getCell(rowValues, 5)
-	rawSalesperson := getCell(rowValues, 6)
-	rawContact := getCell(rowValues, 7)
-	rawGrossValue := getCell(rowValues, 8)
-	rawCommission := getCell(rowValues, 9)
-	rawAreaM2 := getCell(rowValues, 10)
-	rawStatus := getCell(rowValues, 11)
-	rawFollowUp := getCell(rowValues, 12)
-	rawCompetitor := getCell(rowValues, 13)
-	rawLossReason := getCell(rowValues, 14)
-	rawCompetitorPrice := getCell(rowValues, 15)
-	rawDesigner := getCell(rowValues, 16)
-	rawSpecification := getCell(rowValues, 17)
-
-	previewRow.BudgetNumber = rawBudgetNumber
-
-	if rawBudgetNumber == "" {
-		return markRowError(previewRow, "Numero do orcamento nao informado."), resultWithError(), nil
-	}
-
-	sentAt, err := parseExcelDate(rawDate)
-	if err != nil {
-		return markRowError(previewRow, "Data do orcamento invalida."), resultWithError(), nil
-	}
-
-	_, grossValueErr := parseOptionalNumber(rawGrossValue, true)
-	if grossValueErr != nil {
-		return markRowError(previewRow, "Valor bruto invalido."), resultWithError(), nil
-	}
-
-	if _, err := parseOptionalNumber(rawCommission, false); err != nil {
-		return markRowError(previewRow, "Comissao invalida."), resultWithError(), nil
-	}
-
-	if _, err := parseOptionalNumber(rawAreaM2, false); err != nil {
-		return markRowError(previewRow, "M2 invalido."), resultWithError(), nil
-	}
-
-	if _, err := parseOptionalNumber(rawCompetitorPrice, false); err != nil {
-		return markRowError(previewRow, "Valor concorrente invalido."), resultWithError(), nil
-	}
-
-	revision := extractRevision(rawRevision)
-	if revision == 0 && !isMissingValue(rawRevision) {
-		result.hasWarning = true
-		previewRow.Messages = append(previewRow.Messages, "Revisao nao reconhecida, sera usada revisao 0.")
-	}
-
-	if isMissingValue(rawFollowUp) {
-		result.hasWarning = true
-		previewRow.Messages = append(previewRow.Messages, "Follow-up atual nao informado, sera usado Nao informado.")
-	}
-
-	if isMissingValue(rawCompetitor) {
-		result.hasWarning = true
-		previewRow.Messages = append(previewRow.Messages, "Concorrente nao informado, sera usado Nao informado.")
-	}
-
-	if isMissingValue(rawDesigner) {
-		result.hasWarning = true
-		previewRow.Messages = append(previewRow.Messages, "Projetista nao informado, sera usado Nao informado.")
-	}
-
-	if isMissingValue(rawSpecification) {
-		result.hasWarning = true
-		previewRow.Messages = append(previewRow.Messages, "Especificacoes nao informadas, sera usado Nao informado.")
-	}
+	result.hasWarning = len(normalizedRow.warnings) > 0
 
 	installerName, installerHasWarning, installerHasError := resolveCatalogName(
-		rawInstaller,
+		normalizedRow.installerName,
 		"Instalador",
 		catalogs.installers,
 		catalogs.defaultInstallerExists,
@@ -493,7 +488,7 @@ func (s *service) buildRowPreview(
 	result.hasError = result.hasError || installerHasError
 
 	projectTypeName, projectTypeHasWarning, projectTypeHasError := resolveCatalogName(
-		rawProjectType,
+		normalizedRow.projectTypeName,
 		"Tipo de obra",
 		catalogs.projectTypes,
 		catalogs.defaultProjectTypeExists,
@@ -507,7 +502,7 @@ func (s *service) buildRowPreview(
 	_ = projectTypeName
 
 	projectName, projectHasWarning, projectHasError := resolveCatalogName(
-		rawProject,
+		normalizedRow.projectName,
 		"Projeto",
 		catalogs.projects,
 		catalogs.defaultProjectExists,
@@ -521,7 +516,7 @@ func (s *service) buildRowPreview(
 	_ = projectName
 
 	_, salespersonHasWarning, salespersonHasError := resolveCatalogName(
-		rawSalesperson,
+		normalizedRow.salespersonName,
 		"Vendedor",
 		catalogs.salespeople,
 		catalogs.defaultSalespersonExists,
@@ -533,7 +528,7 @@ func (s *service) buildRowPreview(
 	result.hasError = result.hasError || salespersonHasError
 
 	_, statusHasWarning, statusHasError := resolveCatalogName(
-		rawStatus,
+		normalizedRow.statusName,
 		"Status",
 		catalogs.statuses,
 		catalogs.defaultStatusExists,
@@ -545,7 +540,7 @@ func (s *service) buildRowPreview(
 	result.hasError = result.hasError || statusHasError
 
 	_, lossReasonHasWarning, lossReasonHasError := resolveCatalogName(
-		rawLossReason,
+		normalizedRow.lossReasonName,
 		"Motivo de perda",
 		catalogs.lossReasons,
 		catalogs.defaultLossReasonExists,
@@ -569,7 +564,7 @@ func (s *service) buildRowPreview(
 		installerName = normalizeCellText(notInformedName)
 	}
 	_, contactHasWarning, contactHasError := resolveContactName(
-		rawContact,
+		normalizedRow.contactName,
 		installerName,
 		catalogs.contacts,
 		catalogs.defaultContactExists,
@@ -586,13 +581,18 @@ func (s *service) buildRowPreview(
 		return previewRow, result, nil
 	}
 
-	duplicateKey := fmt.Sprintf("%s|%d", normalizeLookupKey(rawBudgetNumber), sentAt.Year())
+	duplicateKey := fmt.Sprintf("%s|%d", normalizeLookupKey(normalizedRow.budgetNumber), normalizedRow.yearBudget)
 	if _, exists := fileDuplicateKeys[duplicateKey]; exists {
 		return markRowError(previewRow, "Orcamento duplicado dentro do arquivo para o mesmo ano."), resultWithError(), nil
 	}
 	fileDuplicateKeys[duplicateKey] = struct{}{}
 
-	existsInDatabase, err := s.budgetRepo.ExistsByNumberAndYear(ctx, rawBudgetNumber, sentAt.Year())
+	existsInDatabase, err := s.budgetRepo.ExistsBySourceAndNumberAndYear(
+		ctx,
+		layout.SourceCompany(),
+		normalizedRow.budgetNumber,
+		normalizedRow.yearBudget,
+	)
 	if err != nil {
 		return dto.BudgetImportPreviewRow{}, rowPreviewResult{}, apperror.Internal("failed to check budget import preview", err)
 	}
@@ -778,7 +778,7 @@ func parseWorkbook(fileData []byte, sheetName string) (*workbookData, error) {
 
 	rows, maxRow, err := readSheetRows(sheetFile, sharedStrings)
 	if err != nil {
-		return nil, apperror.BadRequest("Falha ao processar a aba ORCAMENTOS")
+		return nil, apperror.BadRequest(fmt.Sprintf("Falha ao processar a aba %s", sheetName))
 	}
 
 	return &workbookData{
@@ -866,7 +866,7 @@ func resolveSheetPath(reader *zip.Reader, sheetName string) (string, error) {
 		}
 	}
 
-	return "", apperror.BadRequest("A aba ORCAMENTOS nao foi encontrada no arquivo xlsx")
+	return "", apperror.BadRequest(fmt.Sprintf("A aba %s nao foi encontrada no arquivo xlsx", sheetName))
 }
 
 func readSheetRows(file *zip.File, sharedStrings []string) (map[int][]string, int, error) {
@@ -970,33 +970,6 @@ func excelColumnIndex(reference string) int {
 		result = result*26 + int(char-'A'+1)
 	}
 	return result - 1
-}
-
-func isExpectedHeader(header []string) bool {
-	if len(header) < 18 {
-		return false
-	}
-
-	first := normalizeLookupKey(getCell(header, 0))
-	fourth := normalizeLookupKey(getCell(header, 3))
-	fifth := normalizeLookupKey(getCell(header, 4))
-	seventh := normalizeLookupKey(getCell(header, 6))
-	eighth := normalizeLookupKey(getCell(header, 7))
-
-	return first == "data" &&
-		fourth != "" &&
-		fifth != "" &&
-		seventh != "" &&
-		eighth != ""
-}
-
-func isRowEmpty(values []string) bool {
-	for column := 0; column < 18; column++ {
-		if !isMissingValue(getCell(values, column)) {
-			return false
-		}
-	}
-	return true
 }
 
 func getCell(values []string, index int) string {

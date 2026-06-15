@@ -48,6 +48,7 @@ type UpdateBudgetRequest struct {
 
 type ListBudgetsFilters struct {
 	BudgetNumber            string
+	SourceCompany           string
 	YearBudget              *int
 	StatusID                *int64
 	SalespersonID           *int64
@@ -88,6 +89,7 @@ type BudgetResponse struct {
 	CompetitorName       string    `json:"competitor_name"`
 	CompetitorPrice      *float64  `json:"competitor_price,omitempty"`
 	DesignerName         string    `json:"designer_name"`
+	SourceCompany        string    `json:"source_company"`
 	StatusName           *string   `json:"status_name,omitempty"`
 	PriorityName         *string   `json:"priority_name,omitempty"`
 	InstallerName        *string   `json:"installer_name,omitempty"`

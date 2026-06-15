@@ -208,12 +208,12 @@ export function BudgetImportPage() {
             Voltar para orçamentos
           </Button>
         }
-        description="Envie a aba ORCAMENTOS da planilha, revise o preview e confirme a carga somente depois da validação."
+        description="Envie uma planilha .xlsx, revise o layout identificado automaticamente e confirme a carga somente depois da validacao."
         title="Importar planilha de orçamentos"
       />
 
       <SectionCard
-        description="A importação usa somente a aba ORCAMENTOS e exige um arquivo .xlsx."
+        description="A importacao identifica automaticamente o layout compativel e exige um arquivo .xlsx."
         title="Arquivo e opções"
       >
         <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
@@ -307,8 +307,8 @@ export function BudgetImportPage() {
           {previewMutation.isPending ? (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
               <Typography color="text.secondary" variant="body2">
-                Gerando preview da planilha. Aguarde a leitura da aba
-                ORCAMENTOS.
+                Gerando preview da planilha. Aguarde a identificacao do layout e
+                a leitura das linhas importaveis.
               </Typography>
               <LinearProgress />
             </Box>
@@ -477,10 +477,84 @@ export function BudgetImportPage() {
 
       {previewResult ? (
         <SectionCard
-          description={`Arquivo ${previewResult.fileName} | Aba ${previewResult.sheetName} | Cabeçalho na linha ${previewResult.headerRow}`}
+          description={`Arquivo ${previewResult.fileName} | Layout ${previewResult.layout.name} | Aba ${previewResult.sheetName} | Cabecalho na linha ${previewResult.headerRow}`}
           title="Preview da importação"
         >
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
+            <Alert severity="info" variant="outlined">
+              {`Layout identificado: ${previewResult.layout.name} | Origem: ${previewResult.layout.sourceCompany}. ${previewResult.layout.description}`}
+            </Alert>
+
+            <Box
+              sx={{
+                display: "grid",
+                gap: 1.5,
+                gridTemplateColumns: {
+                  lg: "repeat(3, minmax(0, 1fr))",
+                  xs: "minmax(0, 1fr)",
+                },
+              }}
+            >
+              <Box
+                sx={{
+                  border: "1px solid",
+                  borderColor: "divider",
+                  borderRadius: 3,
+                  p: 2,
+                }}
+              >
+                <Typography color="text.secondary" variant="body2">
+                  Layout detectado
+                </Typography>
+                <Typography variant="h6">
+                  {previewResult.layout.name}
+                </Typography>
+                <Typography color="text.secondary" variant="body2">
+                  {previewResult.layout.key}
+                </Typography>
+              </Box>
+              <Box
+                sx={{
+                  border: "1px solid",
+                  borderColor: "divider",
+                  borderRadius: 3,
+                  p: 2,
+                }}
+              >
+                <Typography color="text.secondary" variant="body2">
+                  Empresa de origem
+                </Typography>
+                <Typography variant="h6">
+                  {previewResult.layout.sourceCompany}
+                </Typography>
+                <Typography color="text.secondary" variant="body2">
+                  Metadado gravado no lote e nos orcamentos importados
+                </Typography>
+              </Box>
+              <Box
+                sx={{
+                  border: "1px solid",
+                  borderColor: "divider",
+                  borderRadius: 3,
+                  p: 2,
+                }}
+              >
+                <Typography color="text.secondary" variant="body2">
+                  Estrategia aplicada
+                </Typography>
+                <Typography variant="h6">
+                  {previewResult.options.duplicateStrategy === "update"
+                    ? "Atualizar duplicados"
+                    : "Ignorar duplicados"}
+                </Typography>
+                <Typography color="text.secondary" variant="body2">
+                  {previewResult.options.createMissingCatalogs
+                    ? "Cria catalogos ausentes durante a carga"
+                    : "Nao cria catalogos ausentes durante a carga"}
+                </Typography>
+              </Box>
+            </Box>
+
             <Box
               sx={{
                 display: "grid",
@@ -507,6 +581,68 @@ export function BudgetImportPage() {
                   <Typography variant="h5">{item.value}</Typography>
                 </Box>
               ))}
+            </Box>
+
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+              <Typography variant="h6">Governanca da importacao</Typography>
+              <Box
+                sx={{
+                  display: "grid",
+                  gap: 1.5,
+                  gridTemplateColumns: {
+                    lg: "repeat(2, minmax(0, 1fr))",
+                    xs: "minmax(0, 1fr)",
+                  },
+                }}
+              >
+                <Box
+                  sx={{
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: 3,
+                    p: 2,
+                  }}
+                >
+                  <Typography color="text.secondary" variant="body2">
+                    Escopo da duplicidade
+                  </Typography>
+                  <Typography variant="h6">
+                    {previewResult.governance.duplicateScope}
+                  </Typography>
+                  <Typography color="text.secondary" variant="body2">
+                    {previewResult.governance.duplicatePolicy}
+                  </Typography>
+                </Box>
+                <Box
+                  sx={{
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: 3,
+                    p: 2,
+                  }}
+                >
+                  <Typography color="text.secondary" variant="body2">
+                    Politica para valores ausentes
+                  </Typography>
+                  <Typography variant="body1">
+                    {previewResult.governance.missingValuePolicy}
+                  </Typography>
+                  <Typography color="text.secondary" variant="body2">
+                    {previewResult.governance.legacyMatchingScope}
+                  </Typography>
+                </Box>
+              </Box>
+              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+                {previewResult.governance.defaultCatalogs.map((catalogName) => (
+                  <Chip
+                    key={`governance-${catalogName}`}
+                    color="default"
+                    label={catalogName}
+                    size="small"
+                    variant="outlined"
+                  />
+                ))}
+              </Box>
             </Box>
 
             <Box
@@ -537,6 +673,61 @@ export function BudgetImportPage() {
                 </Box>
               ))}
             </Box>
+
+            {previewResult.fieldGroups.length > 0 ? (
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+                <Typography variant="h6">Mapeamento do layout</Typography>
+                <Typography color="text.secondary" variant="body2">
+                  Veja quais campos entram no dominio principal e quais ficam
+                  preservados apenas para rastreabilidade do lote.
+                </Typography>
+                <Box
+                  sx={{
+                    display: "grid",
+                    gap: 1.5,
+                    gridTemplateColumns: {
+                      lg: "repeat(3, minmax(0, 1fr))",
+                      md: "repeat(2, minmax(0, 1fr))",
+                      xs: "minmax(0, 1fr)",
+                    },
+                  }}
+                >
+                  {previewResult.fieldGroups.map((group) => (
+                    <Box
+                      key={group.key}
+                      sx={{
+                        border: "1px solid",
+                        borderColor: "divider",
+                        borderRadius: 3,
+                        p: 2,
+                      }}
+                    >
+                      <Typography variant="subtitle1">{group.title}</Typography>
+                      <Typography color="text.secondary" variant="body2">
+                        {group.description}
+                      </Typography>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 1,
+                          mt: 1.5,
+                        }}
+                      >
+                        {group.fields.map((field) => (
+                          <Chip
+                            key={`${group.key}-${field}`}
+                            label={field}
+                            size="small"
+                            variant="outlined"
+                          />
+                        ))}
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+            ) : null}
 
             {previewResult.warnings.length > 0 ? (
               <Alert severity="warning">

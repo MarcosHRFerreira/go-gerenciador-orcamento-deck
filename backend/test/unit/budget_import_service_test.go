@@ -15,8 +15,10 @@ import (
 
 type budgetImportBudgetRepositoryStub struct {
 	exists             bool
+	existsBySource     bool
 	err                error
 	getItem            *model.BudgetModel
+	getItemBySource    *model.BudgetModel
 	createID           int64
 	createErr          error
 	updateErr          error
@@ -36,8 +38,16 @@ func (s *budgetImportBudgetRepositoryStub) ExistsByNumberAndYear(_ context.Conte
 	return s.exists, s.err
 }
 
+func (s *budgetImportBudgetRepositoryStub) ExistsBySourceAndNumberAndYear(_ context.Context, _ string, _ string, _ int) (bool, error) {
+	return s.existsBySource, s.err
+}
+
 func (s *budgetImportBudgetRepositoryStub) GetByNumberAndYear(_ context.Context, _ string, _ int) (*model.BudgetModel, error) {
 	return s.getItem, s.err
+}
+
+func (s *budgetImportBudgetRepositoryStub) GetBySourceAndNumberAndYear(_ context.Context, _ string, _ string, _ int) (*model.BudgetModel, error) {
+	return s.getItemBySource, s.err
 }
 
 func (s *budgetImportBudgetRepositoryStub) Update(_ context.Context, item *model.BudgetModel) error {
@@ -226,6 +236,31 @@ func (s *budgetImportLossReasonRepositoryStub) List(_ context.Context) ([]model.
 	return s.items, nil
 }
 
+type budgetImportAuditRepositoryStub struct {
+	createBatchID       int64
+	capturedBatchCreate *model.BudgetImportBatchModel
+	capturedBatchUpdate *model.BudgetImportBatchModel
+	capturedRows        []*model.BudgetImportRowRawModel
+}
+
+func (s *budgetImportAuditRepositoryStub) CreateBatch(_ context.Context, item *model.BudgetImportBatchModel) (int64, error) {
+	s.capturedBatchCreate = item
+	if s.createBatchID == 0 {
+		s.createBatchID = 1
+	}
+	return s.createBatchID, nil
+}
+
+func (s *budgetImportAuditRepositoryStub) UpdateBatch(_ context.Context, item *model.BudgetImportBatchModel) error {
+	s.capturedBatchUpdate = item
+	return nil
+}
+
+func (s *budgetImportAuditRepositoryStub) CreateRowRaw(_ context.Context, item *model.BudgetImportRowRawModel) (int64, error) {
+	s.capturedRows = append(s.capturedRows, item)
+	return int64(len(s.capturedRows)), nil
+}
+
 func TestBudgetImportPreviewShouldParseWorkbookAndSummarizeCatalogActions(t *testing.T) {
 	service := budgetimportservice.NewService(
 		&budgetImportBudgetRepositoryStub{},
@@ -241,6 +276,7 @@ func TestBudgetImportPreviewShouldParseWorkbookAndSummarizeCatalogActions(t *tes
 		&budgetImportSalespersonRepositoryStub{},
 		&budgetImportContactRepositoryStub{},
 		&budgetImportLossReasonRepositoryStub{},
+		&budgetImportAuditRepositoryStub{},
 	)
 
 	response, err := service.Preview(
@@ -289,6 +325,12 @@ func TestBudgetImportPreviewShouldParseWorkbookAndSummarizeCatalogActions(t *tes
 	if response.Summary.NewBudgets != 1 {
 		t.Fatalf("expected new budgets 1, got %d", response.Summary.NewBudgets)
 	}
+	if response.Governance.DuplicateScope != "source_company + budget_number + year_budget" {
+		t.Fatalf("expected governance duplicate scope, got %s", response.Governance.DuplicateScope)
+	}
+	if len(response.Governance.DefaultCatalogs) == 0 {
+		t.Fatal("expected governance default catalogs")
+	}
 	if response.CatalogActions.InstallersToCreate < 1 {
 		t.Fatalf("expected at least one installer to create, got %d", response.CatalogActions.InstallersToCreate)
 	}
@@ -320,7 +362,10 @@ func TestBudgetImportPreviewShouldParseWorkbookAndSummarizeCatalogActions(t *tes
 
 func TestBudgetImportPreviewShouldMarkExistingBudgetAsIgnore(t *testing.T) {
 	service := budgetimportservice.NewService(
-		&budgetImportBudgetRepositoryStub{exists: true},
+		&budgetImportBudgetRepositoryStub{
+			exists:         true,
+			existsBySource: true,
+		},
 		&budgetImportStatusRepositoryStub{
 			items: []model.BudgetStatusModel{
 				{Name: "FECHADO"},
@@ -367,6 +412,7 @@ func TestBudgetImportPreviewShouldMarkExistingBudgetAsIgnore(t *testing.T) {
 				{Name: "Nao informado"},
 			},
 		},
+		&budgetImportAuditRepositoryStub{},
 	)
 
 	response, err := service.Preview(
@@ -423,6 +469,7 @@ func TestBudgetImportPreviewShouldExposeInconsistencyRows(t *testing.T) {
 		&budgetImportSalespersonRepositoryStub{},
 		&budgetImportContactRepositoryStub{},
 		&budgetImportLossReasonRepositoryStub{},
+		&budgetImportAuditRepositoryStub{},
 	)
 
 	response, err := service.Preview(
@@ -515,6 +562,7 @@ func TestBudgetImportExecuteShouldCreateBudgetFromStoredPreview(t *testing.T) {
 				{ID: 1, Name: "Nao informado"},
 			},
 		},
+		&budgetImportAuditRepositoryStub{},
 	)
 
 	previewResponse, err := service.Preview(
@@ -616,6 +664,7 @@ func TestBudgetImportExecuteShouldNotAssociateProjectWhenObraIsNaoInformado(t *t
 				{ID: 1, Name: "Nao informado"},
 			},
 		},
+		&budgetImportAuditRepositoryStub{},
 	)
 
 	previewResponse, err := service.Preview(
@@ -666,28 +715,394 @@ func TestBudgetImportExecuteShouldNotAssociateProjectWhenObraIsNaoInformado(t *t
 	}
 }
 
+func TestBudgetImportPreviewShouldRejectWorkbookWithoutRocktecSheet(t *testing.T) {
+	service := budgetimportservice.NewService(
+		&budgetImportBudgetRepositoryStub{},
+		&budgetImportStatusRepositoryStub{},
+		&budgetImportPriorityRepositoryStub{},
+		&budgetImportInstallerRepositoryStub{},
+		&budgetImportProjectRepositoryStub{},
+		&budgetImportProjectTypeRepositoryStub{},
+		&budgetImportSalespersonRepositoryStub{},
+		&budgetImportContactRepositoryStub{},
+		&budgetImportLossReasonRepositoryStub{},
+		&budgetImportAuditRepositoryStub{},
+	)
+
+	_, err := service.Preview(
+		context.Background(),
+		"orcamentos.xlsx",
+		buildImportWorkbookWithOptions(t, importWorkbookFixtureOptions{
+			sheetName: "Capa",
+			rowValues: []map[string]string{
+				{
+					"A": "45660",
+					"B": "1001",
+				},
+			},
+		}),
+		dto.PreviewBudgetImportOptions{
+			CreateMissingCatalogs: true,
+			UseDefaultNotInformed: true,
+		},
+	)
+
+	if err == nil {
+		t.Fatal("expected error when workbook does not contain Rocktec sheet")
+	}
+	if !strings.Contains(err.Error(), "Nenhum layout de importacao compativel foi identificado") {
+		t.Fatalf("expected no compatible layout error, got %v", err)
+	}
+}
+
+func TestBudgetImportPreviewShouldRejectWorkbookWithInvalidRocktecHeader(t *testing.T) {
+	service := budgetimportservice.NewService(
+		&budgetImportBudgetRepositoryStub{},
+		&budgetImportStatusRepositoryStub{},
+		&budgetImportPriorityRepositoryStub{},
+		&budgetImportInstallerRepositoryStub{},
+		&budgetImportProjectRepositoryStub{},
+		&budgetImportProjectTypeRepositoryStub{},
+		&budgetImportSalespersonRepositoryStub{},
+		&budgetImportContactRepositoryStub{},
+		&budgetImportLossReasonRepositoryStub{},
+		&budgetImportAuditRepositoryStub{},
+	)
+
+	_, err := service.Preview(
+		context.Background(),
+		"orcamentos.xlsx",
+		buildImportWorkbookWithOptions(t, importWorkbookFixtureOptions{
+			headers: []string{
+				"Data",
+				"Numero",
+				"Revisao",
+			},
+			rowValues: []map[string]string{
+				{
+					"A": "45660",
+					"B": "1001",
+				},
+			},
+		}),
+		dto.PreviewBudgetImportOptions{
+			CreateMissingCatalogs: true,
+			UseDefaultNotInformed: true,
+		},
+	)
+
+	if err == nil {
+		t.Fatal("expected error when workbook header is invalid for Rocktec")
+	}
+	if !strings.Contains(err.Error(), "Nenhum layout de importacao compativel foi identificado") {
+		t.Fatalf("expected no compatible layout error, got %v", err)
+	}
+}
+
+func TestBudgetImportPreviewShouldDetectTroxLayout(t *testing.T) {
+	service := budgetimportservice.NewService(
+		&budgetImportBudgetRepositoryStub{
+			exists:         true,
+			existsBySource: false,
+		},
+		&budgetImportStatusRepositoryStub{
+			items: []model.BudgetStatusModel{
+				{Name: "Nao informado"},
+			},
+		},
+		&budgetImportPriorityRepositoryStub{
+			items: []model.PriorityModel{
+				{Name: "Nao informado"},
+			},
+		},
+		&budgetImportInstallerRepositoryStub{
+			items: []model.InstallerModel{
+				{Name: "Nao informado"},
+			},
+		},
+		&budgetImportProjectRepositoryStub{
+			items: []model.ProjectModel{
+				{Name: "Nao informado"},
+			},
+		},
+		&budgetImportProjectTypeRepositoryStub{
+			items: []model.ProjectTypeModel{
+				{Name: "Nao informado"},
+			},
+		},
+		&budgetImportSalespersonRepositoryStub{
+			items: []model.SalespersonModel{
+				{Name: "EMANUEL FERRI"},
+				{Name: "Nao informado"},
+			},
+		},
+		&budgetImportContactRepositoryStub{
+			items: []model.ContactModel{
+				{Name: "Nao informado"},
+			},
+		},
+		&budgetImportLossReasonRepositoryStub{
+			items: []model.LossReasonModel{
+				{Name: "Nao informado"},
+			},
+		},
+		&budgetImportAuditRepositoryStub{},
+	)
+
+	response, err := service.Preview(
+		context.Background(),
+		"trox.xlsx",
+		buildTroxWorkbook(t, []map[string]string{
+			{
+				"A": "477139",
+				"B": "0",
+				"C": "09/06/2026",
+				"D": "Consulta de preco",
+				"E": "Informado",
+				"F": "ELDER J. BONETTI",
+				"G": "FILTROS",
+				"H": "BR1007854",
+				"I": "ABECON ENGENHARIA E CLIMATIZACAO LT",
+				"J": "DIVERSOS DE JUNHO",
+				"K": "DECK - EMANUEL FERRI",
+				"L": "ABECON ENGENHARIA E CLIMATIZACAO LT",
+				"M": "65515.83",
+				"N": "0.8",
+			},
+		}),
+		dto.PreviewBudgetImportOptions{
+			CreateMissingCatalogs: true,
+			UseDefaultNotInformed: true,
+		},
+	)
+	if err != nil {
+		t.Fatalf("expected Trox preview without error, got %v", err)
+	}
+	if response.SheetName != "Capa" {
+		t.Fatalf("expected sheet Capa, got %s", response.SheetName)
+	}
+	if response.HeaderRow != 1 {
+		t.Fatalf("expected header row 1, got %d", response.HeaderRow)
+	}
+	if response.Layout.Key != "trox" {
+		t.Fatalf("expected layout key trox, got %s", response.Layout.Key)
+	}
+	if response.Layout.SourceCompany != "Trox" {
+		t.Fatalf("expected source company Trox, got %s", response.Layout.SourceCompany)
+	}
+	if len(response.FieldGroups) == 0 {
+		t.Fatal("expected preview field groups for Trox layout")
+	}
+	if response.Governance.DuplicateScope != "source_company + budget_number + year_budget" {
+		t.Fatalf("expected governance duplicate scope for Trox, got %s", response.Governance.DuplicateScope)
+	}
+	if response.Summary.RowsValid != 1 {
+		t.Fatalf("expected one valid row, got %d", response.Summary.RowsValid)
+	}
+	if response.Summary.NewBudgets != 1 {
+		t.Fatalf("expected one new budget because duplicate is source-aware, got %d", response.Summary.NewBudgets)
+	}
+	if response.Summary.ExistingBudgets != 0 {
+		t.Fatalf("expected zero existing budgets because duplicate is source-aware, got %d", response.Summary.ExistingBudgets)
+	}
+	if response.SampleRows[0].Status != "warning" {
+		t.Fatalf("expected warning row because Trox uses defaults, got %s", response.SampleRows[0].Status)
+	}
+}
+
+func TestBudgetImportExecuteShouldCreateBudgetFromTroxPreview(t *testing.T) {
+	budgetRepo := &budgetImportBudgetRepositoryStub{
+		getItem: &model.BudgetModel{
+			ID:            99,
+			BudgetNumber:  "477139",
+			YearBudget:    2026,
+			SourceCompany: "Rocktec",
+		},
+	}
+	auditRepo := &budgetImportAuditRepositoryStub{}
+	service := budgetimportservice.NewService(
+		budgetRepo,
+		&budgetImportStatusRepositoryStub{
+			items: []model.BudgetStatusModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		&budgetImportPriorityRepositoryStub{
+			items: []model.PriorityModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		&budgetImportInstallerRepositoryStub{
+			items: []model.InstallerModel{
+				{ID: 1, Name: "ABECON ENGENHARIA E CLIMATIZACAO LT"},
+				{ID: 2, Name: "Nao informado"},
+			},
+		},
+		&budgetImportProjectRepositoryStub{
+			items: []model.ProjectModel{
+				{ID: 1, Name: "DIVERSOS DE JUNHO"},
+				{ID: 2, Name: "Nao informado"},
+			},
+		},
+		&budgetImportProjectTypeRepositoryStub{
+			items: []model.ProjectTypeModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		&budgetImportSalespersonRepositoryStub{
+			items: []model.SalespersonModel{
+				{ID: 1, Name: "EMANUEL FERRI"},
+				{ID: 2, Name: "Nao informado"},
+			},
+		},
+		&budgetImportContactRepositoryStub{
+			items: []model.ContactModel{
+				{ID: 1, InstallerID: 1, Name: "ELDER J. BONETTI"},
+				{ID: 2, InstallerID: 2, Name: "Nao informado"},
+			},
+		},
+		&budgetImportLossReasonRepositoryStub{
+			items: []model.LossReasonModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		auditRepo,
+	)
+
+	previewResponse, err := service.Preview(
+		context.Background(),
+		"trox.xlsx",
+		buildTroxWorkbook(t, []map[string]string{
+			{
+				"A": "477139",
+				"B": "0",
+				"C": "09/06/2026",
+				"D": "Consulta de preco",
+				"E": "Informado",
+				"F": "ELDER J. BONETTI",
+				"G": "FILTROS",
+				"H": "BR1007854",
+				"I": "ABECON ENGENHARIA E CLIMATIZACAO LT",
+				"J": "DIVERSOS DE JUNHO",
+				"K": "DECK - EMANUEL FERRI",
+				"L": "ABECON ENGENHARIA E CLIMATIZACAO LT",
+				"M": "65515.83",
+				"N": "0.8",
+			},
+		}),
+		dto.PreviewBudgetImportOptions{
+			CreateMissingCatalogs: true,
+			UseDefaultNotInformed: true,
+		},
+	)
+	if err != nil {
+		t.Fatalf("expected Trox preview without error, got %v", err)
+	}
+
+	importResponse, err := service.ExecuteImport(context.Background(), &dto.ExecuteBudgetImportRequest{
+		PreviewID: previewResponse.PreviewID,
+	})
+	if err != nil {
+		t.Fatalf("expected Trox import without error, got %v", err)
+	}
+	if importResponse.Summary.BudgetsCreated != 1 {
+		t.Fatalf("expected one created budget, got %d", importResponse.Summary.BudgetsCreated)
+	}
+	if budgetRepo.capturedCreateItem == nil {
+		t.Fatal("expected captured create item for Trox import")
+	}
+	if budgetRepo.capturedCreateItem.BudgetNumber != "477139" {
+		t.Fatalf("expected Trox budget number 477139, got %s", budgetRepo.capturedCreateItem.BudgetNumber)
+	}
+	if budgetRepo.capturedCreateItem.YearBudget != 2026 {
+		t.Fatalf("expected Trox year budget 2026, got %d", budgetRepo.capturedCreateItem.YearBudget)
+	}
+	if budgetRepo.capturedCreateItem.CurrentFollowUp != "Informado" {
+		t.Fatalf("expected current follow-up Informado, got %s", budgetRepo.capturedCreateItem.CurrentFollowUp)
+	}
+	if !budgetRepo.capturedCreateItem.ProjectID.Valid || budgetRepo.capturedCreateItem.ProjectID.Int64 != 1 {
+		t.Fatalf("expected project id 1, got %+v", budgetRepo.capturedCreateItem.ProjectID)
+	}
+	if budgetRepo.capturedCreateItem.SourceCompany != "Trox" {
+		t.Fatalf("expected source company Trox, got %s", budgetRepo.capturedCreateItem.SourceCompany)
+	}
+	if budgetRepo.capturedCreateItem.SourceLayout != "trox" {
+		t.Fatalf("expected source layout trox, got %s", budgetRepo.capturedCreateItem.SourceLayout)
+	}
+	if !budgetRepo.capturedCreateItem.ImportBatchID.Valid || budgetRepo.capturedCreateItem.ImportBatchID.Int64 != 1 {
+		t.Fatalf("expected import batch id 1, got %+v", budgetRepo.capturedCreateItem.ImportBatchID)
+	}
+	if auditRepo.capturedBatchCreate == nil || auditRepo.capturedBatchCreate.SourceLayout != "trox" {
+		t.Fatalf("expected captured Trox import batch, got %+v", auditRepo.capturedBatchCreate)
+	}
+	if auditRepo.capturedBatchUpdate == nil || auditRepo.capturedBatchUpdate.BudgetsCreated != 1 {
+		t.Fatalf("expected batch update with one created budget, got %+v", auditRepo.capturedBatchUpdate)
+	}
+	if len(auditRepo.capturedRows) != 1 {
+		t.Fatalf("expected one persisted raw import row, got %d", len(auditRepo.capturedRows))
+	}
+	if auditRepo.capturedRows[0].Action != "create" {
+		t.Fatalf("expected raw import row action create, got %s", auditRepo.capturedRows[0].Action)
+	}
+}
+
 func buildImportWorkbook(t *testing.T, rowValues []map[string]string) []byte {
 	t.Helper()
 
-	headers := []string{
-		"DATA",
-		"Nº DE ORCA",
-		"REV.",
-		"INSTALADOR",
-		"NOME DA OBRA",
-		"TIPO DE OBRA",
-		"VENDEDOR",
-		"CONTATO",
-		"VALOR BRUTO",
-		"COMISSAO",
-		"M2",
-		"PRIORIDADE",
-		"STATUS",
-		"CONCORRENTE",
-		"MOTIVO",
-		"VALOR CONCORRENTE",
-		"PROJETISTA",
-		"ESPECIFICACOES",
+	return buildImportWorkbookWithOptions(t, importWorkbookFixtureOptions{
+		rowValues: rowValues,
+	})
+}
+
+func buildTroxWorkbook(t *testing.T, rowValues []map[string]string) []byte {
+	t.Helper()
+
+	return buildImportWorkbookWithOptions(t, importWorkbookFixtureOptions{
+		headers: []string{
+			"Or\u00e7amento",
+			"Revis\u00e3o",
+			"Data de Emiss\u00e3o",
+			"Tipo",
+			"Status",
+			"Contato",
+			"Linha de produtos",
+			"C\u00f3digo Cliente",
+			"Nome Cliente",
+			"Obra",
+			"Vendedor",
+			"Instalador",
+			"Total do or\u00e7amento",
+			"Fator M\u00e9dio",
+		},
+		headerRow: 1,
+		rowValues: rowValues,
+		sheetName: "Capa",
+	})
+}
+
+type importWorkbookFixtureOptions struct {
+	headers   []string
+	headerRow int
+	rowValues []map[string]string
+	sheetName string
+}
+
+func buildImportWorkbookWithOptions(t *testing.T, options importWorkbookFixtureOptions) []byte {
+	t.Helper()
+
+	headers := options.headers
+	if len(headers) == 0 {
+		headers = defaultImportWorkbookHeaders()
+	}
+
+	headerRow := options.headerRow
+	if headerRow == 0 {
+		headerRow = 10
+	}
+
+	sheetName := options.sheetName
+	if sheetName == "" {
+		sheetName = "ORCAMENTOS"
 	}
 
 	var buffer bytes.Buffer
@@ -695,9 +1110,9 @@ func buildImportWorkbook(t *testing.T, rowValues []map[string]string) []byte {
 
 	writeZipFile(t, zipWriter, "[Content_Types].xml", contentTypesXML())
 	writeZipFile(t, zipWriter, "_rels/.rels", rootRelationshipsXML())
-	writeZipFile(t, zipWriter, "xl/workbook.xml", workbookXMLContent())
+	writeZipFile(t, zipWriter, "xl/workbook.xml", workbookXMLContent(sheetName))
 	writeZipFile(t, zipWriter, "xl/_rels/workbook.xml.rels", workbookRelationshipsXMLContent())
-	writeZipFile(t, zipWriter, "xl/worksheets/sheet1.xml", buildSheetXML(headers, rowValues))
+	writeZipFile(t, zipWriter, "xl/worksheets/sheet1.xml", buildSheetXML(headers, headerRow, options.rowValues))
 
 	if err := zipWriter.Close(); err != nil {
 		t.Fatalf("failed to close zip writer: %v", err)
@@ -718,18 +1133,41 @@ func writeZipFile(t *testing.T, zipWriter *zip.Writer, name string, content stri
 	}
 }
 
-func buildSheetXML(headers []string, rows []map[string]string) string {
+func defaultImportWorkbookHeaders() []string {
+	return []string{
+		"DATA",
+		"Nº DE ORCA",
+		"REV.",
+		"INSTALADOR",
+		"NOME DA OBRA",
+		"TIPO DE OBRA",
+		"VENDEDOR",
+		"CONTATO",
+		"VALOR BRUTO",
+		"COMISSAO",
+		"M2",
+		"PRIORIDADE",
+		"STATUS",
+		"CONCORRENTE",
+		"MOTIVO",
+		"VALOR CONCORRENTE",
+		"PROJETISTA",
+		"ESPECIFICACOES",
+	}
+}
+
+func buildSheetXML(headers []string, headerRow int, rows []map[string]string) string {
 	builder := strings.Builder{}
 	builder.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
 	builder.WriteString(`<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>`)
-	builder.WriteString(fmt.Sprintf(`<row r="%d">`, 10))
+	builder.WriteString(fmt.Sprintf(`<row r="%d">`, headerRow))
 	for index, header := range headers {
-		builder.WriteString(buildInlineStringCell(columnName(index+1)+"10", header))
+		builder.WriteString(buildInlineStringCell(fmt.Sprintf("%s%d", columnName(index+1), headerRow), header))
 	}
 	builder.WriteString(`</row>`)
 
 	for index, row := range rows {
-		rowNumber := 11 + index
+		rowNumber := headerRow + 1 + index
 		builder.WriteString(fmt.Sprintf(`<row r="%d">`, rowNumber))
 		for columnIndex := 1; columnIndex <= len(headers); columnIndex++ {
 			column := columnName(columnIndex)
@@ -798,13 +1236,13 @@ func rootRelationshipsXML() string {
 </Relationships>`
 }
 
-func workbookXMLContent() string {
-	return `<?xml version="1.0" encoding="UTF-8"?>
+func workbookXMLContent(sheetName string) string {
+	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <sheets>
-    <sheet name="ORCAMENTOS" sheetId="1" r:id="rId1"/>
+    <sheet name="%s" sheetId="1" r:id="rId1"/>
   </sheets>
-</workbook>`
+</workbook>`, sheetName)
 }
 
 func workbookRelationshipsXMLContent() string {

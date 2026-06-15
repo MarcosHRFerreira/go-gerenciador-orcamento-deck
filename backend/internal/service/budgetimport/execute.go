@@ -3,13 +3,16 @@ package budgetimport
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/apperror"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/dto"
+	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/logger"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/model"
 )
 
@@ -17,32 +20,9 @@ type previewSnapshot struct {
 	previewID string
 	fileName  string
 	fileData  []byte
+	layoutKey string
 	options   dto.PreviewBudgetImportOptions
 	createdAt time.Time
-}
-
-type importBudgetRow struct {
-	rowNumber       int
-	budgetNumber    string
-	yearBudget      int
-	revision        int
-	sentAt          time.Time
-	grossValue      float64
-	commissionValue float64
-	areaM2          float64
-	statusName      string
-	priorityName    string
-	installerName   string
-	projectName     string
-	projectTypeName string
-	salespersonName string
-	contactName     string
-	lossReasonName  string
-	competitorName  string
-	competitorPrice *float64
-	designerName    string
-	specification   string
-	currentFollowUp string
 }
 
 type catalogRuntime struct {
@@ -86,13 +66,22 @@ func (s *service) ExecuteImport(ctx context.Context, req *dto.ExecuteBudgetImpor
 		return nil, apperror.NotFound("Preview nao encontrado")
 	}
 
-	workbook, err := parseWorkbook(snapshot.fileData, previewSheetName)
+	layout, exists := findImportLayoutByKey(snapshot.layoutKey)
+	if !exists {
+		return nil, apperror.BadRequest("Layout de importacao nao encontrado para o preview")
+	}
+	importLogger := logger.FromContext(ctx).With(
+		slog.String("import_action", "execute"),
+		slog.String("preview_id", snapshot.previewID),
+		slog.String("source_layout", layout.Key()),
+		slog.String("source_company", layout.SourceCompany()),
+		slog.String("file_name", snapshot.fileName),
+	)
+	importLogger.InfoContext(ctx, "execucao da importacao iniciada")
+
+	workbook, err := loadWorkbookForLayout(snapshot.fileData, layout)
 	if err != nil {
 		return nil, err
-	}
-	header := workbook.rows[previewHeaderRowNumber]
-	if !isExpectedHeader(header) {
-		return nil, apperror.BadRequest("Cabecalho invalido na aba ORCAMENTOS")
 	}
 
 	catalogs, err := s.loadCatalogRuntime(ctx)
@@ -103,30 +92,48 @@ func (s *service) ExecuteImport(ctx context.Context, req *dto.ExecuteBudgetImpor
 	startedAt := time.Now().UTC()
 	summary := dto.ExecuteBudgetImportSummary{}
 	status := "completed"
+	resultMessage := "Importacao concluida com sucesso."
+	header := workbook.rows[layout.HeaderRowNumber()]
+	importBatchID, err := s.createImportBatch(ctx, snapshot, layout, startedAt)
+	if err != nil {
+		return nil, err
+	}
 
-	for rowNumber := previewHeaderRowNumber + 1; rowNumber <= workbook.maxRow; rowNumber++ {
+	for rowNumber := layout.HeaderRowNumber() + 1; rowNumber <= workbook.maxRow; rowNumber++ {
 		rowValues := workbook.rows[rowNumber]
-		if isRowEmpty(rowValues) {
+		if layout.IsRowEmpty(rowValues) {
 			continue
 		}
 
 		summary.RowsProcessed++
 
-		row, rowErr := parseImportBudgetRow(rowNumber, rowValues)
+		row, rowErr := layout.ParseNormalizedRow(rowNumber, rowValues)
 		if rowErr != nil {
 			summary.RowsFailed++
 			status = "completed_with_errors"
+			if err := s.recordImportRow(ctx, importBatchID, header, rowValues, row, "error", "error", []string{rowErr.Error()}, 0); err != nil {
+				return nil, err
+			}
 			continue
 		}
 
-		rowResult, importErr := s.importBudgetRow(ctx, catalogs, snapshot.options, row)
+		rowResult, importErr := s.importBudgetRow(ctx, catalogs, snapshot.options, layout, importBatchID, row)
 		if importErr != nil {
 			summary.RowsFailed++
 			status = "completed_with_errors"
+			if err := s.recordImportRow(ctx, importBatchID, header, rowValues, row, "error", "error", append(row.warnings, importErr.Error()), 0); err != nil {
+				return nil, err
+			}
 			continue
 		}
 
 		summary.CatalogsCreated += rowResult.catalogsCreated
+		rowStatus := "success"
+		rowMessages := append([]string{}, row.warnings...)
+		rowMessages = append(rowMessages, rowResult.messages...)
+		if len(rowMessages) > 0 {
+			rowStatus = "warning"
+		}
 		switch rowResult.action {
 		case "create":
 			summary.BudgetsCreated++
@@ -135,18 +142,44 @@ func (s *service) ExecuteImport(ctx context.Context, req *dto.ExecuteBudgetImpor
 		case "ignore":
 			summary.BudgetsIgnored++
 		}
+		if err := s.recordImportRow(ctx, importBatchID, header, rowValues, row, rowStatus, rowResult.action, rowMessages, rowResult.budgetID); err != nil {
+			return nil, err
+		}
 	}
 
 	finishedAt := time.Now().UTC()
+	if status == "completed_with_errors" {
+		resultMessage = "Importacao concluida com inconsistencias."
+	}
+	if err := s.finishImportBatch(ctx, importBatchID, status, summary, resultMessage, finishedAt); err != nil {
+		return nil, err
+	}
+
+	importID := fmt.Sprintf("import_%d", finishedAt.UnixNano())
+	if importBatchID > 0 {
+		importID = strconv.FormatInt(importBatchID, 10)
+	}
+	importLogger.InfoContext(
+		ctx,
+		"execucao da importacao concluida",
+		slog.String("status", status),
+		slog.String("import_id", importID),
+		slog.Int("rows_processed", summary.RowsProcessed),
+		slog.Int("budgets_created", summary.BudgetsCreated),
+		slog.Int("budgets_updated", summary.BudgetsUpdated),
+		slog.Int("budgets_ignored", summary.BudgetsIgnored),
+		slog.Int("rows_failed", summary.RowsFailed),
+		slog.Int("catalogs_created", summary.CatalogsCreated),
+	)
 	return &dto.ExecuteBudgetImportResponse{
-		ImportID:   fmt.Sprintf("import_%d", finishedAt.UnixNano()),
+		ImportID:   importID,
 		PreviewID:  snapshot.previewID,
 		Status:     status,
 		StartedAt:  startedAt.Format(time.RFC3339),
 		FinishedAt: finishedAt.Format(time.RFC3339),
 		Summary:    summary,
 		Result: dto.ExecuteBudgetImportResult{
-			Message: "Importacao concluida com sucesso.",
+			Message: resultMessage,
 		},
 	}, nil
 }
@@ -154,13 +187,17 @@ func (s *service) ExecuteImport(ctx context.Context, req *dto.ExecuteBudgetImpor
 type importRowResult struct {
 	action          string
 	catalogsCreated int
+	budgetID        int64
+	messages        []string
 }
 
 func (s *service) importBudgetRow(
 	ctx context.Context,
 	catalogs *catalogRuntime,
 	options dto.PreviewBudgetImportOptions,
-	row importBudgetRow,
+	layout importLayout,
+	importBatchID int64,
+	row normalizedBudgetImportRow,
 ) (importRowResult, error) {
 	statusID, created, err := s.ensureBudgetStatusID(ctx, catalogs, row.statusName, options)
 	if err != nil {
@@ -218,7 +255,12 @@ func (s *service) importBudgetRow(
 	}
 	catalogsCreated += created
 
-	existingBudget, err := s.budgetRepo.GetByNumberAndYear(ctx, row.budgetNumber, row.yearBudget)
+	existingBudget, err := s.budgetRepo.GetBySourceAndNumberAndYear(
+		ctx,
+		layout.SourceCompany(),
+		row.budgetNumber,
+		row.yearBudget,
+	)
 	if err != nil {
 		return importRowResult{}, apperror.Internal("failed to check existing budget", err)
 	}
@@ -243,6 +285,9 @@ func (s *service) importBudgetRow(
 		DesignerName:         row.designerName,
 		SpecificationDetails: row.specification,
 		CurrentFollowUp:      row.currentFollowUp,
+		SourceCompany:        layout.SourceCompany(),
+		SourceLayout:         layout.Key(),
+		ImportBatchID:        validNullInt64(importBatchID),
 		UpdatedAt:            time.Now(),
 	}
 
@@ -251,6 +296,8 @@ func (s *service) importBudgetRow(
 			return importRowResult{
 				action:          "ignore",
 				catalogsCreated: catalogsCreated,
+				budgetID:        existingBudget.ID,
+				messages:        []string{"Orcamento ignorado por duplicidade."},
 			}, nil
 		}
 
@@ -262,76 +309,175 @@ func (s *service) importBudgetRow(
 		return importRowResult{
 			action:          "update",
 			catalogsCreated: catalogsCreated,
+			budgetID:        existingBudget.ID,
 		}, nil
 	}
 
 	budgetModel.CreatedAt = budgetModel.UpdatedAt
-	if _, err := s.budgetRepo.Create(ctx, budgetModel); err != nil {
+	createdBudgetID, err := s.budgetRepo.Create(ctx, budgetModel)
+	if err != nil {
 		return importRowResult{}, apperror.Internal("failed to create budget", err)
 	}
 
 	return importRowResult{
 		action:          "create",
 		catalogsCreated: catalogsCreated,
+		budgetID:        createdBudgetID,
 	}, nil
 }
 
-func parseImportBudgetRow(rowNumber int, rowValues []string) (importBudgetRow, error) {
-	budgetNumber := normalizeCellText(getCell(rowValues, 1))
-	if budgetNumber == "" {
-		return importBudgetRow{}, fmt.Errorf("budget number missing")
+func (s *service) createImportBatch(
+	ctx context.Context,
+	snapshot previewSnapshot,
+	layout importLayout,
+	startedAt time.Time,
+) (int64, error) {
+	userID := actorUserIDFromContext(ctx)
+	batch := &model.BudgetImportBatchModel{
+		PreviewID:        snapshot.previewID,
+		FileName:         snapshot.fileName,
+		SourceCompany:    layout.SourceCompany(),
+		SourceLayout:     layout.Key(),
+		Status:           "processing",
+		ExecutedByUserID: validNullInt64(userID),
+		StartedAt:        startedAt,
+		ResultMessage:    "",
+		CreatedAt:        startedAt,
+		UpdatedAt:        startedAt,
 	}
 
-	sentAt, err := parseExcelDate(getCell(rowValues, 0))
+	batchID, err := s.auditRepo.CreateBatch(ctx, batch)
 	if err != nil {
-		return importBudgetRow{}, err
+		return 0, apperror.Internal("failed to create import batch", err)
 	}
 
-	grossValue, err := parseOptionalNumber(getCell(rowValues, 8), true)
-	if err != nil {
-		return importBudgetRow{}, err
-	}
-	commissionValue, err := parseOptionalNumber(getCell(rowValues, 9), false)
-	if err != nil {
-		return importBudgetRow{}, err
-	}
-	areaM2, err := parseOptionalNumber(getCell(rowValues, 10), false)
-	if err != nil {
-		return importBudgetRow{}, err
+	return batchID, nil
+}
+
+func (s *service) finishImportBatch(
+	ctx context.Context,
+	importBatchID int64,
+	status string,
+	summary dto.ExecuteBudgetImportSummary,
+	resultMessage string,
+	finishedAt time.Time,
+) error {
+	if importBatchID <= 0 {
+		return nil
 	}
 
-	var competitorPrice *float64
-	if !isMissingValue(getCell(rowValues, 15)) {
-		value, valueErr := parseOptionalNumber(getCell(rowValues, 15), false)
-		if valueErr != nil {
-			return importBudgetRow{}, valueErr
+	return s.auditRepo.UpdateBatch(ctx, &model.BudgetImportBatchModel{
+		ID:              importBatchID,
+		Status:          status,
+		FinishedAt:      validNullTime(finishedAt),
+		RowsProcessed:   summary.RowsProcessed,
+		BudgetsCreated:  summary.BudgetsCreated,
+		BudgetsUpdated:  summary.BudgetsUpdated,
+		BudgetsIgnored:  summary.BudgetsIgnored,
+		RowsFailed:      summary.RowsFailed,
+		CatalogsCreated: summary.CatalogsCreated,
+		ResultMessage:   resultMessage,
+		UpdatedAt:       finishedAt,
+	})
+}
+
+func (s *service) recordImportRow(
+	ctx context.Context,
+	importBatchID int64,
+	header []string,
+	rowValues []string,
+	row normalizedBudgetImportRow,
+	status string,
+	action string,
+	messages []string,
+	budgetID int64,
+) error {
+	if importBatchID <= 0 {
+		return nil
+	}
+
+	rawRowData, err := json.Marshal(buildRawRowData(header, rowValues))
+	if err != nil {
+		return apperror.Internal("failed to marshal raw import row data", err)
+	}
+
+	normalizedRowData, err := json.Marshal(buildNormalizedRowData(row))
+	if err != nil {
+		return apperror.Internal("failed to marshal normalized import row data", err)
+	}
+
+	messagesData, err := json.Marshal(messages)
+	if err != nil {
+		return apperror.Internal("failed to marshal import row messages", err)
+	}
+
+	_, err = s.auditRepo.CreateRowRaw(ctx, &model.BudgetImportRowRawModel{
+		ImportBatchID:     importBatchID,
+		RowNumber:         row.rowNumber,
+		BudgetNumber:      row.budgetNumber,
+		Status:            status,
+		Action:            action,
+		RawRowData:        rawRowData,
+		NormalizedRowData: normalizedRowData,
+		Messages:          messagesData,
+		BudgetID:          validNullInt64(budgetID),
+		CreatedAt:         time.Now().UTC(),
+	})
+	if err != nil {
+		return apperror.Internal("failed to store import raw row", err)
+	}
+
+	return nil
+}
+
+func buildRawRowData(header []string, rowValues []string) map[string]string {
+	maxColumns := len(rowValues)
+	if len(header) > maxColumns {
+		maxColumns = len(header)
+	}
+
+	data := make(map[string]string, maxColumns)
+	for column := 0; column < maxColumns; column++ {
+		key := normalizeCellText(getCell(header, column))
+		if key == "" {
+			key = fmt.Sprintf("column_%d", column+1)
 		}
-		competitorPrice = &value
+		data[key] = getCell(rowValues, column)
 	}
 
-	return importBudgetRow{
-		rowNumber:       rowNumber,
-		budgetNumber:    budgetNumber,
-		yearBudget:      sentAt.Year(),
-		revision:        extractRevision(getCell(rowValues, 2)),
-		sentAt:          sentAt,
-		grossValue:      grossValue,
-		commissionValue: commissionValue,
-		areaM2:          areaM2,
-		statusName:      fallbackName(getCell(rowValues, 11)),
-		priorityName:    notInformedName,
-		installerName:   fallbackName(getCell(rowValues, 3)),
-		projectName:     fallbackName(getCell(rowValues, 4)),
-		projectTypeName: fallbackName(getCell(rowValues, 5)),
-		salespersonName: fallbackName(getCell(rowValues, 6)),
-		contactName:     fallbackName(getCell(rowValues, 7)),
-		lossReasonName:  fallbackName(getCell(rowValues, 14)),
-		competitorName:  fallbackName(getCell(rowValues, 13)),
-		competitorPrice: competitorPrice,
-		designerName:    fallbackName(getCell(rowValues, 16)),
-		specification:   fallbackName(getCell(rowValues, 17)),
-		currentFollowUp: fallbackName(getCell(rowValues, 12)),
-	}, nil
+	return data
+}
+
+func buildNormalizedRowData(row normalizedBudgetImportRow) map[string]interface{} {
+	data := map[string]interface{}{
+		"row_number":        row.rowNumber,
+		"budget_number":     row.budgetNumber,
+		"year_budget":       row.yearBudget,
+		"revision":          row.revision,
+		"gross_value":       row.grossValue,
+		"commission_value":  row.commissionValue,
+		"area_m2":           row.areaM2,
+		"status_name":       row.statusName,
+		"priority_name":     row.priorityName,
+		"installer_name":    row.installerName,
+		"project_name":      row.projectName,
+		"project_type_name": row.projectTypeName,
+		"salesperson_name":  row.salespersonName,
+		"contact_name":      row.contactName,
+		"loss_reason_name":  row.lossReasonName,
+		"competitor_name":   row.competitorName,
+		"designer_name":     row.designerName,
+		"specification":     row.specification,
+		"current_follow_up": row.currentFollowUp,
+		"warnings":          row.warnings,
+		"sent_at":           row.sentAt.Format(time.RFC3339),
+		"competitor_price":  nil,
+	}
+	if row.competitorPrice != nil {
+		data["competitor_price"] = *row.competitorPrice
+	}
+
+	return data
 }
 
 func fallbackName(raw string) string {

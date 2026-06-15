@@ -32,7 +32,9 @@ type Repository interface {
 	Create(ctx context.Context, item *model.BudgetModel) (int64, error)
 	List(ctx context.Context, filters *dto.ListBudgetsFilters) ([]model.BudgetModel, int64, error)
 	ExistsByNumberAndYear(ctx context.Context, budgetNumber string, yearBudget int) (bool, error)
+	ExistsBySourceAndNumberAndYear(ctx context.Context, sourceCompany string, budgetNumber string, yearBudget int) (bool, error)
 	GetByNumberAndYear(ctx context.Context, budgetNumber string, yearBudget int) (*model.BudgetModel, error)
+	GetBySourceAndNumberAndYear(ctx context.Context, sourceCompany string, budgetNumber string, yearBudget int) (*model.BudgetModel, error)
 	GetByID(ctx context.Context, budgetID int64) (*model.BudgetModel, error)
 	GetByIDScoped(ctx context.Context, budgetID int64, restrictedSalespersonID *int64) (*model.BudgetModel, error)
 	Update(ctx context.Context, item *model.BudgetModel) error
@@ -72,10 +74,13 @@ func (r *repository) Create(ctx context.Context, item *model.BudgetModel) (int64
 			designer_name,
 			specification_details,
 			current_follow_up,
+			source_company,
+			source_layout,
+			import_batch_id,
 			created_at,
 			updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
 		RETURNING id
 	`
 
@@ -102,6 +107,9 @@ func (r *repository) Create(ctx context.Context, item *model.BudgetModel) (int64
 		item.DesignerName,
 		item.SpecificationDetails,
 		item.CurrentFollowUp,
+		item.SourceCompany,
+		item.SourceLayout,
+		nullableInt64(item.ImportBatchID),
 		item.CreatedAt,
 		item.UpdatedAt,
 	).Scan(&id)
@@ -133,6 +141,7 @@ func (r *repository) List(ctx context.Context, filters *dto.ListBudgetsFilters) 
 			b.competitor_name,
 			b.competitor_price,
 			b.designer_name,
+			b.source_company,
 			bs.name AS status_name,
 			pr.name AS priority_name,
 			i.name AS installer_name,
@@ -192,6 +201,7 @@ func (r *repository) List(ctx context.Context, filters *dto.ListBudgetsFilters) 
 			&item.CompetitorName,
 			&item.CompetitorPrice,
 			&item.DesignerName,
+			&item.SourceCompany,
 			&item.StatusName,
 			&item.PriorityName,
 			&item.InstallerName,
@@ -290,6 +300,13 @@ func buildListWhereClause(filters *dto.ListBudgetsFilters) (string, []interface{
 					),
 				)
 			}
+		}
+		if filters.SourceCompany != "" {
+			args = append(args, strings.TrimSpace(filters.SourceCompany))
+			conditions = append(
+				conditions,
+				fmt.Sprintf("lower(b.source_company) = lower($%d)", len(args)),
+			)
 		}
 		if filters.ProjectTypeID != nil {
 			args = append(args, *filters.ProjectTypeID)
@@ -409,6 +426,26 @@ func (r *repository) ExistsByNumberAndYear(ctx context.Context, budgetNumber str
 	return exists, nil
 }
 
+func (r *repository) ExistsBySourceAndNumberAndYear(ctx context.Context, sourceCompany string, budgetNumber string, yearBudget int) (bool, error) {
+	const query = `
+		SELECT EXISTS(
+			SELECT 1
+			FROM budgets
+			WHERE budget_number = $1
+			  AND year_budget = $2
+			  AND (source_company = $3 OR source_company = '')
+		)
+	`
+
+	var exists bool
+	err := r.db.QueryRowContext(ctx, query, budgetNumber, yearBudget, strings.TrimSpace(sourceCompany)).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+
+	return exists, nil
+}
+
 func (r *repository) GetByNumberAndYear(ctx context.Context, budgetNumber string, yearBudget int) (*model.BudgetModel, error) {
 	const query = `
 		SELECT
@@ -468,6 +505,89 @@ func (r *repository) GetByNumberAndYear(ctx context.Context, budgetNumber string
 		&item.ContactName,
 		&item.SpecificationDetails,
 		&item.CurrentFollowUp,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	return &item, nil
+}
+
+func (r *repository) GetBySourceAndNumberAndYear(ctx context.Context, sourceCompany string, budgetNumber string, yearBudget int) (*model.BudgetModel, error) {
+	const query = `
+		SELECT
+			id,
+			budget_number,
+			year_budget,
+			revision,
+			sent_at,
+			gross_value,
+			commission_value,
+			area_m2,
+			status_id,
+			priority_id,
+			installer_id,
+			project_id,
+			salesperson_id,
+			contact_id,
+			loss_reason_id,
+			competitor_name,
+			competitor_price,
+			designer_name,
+			NULL::text AS project_name,
+			NULL::text AS salesperson_name,
+			NULL::text AS contact_name,
+			specification_details,
+			current_follow_up,
+			source_company,
+			source_layout,
+			import_batch_id,
+			created_at,
+			updated_at
+		FROM budgets
+		WHERE budget_number = $1
+		  AND year_budget = $2
+		  AND (source_company = $3 OR source_company = '')
+		ORDER BY CASE WHEN source_company = $3 THEN 0 ELSE 1 END, id DESC
+		LIMIT 1
+	`
+
+	row := r.db.QueryRowContext(ctx, query, budgetNumber, yearBudget, strings.TrimSpace(sourceCompany))
+
+	var item model.BudgetModel
+	err := row.Scan(
+		&item.ID,
+		&item.BudgetNumber,
+		&item.YearBudget,
+		&item.Revision,
+		&item.SentAt,
+		&item.GrossValue,
+		&item.CommissionValue,
+		&item.AreaM2,
+		&item.StatusID,
+		&item.PriorityID,
+		&item.InstallerID,
+		&item.ProjectID,
+		&item.SalespersonID,
+		&item.ContactID,
+		&item.LossReasonID,
+		&item.CompetitorName,
+		&item.CompetitorPrice,
+		&item.DesignerName,
+		&item.ProjectName,
+		&item.SalespersonName,
+		&item.ContactName,
+		&item.SpecificationDetails,
+		&item.CurrentFollowUp,
+		&item.SourceCompany,
+		&item.SourceLayout,
+		&item.ImportBatchID,
 		&item.CreatedAt,
 		&item.UpdatedAt,
 	)
@@ -603,7 +723,10 @@ func (r *repository) Update(ctx context.Context, item *model.BudgetModel) error 
 			designer_name = $18,
 			specification_details = $19,
 			current_follow_up = $20,
-			updated_at = $21
+			updated_at = $21,
+			source_company = COALESCE(NULLIF($22, ''), source_company),
+			source_layout = COALESCE(NULLIF($23, ''), source_layout),
+			import_batch_id = COALESCE($24, import_batch_id)
 		WHERE id = $1
 	`
 
@@ -631,6 +754,9 @@ func (r *repository) Update(ctx context.Context, item *model.BudgetModel) error 
 		item.SpecificationDetails,
 		item.CurrentFollowUp,
 		item.UpdatedAt,
+		item.SourceCompany,
+		item.SourceLayout,
+		nullableInt64(item.ImportBatchID),
 	)
 
 	return err

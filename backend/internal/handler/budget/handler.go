@@ -189,6 +189,7 @@ func parseListFilters(c *gin.Context) (*dto.ListBudgetsFilters, error) {
 
 	return &dto.ListBudgetsFilters{
 		BudgetNumber:   c.Query("budget_number"),
+		SourceCompany:  c.Query("source_company"),
 		YearBudget:     yearBudget,
 		StatusID:       statusID,
 		SalespersonID:  salespersonID,

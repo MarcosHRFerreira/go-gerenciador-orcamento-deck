@@ -87,7 +87,15 @@ func (s *budgetRepositoryStub) ExistsByNumberAndYear(_ context.Context, _ string
 	return s.existsByNumberAndYear, s.existsByNumberAndYearErr
 }
 
+func (s *budgetRepositoryStub) ExistsBySourceAndNumberAndYear(_ context.Context, _ string, _ string, _ int) (bool, error) {
+	return false, nil
+}
+
 func (s *budgetRepositoryStub) GetByNumberAndYear(_ context.Context, _ string, _ int) (*model.BudgetModel, error) {
+	return nil, nil
+}
+
+func (s *budgetRepositoryStub) GetBySourceAndNumberAndYear(_ context.Context, _ string, _ string, _ int) (*model.BudgetModel, error) {
 	return nil, nil
 }
 

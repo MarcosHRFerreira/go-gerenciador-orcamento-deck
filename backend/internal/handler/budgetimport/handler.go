@@ -85,7 +85,8 @@ func (h *Handler) ExecuteImport(c *gin.Context) {
 		return
 	}
 
-	response, err := h.service.ExecuteImport(c.Request.Context(), &req)
+	requestContext := budgetimportservice.WithActorUserID(c.Request.Context(), middleware.UserID(c))
+	response, err := h.service.ExecuteImport(requestContext, &req)
 	if err != nil {
 		httpresponse.JSONAppError(c, err)
 		return
