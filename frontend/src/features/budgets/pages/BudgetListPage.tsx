@@ -836,6 +836,14 @@ export function BudgetListPage() {
     );
   };
 
+  const handleBudgetRowDoubleClick = (budgetId: number) => {
+    if (!isAdmin) {
+      return;
+    }
+
+    navigate(`/budgets/${budgetId}/edit`);
+  };
+
   const handleSortByChange = (value: BudgetSortBy) => {
     const nextFilters: BudgetListFilters = {
       ...effectiveFilters,
@@ -1637,9 +1645,13 @@ export function BudgetListPage() {
                         <TableRow
                           hover
                           key={budget.id}
+                          onDoubleClick={() =>
+                            handleBudgetRowDoubleClick(budget.id)
+                          }
                           ref={(element) => {
                             frozenBodyRowRefs.current[index] = element;
                           }}
+                          sx={{ cursor: isAdmin ? "pointer" : "default" }}
                         >
                           <TableCell sx={frozenBudgetTableCellSx}>
                             <Box
@@ -1749,9 +1761,13 @@ export function BudgetListPage() {
                         <TableRow
                           hover
                           key={budget.id}
+                          onDoubleClick={() =>
+                            handleBudgetRowDoubleClick(budget.id)
+                          }
                           ref={(element) => {
                             mainBodyRowRefs.current[index] = element;
                           }}
+                          sx={{ cursor: isAdmin ? "pointer" : "default" }}
                         >
                           <TableCell sx={singleLineTableCellSx}>
                             {budget.yearBudget}

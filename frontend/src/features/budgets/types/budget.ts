@@ -250,6 +250,7 @@ export type ExecuteBudgetImportPayload = {
 };
 
 export type BudgetImportExecutionSummary = {
+  rowsExpected: number;
   rowsProcessed: number;
   budgetsCreated: number;
   budgetsUpdated: number;

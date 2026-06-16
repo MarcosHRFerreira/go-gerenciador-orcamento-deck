@@ -41,8 +41,8 @@ func TestRocktecImportLayoutShouldParseNormalizedRow(t *testing.T) {
 	if row.revision != 2 {
 		t.Fatalf("expected revision 2, got %d", row.revision)
 	}
-	if row.projectName != "Obra XPTO" {
-		t.Fatalf("expected project name Obra XPTO, got %s", row.projectName)
+	if row.projectName != "Obra Xpto" {
+		t.Fatalf("expected project name Obra Xpto, got %s", row.projectName)
 	}
 	if row.priorityName != notInformedName {
 		t.Fatalf("expected default priority name %s, got %s", notInformedName, row.priorityName)

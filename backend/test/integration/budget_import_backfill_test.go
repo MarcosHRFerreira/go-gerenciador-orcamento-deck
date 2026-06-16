@@ -146,6 +146,107 @@ func TestLegacyBudgetSourceBackfillMigrationShouldPopulateRocktecMetadata(t *tes
 	}
 }
 
+func TestBudgetSalespersonCanonicalMigrationShouldRelinkBudgetsToSingleFirstNameSalesperson(t *testing.T) {
+	env := newIntegrationTestEnv(t)
+	seed := env.seedBudgetData(t, uniqueSuffix())
+	now := time.Date(2026, time.June, 16, 10, 0, 0, 0, time.UTC)
+
+	canonicalSalespersonID := env.insertReturningID(
+		t,
+		context.Background(),
+		`INSERT INTO salespeople (name, email, phone, active, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6)
+		 RETURNING id`,
+		"Guilherme",
+		"guilherme.canonical@local.dev",
+		"11999999999",
+		true,
+		now,
+		now,
+	)
+
+	duplicateSalespersonID := env.insertReturningID(
+		t,
+		context.Background(),
+		`INSERT INTO salespeople (name, email, phone, active, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6)
+		 RETURNING id`,
+		"Guilherme Oliveira",
+		"guilherme.oliveira@local.dev",
+		"11888888888",
+		true,
+		now,
+		now,
+	)
+
+	budgetID := env.insertReturningID(
+		t,
+		context.Background(),
+		`INSERT INTO budgets (
+			budget_number,
+			year_budget,
+			revision,
+			sent_at,
+			gross_value,
+			commission_value,
+			area_m2,
+			status_id,
+			priority_id,
+			installer_id,
+			project_id,
+			salesperson_id,
+			contact_id,
+			loss_reason_id,
+			competitor_name,
+			competitor_price,
+			designer_name,
+			specification_details,
+			current_follow_up,
+			source_company,
+			source_layout,
+			created_at,
+			updated_at
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23
+		) RETURNING id`,
+		"TROX-CANONICAL-001",
+		2026,
+		0,
+		now,
+		3500.00,
+		200.00,
+		40.00,
+		seed.statusID,
+		seed.priorityID,
+		seed.installerID,
+		seed.projectID,
+		duplicateSalespersonID,
+		seed.contactID,
+		seed.lossReasonID,
+		"",
+		nil,
+		"",
+		"",
+		"",
+		"Trox",
+		"trox",
+		now,
+		now,
+	)
+
+	beforeSalespersonID := env.requireBudgetSalespersonID(t, budgetID)
+	if beforeSalespersonID != duplicateSalespersonID {
+		t.Fatalf("expected budget to start with duplicate salesperson id %d, got %d", duplicateSalespersonID, beforeSalespersonID)
+	}
+
+	env.applyMigrationFile(t, "20260616090000_relink_budget_salespeople_to_canonical_first_name.sql")
+
+	afterSalespersonID := env.requireBudgetSalespersonID(t, budgetID)
+	if afterSalespersonID != canonicalSalespersonID {
+		t.Fatalf("expected budget salesperson to be relinked to canonical id %d, got %d", canonicalSalespersonID, afterSalespersonID)
+	}
+}
+
 func (e *integrationTestEnv) requireBudgetSourceMetadata(t *testing.T, budgetID int64) (string, string) {
 	t.Helper()
 
@@ -162,6 +263,23 @@ func (e *integrationTestEnv) requireBudgetSourceMetadata(t *testing.T, budgetID 
 	}
 
 	return sourceCompany, sourceLayout
+}
+
+func (e *integrationTestEnv) requireBudgetSalespersonID(t *testing.T, budgetID int64) int64 {
+	t.Helper()
+
+	row := e.db.QueryRowContext(
+		context.Background(),
+		`SELECT salesperson_id FROM budgets WHERE id = $1`,
+		budgetID,
+	)
+
+	var salespersonID int64
+	if err := row.Scan(&salespersonID); err != nil {
+		t.Fatalf("failed to query budget salesperson id: %v", err)
+	}
+
+	return salespersonID
 }
 
 func (e *integrationTestEnv) applyMigrationFile(t *testing.T, fileName string) {

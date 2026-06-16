@@ -45,6 +45,10 @@ type userRepositoryStub struct {
 	capturedStoreRefreshToken      *model.RefreshTokenModel
 	deletedRefreshTokensUserID     int64
 	deletedRefreshTokenHash        string
+	updatedUserEmail               string
+	updatedUserName                string
+	updatedUsername                string
+	updatedUserUserID              int64
 	updatedUserRole                model.UserRole
 	updatedUserRoleUserID          int64
 	updatedUserActive              bool
@@ -85,6 +89,15 @@ func (s *userRepositoryStub) GetUserByID(_ context.Context, _ int64) (*model.Use
 
 func (s *userRepositoryStub) ListUsers(_ context.Context) ([]model.UserModel, error) {
 	return s.listUsersItems, s.listUsersErr
+}
+
+func (s *userRepositoryStub) UpdateUser(_ context.Context, userID int64, name string, email string, username string, role model.UserRole, _ time.Time) error {
+	s.updatedUserUserID = userID
+	s.updatedUserName = name
+	s.updatedUserEmail = email
+	s.updatedUsername = username
+	s.updatedUserRole = role
+	return nil
 }
 
 func (s *userRepositoryStub) UpdateUserRole(_ context.Context, userID int64, role model.UserRole, _ time.Time) error {
@@ -582,6 +595,73 @@ func TestUserServiceUpdateRoleShouldPreventChangingOwnRole(t *testing.T) {
 	})
 
 	assertAppError(t, err, 403, "Nao e permitido alterar o proprio perfil")
+}
+
+func TestUserServiceUpdateShouldUpdateUserData(t *testing.T) {
+	repo := &userRepositoryStub{
+		getUserByEmailItem: nil,
+		getUserByIDItem: &model.UserModel{
+			ID:       9,
+			Name:     "Usuario Antigo",
+			Email:    "old.user@local.dev",
+			Username: "old_user",
+			Role:     model.RoleUser,
+			Active:   true,
+		},
+	}
+	service := userservice.NewService(repo)
+
+	err := service.Update(context.Background(), 1, 9, &dto.UpdateUserRequest{
+		Name:     "Usuario Atualizado",
+		Email:    "new.user@local.dev",
+		Username: "new_user",
+		Role:     "admin",
+	})
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if repo.updatedUserUserID != 9 {
+		t.Fatalf("expected update for user 9, got %d", repo.updatedUserUserID)
+	}
+	if repo.updatedUserName != "Usuario Atualizado" {
+		t.Fatalf("expected updated name, got %s", repo.updatedUserName)
+	}
+	if repo.updatedUserEmail != "new.user@local.dev" {
+		t.Fatalf("expected updated email, got %s", repo.updatedUserEmail)
+	}
+	if repo.updatedUsername != "new_user" {
+		t.Fatalf("expected updated username, got %s", repo.updatedUsername)
+	}
+	if repo.updatedUserRole != model.RoleAdmin {
+		t.Fatalf("expected updated role admin, got %s", repo.updatedUserRole)
+	}
+}
+
+func TestUserServiceUpdateShouldRejectDuplicatedEmail(t *testing.T) {
+	service := userservice.NewService(&userRepositoryStub{
+		getUserByEmailItem: &model.UserModel{
+			ID:    15,
+			Email: "duplicated@local.dev",
+		},
+		getUserByIDItem: &model.UserModel{
+			ID:       9,
+			Name:     "Usuario Atual",
+			Email:    "current@local.dev",
+			Username: "current_user",
+			Role:     model.RoleUser,
+			Active:   true,
+		},
+	})
+
+	err := service.Update(context.Background(), 1, 9, &dto.UpdateUserRequest{
+		Name:     "Usuario Atual",
+		Email:    "duplicated@local.dev",
+		Username: "current_user",
+		Role:     "user",
+	})
+
+	assertAppError(t, err, 409, "E-mail ja esta em uso")
 }
 
 func TestUserServiceUpdateRoleShouldPreventRemovingLastActiveAdmin(t *testing.T) {

@@ -19,10 +19,10 @@ import (
 )
 
 const (
-	serverReadHeaderTimeout = 2 * time.Second
-	serverReadTimeout       = 10 * time.Second
-	serverWriteTimeout      = 15 * time.Second
-	serverIdleTimeout       = 60 * time.Second
+	serverReadHeaderTimeout = 5 * time.Second
+	serverReadTimeout       = 2 * time.Minute
+	serverWriteTimeout      = 5 * time.Minute
+	serverIdleTimeout       = 2 * time.Minute
 	shutdownTimeout         = 10 * time.Second
 )
 

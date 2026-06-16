@@ -18,14 +18,15 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "../../../components/common/PageHeader";
 import { SectionCard } from "../../../components/common/SectionCard";
 import {
   executeBudgetImportRequest,
+  getBudgetImportStatusRequest,
   previewBudgetImportRequest,
 } from "../api/budgets";
 import type {
@@ -36,10 +37,33 @@ import type {
 
 function getImportErrorMessage(error: unknown, fallbackMessage: string) {
   if (isAxiosError<{ message?: string }>(error)) {
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      return "Sua sessão expirou. Entre novamente no sistema.";
+    }
+
+    if (
+      error.response?.status === 404 &&
+      error.response?.data?.message === "Preview nao encontrado"
+    ) {
+      return "Este preview ja foi utilizado ou expirou. Gere um novo preview antes de importar novamente.";
+    }
+
+    if (!error.response && error.message === "Network Error") {
+      return "Sua sessão expirou. Entre novamente no sistema.";
+    }
+
     return error.response?.data?.message ?? fallbackMessage;
   }
 
   return fallbackMessage;
+}
+
+function isPreviewUnavailableError(error: unknown) {
+  return (
+    isAxiosError<{ message?: string }>(error) &&
+    error.response?.status === 404 &&
+    error.response?.data?.message === "Preview nao encontrado"
+  );
 }
 
 function formatDateTime(value: string) {
@@ -103,10 +127,42 @@ function createCatalogItems(previewResult: BudgetImportPreviewResult) {
   ];
 }
 
+function getExecutionSuccessMessage(
+  fileName: string,
+  executionResult: BudgetImportExecutionResult,
+) {
+  const { budgetsCreated, budgetsIgnored, budgetsUpdated } =
+    executionResult.summary;
+
+  return `Arquivo ${fileName} importado com sucesso. ${budgetsCreated} orçamento(s) criado(s), ${budgetsUpdated} atualizado(s) e ${budgetsIgnored} ignorado(s).`;
+}
+
+function isImportProcessing(
+  executionResult: BudgetImportExecutionResult | null,
+) {
+  return executionResult?.status === "processing";
+}
+
+function getImportProgressValue(
+  executionResult: BudgetImportExecutionResult | null,
+) {
+  if (executionResult === null) {
+    return null;
+  }
+
+  const { rowsExpected, rowsProcessed } = executionResult.summary;
+  if (rowsExpected <= 0) {
+    return null;
+  }
+
+  return Math.min(100, Math.round((rowsProcessed / rowsExpected) * 100));
+}
+
 export function BudgetImportPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const executingPreviewIdRef = useRef<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewOptions, setPreviewOptions] =
     useState<BudgetImportPreviewOptions>({
@@ -118,40 +174,57 @@ export function BudgetImportPage() {
     useState<BudgetImportPreviewResult | null>(null);
   const [executionResult, setExecutionResult] =
     useState<BudgetImportExecutionResult | null>(null);
+  const [activeImportId, setActiveImportId] = useState<string | null>(null);
+  const [processInfo, setProcessInfo] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [executionError, setExecutionError] = useState<string | null>(null);
 
-  const previewMutation = useMutation({
-    mutationFn: async () => {
-      if (selectedFile === null) {
-        throw new Error("Selecione um arquivo .xlsx para gerar o preview.");
-      }
+  const requestPreview = async () => {
+    if (selectedFile === null) {
+      throw new Error("Selecione um arquivo .xlsx para gerar o preview.");
+    }
 
-      return previewBudgetImportRequest(selectedFile, previewOptions);
-    },
+    return previewBudgetImportRequest(selectedFile, previewOptions);
+  };
+
+  const requestExecuteImport = async (previewId: string) => {
+    return executeBudgetImportRequest({
+      previewId,
+    });
+  };
+
+  const previewMutation = useMutation({
+    mutationFn: requestPreview,
     onSuccess: (result) => {
+      executingPreviewIdRef.current = null;
       setPreviewResult(result);
       setExecutionResult(null);
+      setActiveImportId(null);
+      setProcessInfo(null);
       setPreviewError(null);
       setExecutionError(null);
     },
   });
 
   const executeMutation = useMutation({
-    mutationFn: async () => {
-      if (previewResult === null) {
-        throw new Error("Gere o preview antes de confirmar a importação.");
-      }
-
-      return executeBudgetImportRequest({
-        previewId: previewResult.previewId,
-      });
-    },
-    onSuccess: async (result) => {
+    mutationFn: async ({ previewId }: { previewId: string }) =>
+      requestExecuteImport(previewId),
+    onSuccess: (result) => {
+      executingPreviewIdRef.current = result.previewId;
       setExecutionResult(result);
+      setActiveImportId(result.importId);
+      setProcessInfo(
+        "Importacao iniciada. O sistema esta processando a planilha em segundo plano.",
+      );
       setExecutionError(null);
-      await queryClient.invalidateQueries({ queryKey: ["budgets"] });
     },
+  });
+
+  const importStatusQuery = useQuery({
+    queryKey: ["budget-import-status", activeImportId],
+    queryFn: async () => getBudgetImportStatusRequest(activeImportId ?? ""),
+    enabled: activeImportId !== null && isImportProcessing(executionResult),
+    refetchInterval: 2000,
   });
 
   const summaryItems = useMemo(
@@ -162,6 +235,46 @@ export function BudgetImportPage() {
     () => (previewResult === null ? [] : createCatalogItems(previewResult)),
     [previewResult],
   );
+  const executionProgressValue = useMemo(
+    () => getImportProgressValue(executionResult),
+    [executionResult],
+  );
+  const executionIsProcessing = isImportProcessing(executionResult);
+
+  useEffect(() => {
+    const statusResult = importStatusQuery.data;
+
+    if (statusResult === undefined) {
+      return;
+    }
+
+    setExecutionResult(statusResult);
+    if (isImportProcessing(statusResult)) {
+      return;
+    }
+
+    setActiveImportId(null);
+    setProcessInfo(null);
+    void queryClient.invalidateQueries({ queryKey: ["budgets"] });
+  }, [importStatusQuery.data, queryClient]);
+
+  useEffect(() => {
+    if (
+      importStatusQuery.error === null ||
+      importStatusQuery.error === undefined
+    ) {
+      return;
+    }
+
+    setActiveImportId(null);
+    setProcessInfo(null);
+    setExecutionError(
+      getImportErrorMessage(
+        importStatusQuery.error,
+        "Nao foi possivel consultar o status da importacao.",
+      ),
+    );
+  }, [importStatusQuery.error]);
 
   const handleChooseFile = () => {
     fileInputRef.current?.click();
@@ -170,14 +283,18 @@ export function BudgetImportPage() {
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const nextFile = event.target.files?.[0] ?? null;
     setSelectedFile(nextFile);
+    executingPreviewIdRef.current = null;
     setPreviewResult(null);
     setExecutionResult(null);
+    setActiveImportId(null);
+    setProcessInfo(null);
     setPreviewError(null);
     setExecutionError(null);
   };
 
   const handlePreview = async () => {
     try {
+      setProcessInfo(null);
       setPreviewError(null);
       await previewMutation.mutateAsync();
     } catch (error) {
@@ -190,10 +307,58 @@ export function BudgetImportPage() {
   };
 
   const handleExecuteImport = async () => {
+    if (previewResult === null) {
+      return;
+    }
+
+    if (executingPreviewIdRef.current === previewResult.previewId) {
+      return;
+    }
+
+    executingPreviewIdRef.current = previewResult.previewId;
     try {
+      setProcessInfo(null);
       setExecutionError(null);
-      await executeMutation.mutateAsync();
+      await executeMutation.mutateAsync({
+        previewId: previewResult.previewId,
+      });
     } catch (error) {
+      executingPreviewIdRef.current = null;
+
+      if (isPreviewUnavailableError(error) && selectedFile !== null) {
+        try {
+          const refreshedPreview = await requestPreview();
+          executingPreviewIdRef.current = null;
+          setPreviewResult(refreshedPreview);
+          setExecutionResult(null);
+          setPreviewError(null);
+          setProcessInfo(
+            "O preview anterior nao estava mais disponivel. O sistema esta regenerando os dados e tentando concluir a importacao automaticamente.",
+          );
+          const executionResponse = await requestExecuteImport(
+            refreshedPreview.previewId,
+          );
+          executingPreviewIdRef.current = executionResponse.previewId;
+          setExecutionResult(executionResponse);
+          setActiveImportId(executionResponse.importId);
+          setProcessInfo(
+            "O preview anterior nao estava mais disponivel. A importacao foi reiniciada com um preview atualizado e esta sendo processada em segundo plano.",
+          );
+          setExecutionError(null);
+          return;
+        } catch (recoveryError) {
+          setProcessInfo(null);
+          setExecutionError(
+            getImportErrorMessage(
+              recoveryError,
+              "Nao foi possivel concluir a importacao automaticamente. Gere um novo preview e tente novamente.",
+            ),
+          );
+          return;
+        }
+      }
+
+      setProcessInfo(null);
       setExecutionError(
         getImportErrorMessage(error, "Nao foi possivel executar a importacao."),
       );
@@ -300,6 +465,7 @@ export function BudgetImportPage() {
             />
           </Box>
 
+          {processInfo ? <Alert severity="info">{processInfo}</Alert> : null}
           {previewError ? <Alert severity="error">{previewError}</Alert> : null}
           {executionError ? (
             <Alert severity="error">{executionError}</Alert>
@@ -316,7 +482,7 @@ export function BudgetImportPage() {
           {executeMutation.isPending ? (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
               <Typography color="text.secondary" variant="body2">
-                Importacao em andamento. Aguarde o processamento da planilha.
+                Iniciando a importacao. Aguarde a confirmacao do processamento.
               </Typography>
               <LinearProgress />
             </Box>
@@ -330,7 +496,11 @@ export function BudgetImportPage() {
             }}
           >
             <Button
-              disabled={selectedFile === null || previewMutation.isPending}
+              disabled={
+                selectedFile === null ||
+                previewMutation.isPending ||
+                executionIsProcessing
+              }
               onClick={handlePreview}
               startIcon={<VisibilityRoundedIcon />}
               variant="contained"
@@ -341,20 +511,53 @@ export function BudgetImportPage() {
             </Button>
             <Button
               color="success"
-              disabled={previewResult === null || executeMutation.isPending}
+              disabled={
+                previewResult === null ||
+                executeMutation.isPending ||
+                executionIsProcessing ||
+                executionResult?.previewId === previewResult.previewId
+              }
               onClick={handleExecuteImport}
               startIcon={<TaskAltRoundedIcon />}
               variant="contained"
             >
               {executeMutation.isPending
-                ? "Importando..."
+                ? "Iniciando..."
                 : "Confirmar importação"}
             </Button>
           </Box>
         </Box>
       </SectionCard>
 
-      {executionResult ? (
+      {executionIsProcessing && executionResult ? (
+        <SectionCard
+          description={`Importação ${executionResult.importId} iniciada em ${formatDateTime(executionResult.startedAt)}.`}
+          title="Processamento da importação"
+        >
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <Alert severity="info">
+              {processInfo ?? executionResult.result.message}
+            </Alert>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              <Typography color="text.secondary" variant="body2">
+                {executionResult.summary.rowsExpected > 0
+                  ? `${executionResult.summary.rowsProcessed} de ${executionResult.summary.rowsExpected} linha(s) processada(s).`
+                  : "Processando as linhas da planilha..."}
+              </Typography>
+              <LinearProgress
+                value={executionProgressValue ?? 0}
+                variant={
+                  executionProgressValue === null
+                    ? "indeterminate"
+                    : "determinate"
+                }
+              />
+            </Box>
+          </Box>
+        </SectionCard>
+      ) : null}
+
+      {executionResult && !executionIsProcessing ? (
         <SectionCard
           description={`Importação ${executionResult.importId} finalizada em ${formatDateTime(executionResult.finishedAt)}.`}
           title="Resultado da importação"
@@ -362,13 +565,24 @@ export function BudgetImportPage() {
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <Alert
               severity={
-                executionResult.summary.rowsFailed > 0 ? "warning" : "success"
+                executionResult.status === "failed" ? "error" : "success"
               }
             >
-              {executionResult.summary.rowsFailed > 0
-                ? `${executionResult.result.message} ${executionResult.summary.rowsFailed} linha(s) com inconsistência não foram importadas.`
-                : executionResult.result.message}
+              {executionResult.status === "failed"
+                ? "A importacao nao foi concluida. Revise a mensagem abaixo e tente novamente."
+                : getExecutionSuccessMessage(
+                    previewResult?.fileName ?? "selecionado",
+                    executionResult,
+                  )}
             </Alert>
+            <Alert severity="info" variant="outlined">
+              {executionResult.result.message}
+            </Alert>
+            {executionResult.summary.rowsFailed > 0 ? (
+              <Alert severity="warning">
+                {`${executionResult.summary.rowsFailed} linha(s) com inconsistência não foram importadas, mas o restante do arquivo foi processado com sucesso.`}
+              </Alert>
+            ) : null}
             <Box
               sx={{
                 display: "grid",

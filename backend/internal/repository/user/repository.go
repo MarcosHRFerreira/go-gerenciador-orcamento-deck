@@ -17,6 +17,7 @@ type Repository interface {
 	GetUserByEmailOrUsername(ctx context.Context, email string, username string) (*model.UserModel, error)
 	GetUserByID(ctx context.Context, userID int64) (*model.UserModel, error)
 	ListUsers(ctx context.Context) ([]model.UserModel, error)
+	UpdateUser(ctx context.Context, userID int64, name string, email string, username string, role model.UserRole, updatedAt time.Time) error
 	UpdateUserRole(ctx context.Context, userID int64, role model.UserRole, updatedAt time.Time) error
 	UpdateUserActive(ctx context.Context, userID int64, active bool, updatedAt time.Time) error
 	UpdateUserPassword(ctx context.Context, userID int64, passwordHash string, mustChangePassword bool, updatedAt time.Time) error
@@ -174,6 +175,17 @@ func (r *repository) ListUsers(ctx context.Context) ([]model.UserModel, error) {
 	}
 
 	return users, nil
+}
+
+func (r *repository) UpdateUser(ctx context.Context, userID int64, name string, email string, username string, role model.UserRole, updatedAt time.Time) error {
+	const query = `
+		UPDATE users
+		SET name = $2, email = $3, username = $4, role = $5, updated_at = $6
+		WHERE id = $1
+	`
+
+	_, err := r.db.ExecContext(ctx, query, userID, name, email, username, role, updatedAt)
+	return err
 }
 
 func (r *repository) UpdateUserRole(ctx context.Context, userID int64, role model.UserRole, updatedAt time.Time) error {

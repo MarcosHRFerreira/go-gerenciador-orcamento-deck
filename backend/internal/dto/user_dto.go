@@ -15,6 +15,13 @@ type CreateUserResponse struct {
 	ID int64 `json:"id"`
 }
 
+type UpdateUserRequest struct {
+	Name     string `json:"name" validate:"required,min=3"`
+	Email    string `json:"email" validate:"required,email"`
+	Username string `json:"username" validate:"required,min=3"`
+	Role     string `json:"role" validate:"required,oneof=admin user"`
+}
+
 type UpdateUserRoleRequest struct {
 	Role string `json:"role" validate:"required,oneof=admin user"`
 }

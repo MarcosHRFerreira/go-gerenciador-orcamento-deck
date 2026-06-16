@@ -84,6 +84,7 @@ type PreviewBudgetImportResponse struct {
 }
 
 type ExecuteBudgetImportSummary struct {
+	RowsExpected    int `json:"rows_expected"`
 	RowsProcessed   int `json:"rows_processed"`
 	BudgetsCreated  int `json:"budgets_created"`
 	BudgetsUpdated  int `json:"budgets_updated"`

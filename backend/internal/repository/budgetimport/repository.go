@@ -10,6 +10,7 @@ import (
 type Repository interface {
 	CreateBatch(ctx context.Context, item *model.BudgetImportBatchModel) (int64, error)
 	UpdateBatch(ctx context.Context, item *model.BudgetImportBatchModel) error
+	GetBatchByID(ctx context.Context, batchID int64) (*model.BudgetImportBatchModel, error)
 	CreateRowRaw(ctx context.Context, item *model.BudgetImportRowRawModel) (int64, error)
 }
 
@@ -32,6 +33,7 @@ func (r *repository) CreateBatch(ctx context.Context, item *model.BudgetImportBa
 			executed_by_user_id,
 			started_at,
 			finished_at,
+			rows_expected,
 			rows_processed,
 			budgets_created,
 			budgets_updated,
@@ -42,7 +44,7 @@ func (r *repository) CreateBatch(ctx context.Context, item *model.BudgetImportBa
 			created_at,
 			updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 		RETURNING id
 	`
 
@@ -58,6 +60,7 @@ func (r *repository) CreateBatch(ctx context.Context, item *model.BudgetImportBa
 		nullableInt64(item.ExecutedByUserID),
 		item.StartedAt,
 		nullableTime(item.FinishedAt),
+		item.RowsExpected,
 		item.RowsProcessed,
 		item.BudgetsCreated,
 		item.BudgetsUpdated,
@@ -81,14 +84,15 @@ func (r *repository) UpdateBatch(ctx context.Context, item *model.BudgetImportBa
 		SET
 			status = $2,
 			finished_at = $3,
-			rows_processed = $4,
-			budgets_created = $5,
-			budgets_updated = $6,
-			budgets_ignored = $7,
-			rows_failed = $8,
-			catalogs_created = $9,
-			result_message = $10,
-			updated_at = $11
+			rows_expected = $4,
+			rows_processed = $5,
+			budgets_created = $6,
+			budgets_updated = $7,
+			budgets_ignored = $8,
+			rows_failed = $9,
+			catalogs_created = $10,
+			result_message = $11,
+			updated_at = $12
 		WHERE id = $1
 	`
 
@@ -98,6 +102,7 @@ func (r *repository) UpdateBatch(ctx context.Context, item *model.BudgetImportBa
 		item.ID,
 		item.Status,
 		nullableTime(item.FinishedAt),
+		item.RowsExpected,
 		item.RowsProcessed,
 		item.BudgetsCreated,
 		item.BudgetsUpdated,
@@ -108,6 +113,65 @@ func (r *repository) UpdateBatch(ctx context.Context, item *model.BudgetImportBa
 		item.UpdatedAt,
 	)
 	return err
+}
+
+func (r *repository) GetBatchByID(ctx context.Context, batchID int64) (*model.BudgetImportBatchModel, error) {
+	const query = `
+		SELECT
+			id,
+			preview_id,
+			file_name,
+			source_company,
+			source_layout,
+			status,
+			executed_by_user_id,
+			started_at,
+			finished_at,
+			rows_expected,
+			rows_processed,
+			budgets_created,
+			budgets_updated,
+			budgets_ignored,
+			rows_failed,
+			catalogs_created,
+			result_message,
+			created_at,
+			updated_at
+		FROM budget_import_batches
+		WHERE id = $1
+	`
+
+	item := &model.BudgetImportBatchModel{}
+	err := r.db.QueryRowContext(ctx, query, batchID).Scan(
+		&item.ID,
+		&item.PreviewID,
+		&item.FileName,
+		&item.SourceCompany,
+		&item.SourceLayout,
+		&item.Status,
+		&item.ExecutedByUserID,
+		&item.StartedAt,
+		&item.FinishedAt,
+		&item.RowsExpected,
+		&item.RowsProcessed,
+		&item.BudgetsCreated,
+		&item.BudgetsUpdated,
+		&item.BudgetsIgnored,
+		&item.RowsFailed,
+		&item.CatalogsCreated,
+		&item.ResultMessage,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	return item, nil
 }
 
 func (r *repository) CreateRowRaw(ctx context.Context, item *model.BudgetImportRowRawModel) (int64, error) {

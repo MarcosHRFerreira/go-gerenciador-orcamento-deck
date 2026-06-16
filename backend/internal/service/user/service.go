@@ -3,6 +3,7 @@ package user
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/apperror"
@@ -18,6 +19,7 @@ type Service interface {
 	Create(ctx context.Context, req *dto.CreateUserRequest) (int64, error)
 	List(ctx context.Context) ([]dto.UserResponse, error)
 	GetMe(ctx context.Context, userID int64) (*dto.UserResponse, error)
+	Update(ctx context.Context, actorUserID int64, userID int64, req *dto.UpdateUserRequest) error
 	UpdateRole(ctx context.Context, actorUserID int64, userID int64, req *dto.UpdateUserRoleRequest) error
 	UpdateActive(ctx context.Context, actorUserID int64, userID int64, req *dto.UpdateUserActiveRequest) error
 	ResetPassword(ctx context.Context, actorUserID int64, userID int64, req *dto.ResetUserPasswordRequest) error
@@ -108,6 +110,86 @@ func (s *service) GetMe(ctx context.Context, userID int64) (*dto.UserResponse, e
 	response := toResponse(*user)
 
 	return &response, nil
+}
+
+func (s *service) Update(ctx context.Context, actorUserID int64, userID int64, req *dto.UpdateUserRequest) error {
+	if userID <= 0 {
+		logUserWarn(ctx, "Atualizacao de usuario bloqueada por user_id invalido", slog.String("user_action", "update_user"), slog.String("reason", "invalid_target_user"))
+		return apperror.BadRequest("user_id e obrigatorio")
+	}
+	if actorUserID <= 0 {
+		logUserWarn(ctx, "Atualizacao de usuario bloqueada por usuario autenticado invalido", slog.String("user_action", "update_user"), slog.Int64("target_user_id", userID), slog.String("reason", "invalid_actor"))
+		return apperror.Forbidden("Usuario autenticado invalido")
+	}
+
+	name := strings.TrimSpace(req.Name)
+	email := strings.TrimSpace(req.Email)
+	username := strings.TrimSpace(req.Username)
+	nextRole, err := normalizeRole(req.Role)
+	if err != nil {
+		logUserWarn(ctx, "Atualizacao de usuario bloqueada por perfil invalido", slog.String("user_action", "update_user"), slog.Int64("actor_user_id", actorUserID), slog.Int64("target_user_id", userID), slog.String("reason", "invalid_role"))
+		return err
+	}
+
+	user, err := s.userRepo.GetUserByID(ctx, userID)
+	if err != nil {
+		logUserError(ctx, "Falha ao carregar usuario na atualizacao", err, slog.String("user_action", "update_user"), slog.Int64("actor_user_id", actorUserID), slog.Int64("target_user_id", userID))
+		return apperror.Internal("failed to check user", err)
+	}
+	if user == nil {
+		logUserWarn(ctx, "Atualizacao de usuario bloqueada por usuario inexistente", slog.String("user_action", "update_user"), slog.Int64("actor_user_id", actorUserID), slog.Int64("target_user_id", userID), slog.String("reason", "user_not_found"))
+		return apperror.NotFound("Usuario nao encontrado")
+	}
+
+	if actorUserID == userID && user.Role != nextRole {
+		logUserWarn(ctx, "Atualizacao de usuario bloqueada por autoalteracao de perfil", slog.String("user_action", "update_user"), slog.Int64("actor_user_id", actorUserID), slog.Int64("target_user_id", userID), slog.String("reason", "self_role_change"))
+		return apperror.Forbidden("Nao e permitido alterar o proprio perfil")
+	}
+
+	existingByEmail, err := s.userRepo.GetUserByEmail(ctx, email)
+	if err != nil {
+		logUserError(ctx, "Falha ao verificar duplicidade de e-mail", err, slog.String("user_action", "update_user"), slog.Int64("actor_user_id", actorUserID), slog.Int64("target_user_id", userID))
+		return apperror.Internal("failed to check email duplication", err)
+	}
+	if existingByEmail != nil && existingByEmail.ID != userID {
+		logUserWarn(ctx, "Atualizacao de usuario bloqueada por e-mail duplicado", slog.String("user_action", "update_user"), slog.Int64("actor_user_id", actorUserID), slog.Int64("target_user_id", userID), slog.String("email", email), slog.String("reason", "duplicated_email"))
+		return apperror.Conflict("E-mail ja esta em uso")
+	}
+
+	existingByUsername, err := s.userRepo.GetUserByUsername(ctx, username)
+	if err != nil {
+		logUserError(ctx, "Falha ao verificar duplicidade de username", err, slog.String("user_action", "update_user"), slog.Int64("actor_user_id", actorUserID), slog.Int64("target_user_id", userID))
+		return apperror.Internal("failed to check username duplication", err)
+	}
+	if existingByUsername != nil && existingByUsername.ID != userID {
+		logUserWarn(ctx, "Atualizacao de usuario bloqueada por username duplicado", slog.String("user_action", "update_user"), slog.Int64("actor_user_id", actorUserID), slog.Int64("target_user_id", userID), slog.String("username", username), slog.String("reason", "duplicated_username"))
+		return apperror.Conflict("Username ja esta em uso")
+	}
+
+	if user.Role == model.RoleAdmin && nextRole != model.RoleAdmin {
+		activeAdminsCount, err := s.userRepo.CountActiveAdmins(ctx)
+		if err != nil {
+			logUserError(ctx, "Falha ao contar administradores ativos", err, slog.String("user_action", "update_user"), slog.Int64("actor_user_id", actorUserID), slog.Int64("target_user_id", userID))
+			return apperror.Internal("failed to count active admins", err)
+		}
+		if user.Active && activeAdminsCount <= 1 {
+			logUserWarn(ctx, "Atualizacao de usuario bloqueada para preservar ultimo admin ativo", slog.String("user_action", "update_user"), slog.Int64("actor_user_id", actorUserID), slog.Int64("target_user_id", userID), slog.String("reason", "last_active_admin"))
+			return apperror.Forbidden("Nao e permitido remover o perfil do ultimo administrador ativo")
+		}
+	}
+
+	if user.Name == name && user.Email == email && user.Username == username && user.Role == nextRole {
+		logUserInfo(ctx, "Atualizacao de usuario ignorada por nao haver mudanca", slog.String("user_action", "update_user"), slog.Int64("actor_user_id", actorUserID), slog.Int64("target_user_id", userID))
+		return nil
+	}
+
+	if err := s.userRepo.UpdateUser(ctx, userID, name, email, username, nextRole, time.Now()); err != nil {
+		logUserError(ctx, "Falha ao atualizar usuario", err, slog.String("user_action", "update_user"), slog.Int64("actor_user_id", actorUserID), slog.Int64("target_user_id", userID), slog.String("username", username), slog.String("role", string(nextRole)))
+		return apperror.Internal("failed to update user", err)
+	}
+
+	logUserInfo(ctx, "Usuario atualizado com sucesso", slog.String("user_action", "update_user"), slog.Int64("actor_user_id", actorUserID), slog.Int64("target_user_id", userID), slog.String("username", username), slog.String("role", string(nextRole)))
+	return nil
 }
 
 func (s *service) UpdateRole(ctx context.Context, actorUserID int64, userID int64, req *dto.UpdateUserRoleRequest) error {

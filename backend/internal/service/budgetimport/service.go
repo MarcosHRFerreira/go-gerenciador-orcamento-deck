@@ -87,6 +87,7 @@ type lossReasonRepository interface {
 type importAuditRepository interface {
 	CreateBatch(ctx context.Context, item *model.BudgetImportBatchModel) (int64, error)
 	UpdateBatch(ctx context.Context, item *model.BudgetImportBatchModel) error
+	GetBatchByID(ctx context.Context, batchID int64) (*model.BudgetImportBatchModel, error)
 	CreateRowRaw(ctx context.Context, item *model.BudgetImportRowRawModel) (int64, error)
 }
 
@@ -97,7 +98,9 @@ type Service interface {
 		fileData []byte,
 		options dto.PreviewBudgetImportOptions,
 	) (*dto.PreviewBudgetImportResponse, error)
+	StartImport(ctx context.Context, req *dto.ExecuteBudgetImportRequest) (*dto.ExecuteBudgetImportResponse, error)
 	ExecuteImport(ctx context.Context, req *dto.ExecuteBudgetImportRequest) (*dto.ExecuteBudgetImportResponse, error)
+	GetImportStatus(ctx context.Context, importBatchID int64) (*dto.ExecuteBudgetImportResponse, error)
 }
 
 type service struct {
@@ -222,6 +225,10 @@ func (noopImportAuditRepository) CreateBatch(_ context.Context, _ *model.BudgetI
 
 func (noopImportAuditRepository) UpdateBatch(_ context.Context, _ *model.BudgetImportBatchModel) error {
 	return nil
+}
+
+func (noopImportAuditRepository) GetBatchByID(_ context.Context, _ int64) (*model.BudgetImportBatchModel, error) {
+	return nil, nil
 }
 
 func (noopImportAuditRepository) CreateRowRaw(_ context.Context, _ *model.BudgetImportRowRawModel) (int64, error) {
@@ -515,9 +522,8 @@ func (s *service) buildRowPreview(
 
 	_ = projectName
 
-	_, salespersonHasWarning, salespersonHasError := resolveCatalogName(
+	_, salespersonHasWarning, salespersonHasError := resolveSalespersonName(
 		normalizedRow.salespersonName,
-		"Vendedor",
 		catalogs.salespeople,
 		catalogs.defaultSalespersonExists,
 		options,
@@ -728,10 +734,28 @@ func (s *service) loadCatalogIndex(ctx context.Context) (*catalogIndex, error) {
 	}
 	for _, item := range salespeople {
 		key := normalizeLookupKey(item.Name)
+		if key == "" {
+			continue
+		}
+
 		index.salespeople[key] = struct{}{}
 		if key == normalizeLookupKey(notInformedName) {
 			index.defaultSalespersonExists = true
 		}
+	}
+	for aliasKey, canonicalID := range buildCanonicalSalespersonFirstNameIDs(salespeople) {
+		if aliasKey == "" || canonicalID <= 0 {
+			continue
+		}
+
+		index.salespeople[aliasKey] = struct{}{}
+	}
+	for aliasKey, aliasCount := range buildSalespersonFirstNameCounts(salespeople) {
+		if aliasKey == "" || aliasCount != 1 {
+			continue
+		}
+
+		index.salespeople[aliasKey] = struct{}{}
 	}
 	for _, item := range contacts {
 		installerKey := index.installerNameByID[item.InstallerID]
@@ -1048,8 +1072,89 @@ func normalizeCellText(raw string) string {
 	return strings.Join(parts, " ")
 }
 
+func normalizeDisplayText(raw string) string {
+	normalized := normalizeCellText(raw)
+	if normalized == "" {
+		return normalized
+	}
+
+	builder := strings.Builder{}
+	builder.Grow(len(normalized))
+	shouldUppercaseNext := true
+
+	for _, char := range normalized {
+		switch {
+		case unicode.IsSpace(char):
+			builder.WriteRune(char)
+			shouldUppercaseNext = true
+		case isDisplayWordSeparator(char):
+			builder.WriteRune(char)
+			shouldUppercaseNext = true
+		case shouldUppercaseNext:
+			builder.WriteRune(unicode.ToUpper(char))
+			shouldUppercaseNext = false
+		default:
+			builder.WriteRune(unicode.ToLower(char))
+		}
+	}
+
+	return builder.String()
+}
+
 func normalizeLookupKey(raw string) string {
 	return strings.ToLower(normalizeCellText(raw))
+}
+
+func salespersonFirstNameLookupKey(raw string) string {
+	normalized := normalizeLookupKey(raw)
+	if normalized == "" || normalized == normalizeLookupKey(notInformedName) {
+		return ""
+	}
+
+	parts := strings.Fields(normalized)
+	if len(parts) == 0 {
+		return ""
+	}
+
+	return parts[0]
+}
+
+func buildSalespersonFirstNameCounts(items []model.SalespersonModel) map[string]int {
+	counts := make(map[string]int)
+	for _, item := range items {
+		firstNameKey := salespersonFirstNameLookupKey(item.Name)
+		if firstNameKey == "" {
+			continue
+		}
+
+		counts[firstNameKey]++
+	}
+
+	return counts
+}
+
+func buildCanonicalSalespersonFirstNameIDs(items []model.SalespersonModel) map[string]int64 {
+	canonicalIDs := make(map[string]int64)
+	for _, item := range items {
+		nameKey := normalizeLookupKey(item.Name)
+		firstNameKey := salespersonFirstNameLookupKey(item.Name)
+		if firstNameKey == "" || nameKey == "" || nameKey != firstNameKey {
+			continue
+		}
+
+		canonicalIDs[firstNameKey] = item.ID
+	}
+
+	return canonicalIDs
+}
+
+func isDisplayWordSeparator(char rune) bool {
+	switch char {
+	case '-', '/', '(', ')', '.':
+		return true
+	default:
+		return false
+	}
 }
 
 func resolveCatalogName(
@@ -1078,7 +1183,7 @@ func resolveCatalogName(
 		return "", false, true
 	}
 
-	name := normalizeCellText(raw)
+	name := normalizeDisplayText(raw)
 	key := normalizeLookupKey(name)
 	if _, ok := existing[key]; ok {
 		return key, false, false
@@ -1119,7 +1224,7 @@ func resolveContactName(
 		return "", false, true
 	}
 
-	name := normalizeCellText(raw)
+	name := normalizeDisplayText(raw)
 	key := installerName + "|" + normalizeLookupKey(name)
 	if _, ok := existing[key]; ok {
 		return key, false, false
@@ -1131,6 +1236,48 @@ func resolveContactName(
 	}
 
 	*messages = append(*messages, fmt.Sprintf("Contato nao encontrado: %s.", name))
+	return "", false, true
+}
+
+func resolveSalespersonName(
+	raw string,
+	existing map[string]struct{},
+	defaultExists bool,
+	options dto.PreviewBudgetImportOptions,
+	missing map[string]struct{},
+	messages *[]string,
+) (string, bool, bool) {
+	if isMissingValue(raw) {
+		return resolveCatalogName(
+			raw,
+			"Vendedor",
+			existing,
+			defaultExists,
+			options,
+			missing,
+			messages,
+		)
+	}
+
+	name := normalizeDisplayText(raw)
+	key := normalizeLookupKey(name)
+	firstNameKey := salespersonFirstNameLookupKey(name)
+	if firstNameKey != "" {
+		if _, ok := existing[firstNameKey]; ok {
+			return firstNameKey, false, false
+		}
+	}
+	if _, ok := existing[key]; ok {
+		return key, false, false
+	}
+
+	if options.CreateMissingCatalogs {
+		missing[key] = struct{}{}
+		*messages = append(*messages, fmt.Sprintf("Vendedor sera criado automaticamente: %s.", name))
+		return key, true, false
+	}
+
+	*messages = append(*messages, fmt.Sprintf("Vendedor nao encontrado: %s.", name))
 	return "", false, true
 }
 

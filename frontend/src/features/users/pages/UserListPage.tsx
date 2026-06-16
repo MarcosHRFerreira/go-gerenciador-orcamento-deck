@@ -1,6 +1,7 @@
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import AdminPanelSettingsRoundedIcon from "@mui/icons-material/AdminPanelSettingsRounded";
 import BlockRoundedIcon from "@mui/icons-material/BlockRounded";
+import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import LockResetRoundedIcon from "@mui/icons-material/LockResetRounded";
 import PersonOutlineRoundedIcon from "@mui/icons-material/PersonOutlineRounded";
 import PublishedWithChangesRoundedIcon from "@mui/icons-material/PublishedWithChangesRounded";
@@ -503,6 +504,15 @@ export function UserListPage() {
                           justifyContent: "flex-end",
                         }}
                       >
+                        <Button
+                          disabled={isMutating}
+                          onClick={() => navigate(`/users/${item.id}/edit`)}
+                          size="small"
+                          startIcon={<EditRoundedIcon />}
+                          variant="text"
+                        >
+                          Editar
+                        </Button>
                         <Button
                           disabled={isMutating || isSelf}
                           onClick={() =>

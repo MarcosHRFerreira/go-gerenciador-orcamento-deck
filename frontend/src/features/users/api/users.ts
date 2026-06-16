@@ -3,6 +3,7 @@ import type {
   CreateUserPayload,
   CreateUserResponse,
   ResetUserPasswordPayload,
+  UpdateUserPayload,
   UpdateUserActivePayload,
   UpdateUserRolePayload,
   UserApiItem,
@@ -20,6 +21,13 @@ type CreateUserApiPayload = {
 
 type CreateUserApiResponse = {
   id: number;
+};
+
+type UpdateUserApiPayload = {
+  name: string;
+  email: string;
+  username: string;
+  role: "admin" | "user";
 };
 
 function mapUserItem(item: UserApiItem): UserItem {
@@ -49,6 +57,17 @@ function mapCreateUserPayload(
   };
 }
 
+function mapUpdateUserPayload(
+  payload: UpdateUserPayload,
+): UpdateUserApiPayload {
+  return {
+    email: payload.email,
+    name: payload.name,
+    role: payload.role,
+    username: payload.username,
+  };
+}
+
 export async function listUsersRequest(): Promise<UserItem[]> {
   const response = await api.get<UserApiItem[]>("/users");
 
@@ -66,6 +85,13 @@ export async function createUserRequest(
   return {
     id: response.data.id,
   };
+}
+
+export async function updateUserRequest(
+  userId: number,
+  payload: UpdateUserPayload,
+): Promise<void> {
+  await api.put(`/users/${userId}`, mapUpdateUserPayload(payload));
 }
 
 export async function updateUserRoleRequest(

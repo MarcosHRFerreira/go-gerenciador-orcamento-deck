@@ -43,6 +43,13 @@ export type CreateUserResponse = {
   id: number;
 };
 
+export type UpdateUserPayload = {
+  name: string;
+  email: string;
+  username: string;
+  role: UserRole;
+};
+
 export type UpdateUserRolePayload = {
   role: UserRole;
 };

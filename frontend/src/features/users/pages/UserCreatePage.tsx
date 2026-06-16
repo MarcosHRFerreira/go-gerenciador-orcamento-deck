@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { createUserRequest } from "../api/users";
 import { UserForm, type UserFormValues } from "../components/UserForm";
-import type { CreateUserPayload } from "../types/user";
+import type { CreateUserPayload, UpdateUserPayload } from "../types/user";
 
 const defaultUserFormValues: UserFormValues = {
   email: "",
@@ -17,7 +17,13 @@ export function UserCreatePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const handleSubmit = async (payload: CreateUserPayload) => {
+  const handleSubmit = async (
+    payload: CreateUserPayload | UpdateUserPayload,
+  ) => {
+    if (!("password" in payload)) {
+      throw new Error("Payload invalido para criacao de usuario.");
+    }
+
     await createUserRequest(payload);
     await queryClient.invalidateQueries({ queryKey: ["users"] });
     navigate("/users");
@@ -26,6 +32,7 @@ export function UserCreatePage() {
   return (
     <UserForm
       initialValues={defaultUserFormValues}
+      mode="create"
       onCancel={() => navigate("/users")}
       onSubmit={handleSubmit}
       submitLabel="Salvar usuario"

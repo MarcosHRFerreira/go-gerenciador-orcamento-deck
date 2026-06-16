@@ -37,6 +37,7 @@ func (h *Handler) RouteList() {
 	adminRoutes.Use(middleware.RequireRoles(model.RoleAdmin))
 	adminRoutes.POST("/preview", h.Preview)
 	adminRoutes.POST("", h.ExecuteImport)
+	adminRoutes.GET("/:import_id", h.GetImportStatus)
 }
 
 func (h *Handler) Preview(c *gin.Context) {
@@ -86,9 +87,25 @@ func (h *Handler) ExecuteImport(c *gin.Context) {
 	}
 
 	requestContext := budgetimportservice.WithActorUserID(c.Request.Context(), middleware.UserID(c))
-	response, err := h.service.ExecuteImport(requestContext, &req)
+	response, err := h.service.StartImport(requestContext, &req)
 	if err != nil {
 		httpresponse.JSONAppError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+func (h *Handler) GetImportStatus(c *gin.Context) {
+	importID, err := strconv.ParseInt(strings.TrimSpace(c.Param("import_id")), 10, 64)
+	if err != nil || importID <= 0 {
+		httpresponse.JSONError(c, http.StatusBadRequest, "Importacao invalida")
+		return
+	}
+
+	response, getErr := h.service.GetImportStatus(c.Request.Context(), importID)
+	if getErr != nil {
+		httpresponse.JSONAppError(c, getErr)
 		return
 	}
 

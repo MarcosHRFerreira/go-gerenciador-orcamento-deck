@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Alert, Box, Button, MenuItem, TextField } from "@mui/material";
 import { isAxiosError } from "axios";
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { z } from "zod";
 import { PageHeader } from "../../../components/common/PageHeader";
 import { SectionCard } from "../../../components/common/SectionCard";
@@ -12,37 +12,50 @@ import {
   createStrongPasswordSchema,
   passwordStrengthHint,
 } from "../../../shared/validation/password";
-import type { CreateUserPayload, UserRole } from "../types/user";
+import type {
+  CreateUserPayload,
+  UpdateUserPayload,
+  UserRole,
+} from "../types/user";
 
-const userFormSchema = z
-  .object({
-    email: z.string().trim().email("Informe um e-mail valido"),
-    name: z
-      .string()
-      .trim()
-      .min(1, "Informe o nome")
-      .max(150, "O nome deve ter no maximo 150 caracteres"),
+const baseUserFormSchema = z.object({
+  email: z.string().trim().email("Informe um e-mail valido"),
+  name: z
+    .string()
+    .trim()
+    .min(1, "Informe o nome")
+    .max(150, "O nome deve ter no maximo 150 caracteres"),
+  role: z.enum(["admin", "user"]),
+  username: z
+    .string()
+    .trim()
+    .min(1, "Informe o username")
+    .max(100, "O username deve ter no maximo 100 caracteres"),
+});
+
+const createUserFormSchema = baseUserFormSchema
+  .extend({
     password: createStrongPasswordSchema("A senha"),
     passwordConfirm: z.string().min(8, "Confirme a senha"),
-    role: z.enum(["admin", "user"]),
-    username: z
-      .string()
-      .trim()
-      .min(1, "Informe o username")
-      .max(100, "O username deve ter no maximo 100 caracteres"),
   })
   .refine((values) => values.password === values.passwordConfirm, {
     message: "A confirmacao de senha deve ser igual a senha",
     path: ["passwordConfirm"],
   });
 
-export type UserFormValues = z.infer<typeof userFormSchema>;
+export type UserFormValues = z.infer<typeof createUserFormSchema>;
+
+const editUserFormSchema = baseUserFormSchema.extend({
+  password: z.string(),
+  passwordConfirm: z.string(),
+});
 
 type UserFormProps = {
   backLabel?: string;
   initialValues: UserFormValues;
+  mode: "create" | "edit";
   onCancel: () => void;
-  onSubmit: (payload: CreateUserPayload) => Promise<void>;
+  onSubmit: (payload: CreateUserPayload | UpdateUserPayload) => Promise<void>;
   submitLabel: string;
   subtitle: string;
   title: string;
@@ -62,20 +75,32 @@ function getRoleLabel(role: UserRole) {
   return role === "admin" ? "Administrador" : "Usuario";
 }
 
-function mapFormValuesToPayload(values: UserFormValues): CreateUserPayload {
-  return {
+function mapFormValuesToPayload(
+  values: UserFormValues,
+  mode: "create" | "edit",
+): CreateUserPayload | UpdateUserPayload {
+  const basePayload = {
     email: values.email.trim(),
     name: values.name.trim(),
-    password: values.password,
-    passwordConfirm: values.passwordConfirm,
     role: values.role,
     username: values.username.trim(),
+  };
+
+  if (mode === "edit") {
+    return basePayload;
+  }
+
+  return {
+    ...basePayload,
+    password: values.password,
+    passwordConfirm: values.passwordConfirm,
   };
 }
 
 export function UserForm({
   backLabel = "Voltar",
   initialValues,
+  mode,
   onCancel,
   onSubmit,
   submitLabel,
@@ -83,19 +108,23 @@ export function UserForm({
   title,
 }: UserFormProps) {
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const resolver =
+    mode === "create"
+      ? zodResolver(createUserFormSchema)
+      : zodResolver(editUserFormSchema);
   const {
     formState: { errors, isSubmitting },
     handleSubmit,
     register,
   } = useForm<UserFormValues>({
     defaultValues: initialValues,
-    resolver: zodResolver(userFormSchema),
+    resolver: resolver as Resolver<UserFormValues>,
   });
 
   const handleFormSubmit = async (values: UserFormValues) => {
     try {
       setSubmitError(null);
-      await onSubmit(mapFormValuesToPayload(values));
+      await onSubmit(mapFormValuesToPayload(values, mode));
     } catch (error) {
       setSubmitError(getSubmitErrorMessage(error));
     }
@@ -119,13 +148,19 @@ export function UserForm({
 
       <Box sx={{ mt: 3 }}>
         <SectionCard
-          description="Cadastre acessos administrativos ou operacionais com o perfil adequado."
+          description={
+            mode === "create"
+              ? "Cadastre acessos administrativos ou operacionais com o perfil adequado."
+              : "Atualize os dados cadastrais e o perfil de acesso do usuario."
+          }
           title="Dados do usuario"
         >
           {submitError ? <Alert severity="error">{submitError}</Alert> : null}
-          <Alert severity="info" variant="outlined">
-            {passwordStrengthHint}
-          </Alert>
+          {mode === "create" ? (
+            <Alert severity="info" variant="outlined">
+              {passwordStrengthHint}
+            </Alert>
+          ) : null}
 
           <Box
             sx={{
@@ -176,24 +211,28 @@ export function UserForm({
                 </MenuItem>
               ))}
             </TextField>
-            <TextField
-              error={Boolean(errors.password)}
-              fullWidth
-              helperText={errors.password?.message}
-              label="Senha"
-              placeholder="Digite a senha inicial"
-              type="password"
-              {...register("password")}
-            />
-            <TextField
-              error={Boolean(errors.passwordConfirm)}
-              fullWidth
-              helperText={errors.passwordConfirm?.message}
-              label="Confirmar senha"
-              placeholder="Repita a senha"
-              type="password"
-              {...register("passwordConfirm")}
-            />
+            {mode === "create" ? (
+              <TextField
+                error={Boolean(errors.password)}
+                fullWidth
+                helperText={errors.password?.message}
+                label="Senha"
+                placeholder="Digite a senha inicial"
+                type="password"
+                {...register("password")}
+              />
+            ) : null}
+            {mode === "create" ? (
+              <TextField
+                error={Boolean(errors.passwordConfirm)}
+                fullWidth
+                helperText={errors.passwordConfirm?.message}
+                label="Confirmar senha"
+                placeholder="Repita a senha"
+                type="password"
+                {...register("passwordConfirm")}
+              />
+            ) : null}
           </Box>
 
           <Box

@@ -13,6 +13,7 @@ import { DashboardPage } from "../../features/dashboard/pages/DashboardPage";
 import ProjectDetailPage from "../../features/projects/pages/ProjectDetailPage";
 import SalespersonListPage from "../../features/salespeople/pages/SalespersonListPage";
 import { UserCreatePage } from "../../features/users/pages/UserCreatePage";
+import { UserEditPage } from "../../features/users/pages/UserEditPage";
 import { UserListPage } from "../../features/users/pages/UserListPage";
 
 export function AppRouter() {
@@ -41,6 +42,7 @@ export function AppRouter() {
             <Route path="/salespeople" element={<SalespersonListPage />} />
             <Route path="/users" element={<UserListPage />} />
             <Route path="/users/new" element={<UserCreatePage />} />
+            <Route path="/users/:userId/edit" element={<UserEditPage />} />
           </Route>
         </Route>
       </Route>

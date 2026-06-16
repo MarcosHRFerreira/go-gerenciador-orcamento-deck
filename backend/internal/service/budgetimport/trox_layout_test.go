@@ -37,11 +37,11 @@ func TestTroxImportLayoutShouldParseNormalizedRow(t *testing.T) {
 	if row.revision != 0 {
 		t.Fatalf("expected revision 0, got %d", row.revision)
 	}
-	if row.projectName != "DIVERSOS DE JUNHO" {
-		t.Fatalf("expected project name DIVERSOS DE JUNHO, got %s", row.projectName)
+	if row.projectName != "Diversos De Junho" {
+		t.Fatalf("expected project name Diversos De Junho, got %s", row.projectName)
 	}
-	if row.salespersonName != "EMANUEL FERRI" {
-		t.Fatalf("expected normalized salesperson EMANUEL FERRI, got %s", row.salespersonName)
+	if row.salespersonName != "Emanuel Ferri" {
+		t.Fatalf("expected normalized salesperson Emanuel Ferri, got %s", row.salespersonName)
 	}
 	if row.currentFollowUp != "Informado" {
 		t.Fatalf("expected current follow-up Informado, got %s", row.currentFollowUp)

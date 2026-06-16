@@ -180,6 +180,7 @@ type BudgetImportPreviewApiResponse = {
 };
 
 type BudgetImportExecutionApiSummary = {
+  rows_expected: number;
   rows_processed: number;
   budgets_created: number;
   budgets_updated: number;
@@ -297,6 +298,7 @@ function mapBudgetImportExecutionResult(
     startedAt: response.started_at,
     finishedAt: response.finished_at,
     summary: {
+      rowsExpected: response.summary.rows_expected,
       rowsProcessed: response.summary.rows_processed,
       budgetsCreated: response.summary.budgets_created,
       budgetsUpdated: response.summary.budgets_updated,
@@ -523,6 +525,16 @@ export async function executeBudgetImportRequest(
     {
       preview_id: payload.previewId,
     },
+  );
+
+  return mapBudgetImportExecutionResult(response.data);
+}
+
+export async function getBudgetImportStatusRequest(
+  importId: string,
+): Promise<BudgetImportExecutionResult> {
+  const response = await api.get<BudgetImportExecutionApiResponse>(
+    `/budget-imports/${importId}`,
   );
 
   return mapBudgetImportExecutionResult(response.data);

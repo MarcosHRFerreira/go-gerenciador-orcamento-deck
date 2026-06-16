@@ -36,6 +36,8 @@ type catalogRuntime struct {
 	lossReasons  map[string]int64
 }
 
+const importBatchProgressUpdateInterval = 10
+
 func (s *service) storePreview(snapshot previewSnapshot) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -56,7 +58,81 @@ func (s *service) takePreview(previewID string) (previewSnapshot, bool) {
 	return snapshot, exists
 }
 
+func (s *service) StartImport(ctx context.Context, req *dto.ExecuteBudgetImportRequest) (*dto.ExecuteBudgetImportResponse, error) {
+	execution, err := s.prepareImportExecution(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	backgroundContext := logger.NewContext(context.Background(), logger.FromContext(ctx))
+	backgroundContext = WithActorUserID(backgroundContext, actorUserIDFromContext(ctx))
+
+	go s.runImportExecution(
+		backgroundContext,
+		execution.snapshot,
+		execution.layout,
+		execution.workbook,
+		execution.importBatchID,
+		execution.startedAt,
+		execution.rowsExpected,
+	)
+
+	return buildImportExecutionResponse(
+		execution.importBatchID,
+		execution.snapshot.previewID,
+		"processing",
+		execution.startedAt,
+		sql.NullTime{},
+		dto.ExecuteBudgetImportSummary{
+			RowsExpected: execution.rowsExpected,
+		},
+		"Importacao em processamento.",
+	), nil
+}
+
 func (s *service) ExecuteImport(ctx context.Context, req *dto.ExecuteBudgetImportRequest) (*dto.ExecuteBudgetImportResponse, error) {
+	execution, err := s.prepareImportExecution(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.processImportExecution(
+		ctx,
+		execution.snapshot,
+		execution.layout,
+		execution.workbook,
+		execution.importBatchID,
+		execution.startedAt,
+		execution.rowsExpected,
+	)
+}
+
+func (s *service) GetImportStatus(ctx context.Context, importBatchID int64) (*dto.ExecuteBudgetImportResponse, error) {
+	if importBatchID <= 0 {
+		return nil, apperror.BadRequest("import_id e obrigatorio")
+	}
+
+	batch, err := s.auditRepo.GetBatchByID(ctx, importBatchID)
+	if err != nil {
+		return nil, apperror.Internal("failed to load import batch", err)
+	}
+	if batch == nil {
+		return nil, apperror.NotFound("Importacao nao encontrada")
+	}
+
+	return mapImportBatchToExecutionResponse(batch), nil
+}
+
+type preparedImportExecution struct {
+	snapshot      previewSnapshot
+	layout        importLayout
+	workbook      *workbookData
+	importBatchID int64
+	startedAt     time.Time
+	rowsExpected  int
+}
+
+func (s *service) prepareImportExecution(ctx context.Context, req *dto.ExecuteBudgetImportRequest) (*preparedImportExecution, error) {
 	if req == nil || strings.TrimSpace(req.PreviewID) == "" {
 		return nil, apperror.BadRequest("preview_id e obrigatorio")
 	}
@@ -70,34 +146,105 @@ func (s *service) ExecuteImport(ctx context.Context, req *dto.ExecuteBudgetImpor
 	if !exists {
 		return nil, apperror.BadRequest("Layout de importacao nao encontrado para o preview")
 	}
-	importLogger := logger.FromContext(ctx).With(
-		slog.String("import_action", "execute"),
-		slog.String("preview_id", snapshot.previewID),
-		slog.String("source_layout", layout.Key()),
-		slog.String("source_company", layout.SourceCompany()),
-		slog.String("file_name", snapshot.fileName),
-	)
-	importLogger.InfoContext(ctx, "execucao da importacao iniciada")
 
 	workbook, err := loadWorkbookForLayout(snapshot.fileData, layout)
 	if err != nil {
 		return nil, err
 	}
 
+	startedAt := time.Now().UTC()
+	rowsExpected := countImportableRows(workbook, layout)
+	importBatchID, err := s.createImportBatch(ctx, snapshot, layout, startedAt, rowsExpected)
+	if err != nil {
+		return nil, err
+	}
+
+	return &preparedImportExecution{
+		snapshot:      snapshot,
+		layout:        layout,
+		workbook:      workbook,
+		importBatchID: importBatchID,
+		startedAt:     startedAt,
+		rowsExpected:  rowsExpected,
+	}, nil
+}
+
+func (s *service) runImportExecution(
+	ctx context.Context,
+	snapshot previewSnapshot,
+	layout importLayout,
+	workbook *workbookData,
+	importBatchID int64,
+	startedAt time.Time,
+	rowsExpected int,
+) {
+	if _, err := s.processImportExecution(
+		ctx,
+		snapshot,
+		layout,
+		workbook,
+		importBatchID,
+		startedAt,
+		rowsExpected,
+	); err != nil {
+		logger.FromContext(ctx).ErrorContext(
+			ctx,
+			"execucao assincrona da importacao falhou",
+			slog.Int64("import_batch_id", importBatchID),
+			slog.String("preview_id", snapshot.previewID),
+			slog.Any("error", err),
+		)
+		finishedAt := time.Now().UTC()
+		if finishErr := s.finishImportBatch(
+			ctx,
+			importBatchID,
+			"failed",
+			dto.ExecuteBudgetImportSummary{
+				RowsExpected: rowsExpected,
+			},
+			"Nao foi possivel concluir a importacao.",
+			finishedAt,
+		); finishErr != nil {
+			logger.FromContext(ctx).ErrorContext(
+				ctx,
+				"falha ao registrar erro da importacao assincrona",
+				slog.Int64("import_batch_id", importBatchID),
+				slog.Any("error", finishErr),
+			)
+		}
+	}
+}
+
+func (s *service) processImportExecution(
+	ctx context.Context,
+	snapshot previewSnapshot,
+	layout importLayout,
+	workbook *workbookData,
+	importBatchID int64,
+	startedAt time.Time,
+	rowsExpected int,
+) (*dto.ExecuteBudgetImportResponse, error) {
+	importLogger := logger.FromContext(ctx).With(
+		slog.String("import_action", "execute"),
+		slog.String("preview_id", snapshot.previewID),
+		slog.String("source_layout", layout.Key()),
+		slog.String("source_company", layout.SourceCompany()),
+		slog.String("file_name", snapshot.fileName),
+		slog.Int64("import_batch_id", importBatchID),
+	)
+	importLogger.InfoContext(ctx, "execucao da importacao iniciada")
+
 	catalogs, err := s.loadCatalogRuntime(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	startedAt := time.Now().UTC()
-	summary := dto.ExecuteBudgetImportSummary{}
+	summary := dto.ExecuteBudgetImportSummary{
+		RowsExpected: rowsExpected,
+	}
 	status := "completed"
 	resultMessage := "Importacao concluida com sucesso."
 	header := workbook.rows[layout.HeaderRowNumber()]
-	importBatchID, err := s.createImportBatch(ctx, snapshot, layout, startedAt)
-	if err != nil {
-		return nil, err
-	}
 
 	for rowNumber := layout.HeaderRowNumber() + 1; rowNumber <= workbook.maxRow; rowNumber++ {
 		rowValues := workbook.rows[rowNumber]
@@ -145,6 +292,17 @@ func (s *service) ExecuteImport(ctx context.Context, req *dto.ExecuteBudgetImpor
 		if err := s.recordImportRow(ctx, importBatchID, header, rowValues, row, rowStatus, rowResult.action, rowMessages, rowResult.budgetID); err != nil {
 			return nil, err
 		}
+
+		if summary.RowsProcessed%importBatchProgressUpdateInterval == 0 {
+			if err := s.updateImportBatchProgress(
+				ctx,
+				importBatchID,
+				summary,
+				"Importacao em processamento.",
+			); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	finishedAt := time.Now().UTC()
@@ -171,17 +329,15 @@ func (s *service) ExecuteImport(ctx context.Context, req *dto.ExecuteBudgetImpor
 		slog.Int("rows_failed", summary.RowsFailed),
 		slog.Int("catalogs_created", summary.CatalogsCreated),
 	)
-	return &dto.ExecuteBudgetImportResponse{
-		ImportID:   importID,
-		PreviewID:  snapshot.previewID,
-		Status:     status,
-		StartedAt:  startedAt.Format(time.RFC3339),
-		FinishedAt: finishedAt.Format(time.RFC3339),
-		Summary:    summary,
-		Result: dto.ExecuteBudgetImportResult{
-			Message: resultMessage,
-		},
-	}, nil
+	return buildImportExecutionResponse(
+		importBatchID,
+		snapshot.previewID,
+		status,
+		startedAt,
+		validNullTime(finishedAt),
+		summary,
+		resultMessage,
+	), nil
 }
 
 type importRowResult struct {
@@ -331,6 +487,7 @@ func (s *service) createImportBatch(
 	snapshot previewSnapshot,
 	layout importLayout,
 	startedAt time.Time,
+	rowsExpected int,
 ) (int64, error) {
 	userID := actorUserIDFromContext(ctx)
 	batch := &model.BudgetImportBatchModel{
@@ -341,7 +498,8 @@ func (s *service) createImportBatch(
 		Status:           "processing",
 		ExecutedByUserID: validNullInt64(userID),
 		StartedAt:        startedAt,
-		ResultMessage:    "",
+		RowsExpected:     rowsExpected,
+		ResultMessage:    "Importacao em processamento.",
 		CreatedAt:        startedAt,
 		UpdatedAt:        startedAt,
 	}
@@ -352,6 +510,31 @@ func (s *service) createImportBatch(
 	}
 
 	return batchID, nil
+}
+
+func (s *service) updateImportBatchProgress(
+	ctx context.Context,
+	importBatchID int64,
+	summary dto.ExecuteBudgetImportSummary,
+	resultMessage string,
+) error {
+	if importBatchID <= 0 {
+		return nil
+	}
+
+	return s.auditRepo.UpdateBatch(ctx, &model.BudgetImportBatchModel{
+		ID:              importBatchID,
+		Status:          "processing",
+		RowsExpected:    summary.RowsExpected,
+		RowsProcessed:   summary.RowsProcessed,
+		BudgetsCreated:  summary.BudgetsCreated,
+		BudgetsUpdated:  summary.BudgetsUpdated,
+		BudgetsIgnored:  summary.BudgetsIgnored,
+		RowsFailed:      summary.RowsFailed,
+		CatalogsCreated: summary.CatalogsCreated,
+		ResultMessage:   resultMessage,
+		UpdatedAt:       time.Now().UTC(),
+	})
 }
 
 func (s *service) finishImportBatch(
@@ -370,6 +553,7 @@ func (s *service) finishImportBatch(
 		ID:              importBatchID,
 		Status:          status,
 		FinishedAt:      validNullTime(finishedAt),
+		RowsExpected:    summary.RowsExpected,
 		RowsProcessed:   summary.RowsProcessed,
 		BudgetsCreated:  summary.BudgetsCreated,
 		BudgetsUpdated:  summary.BudgetsUpdated,
@@ -379,6 +563,83 @@ func (s *service) finishImportBatch(
 		ResultMessage:   resultMessage,
 		UpdatedAt:       finishedAt,
 	})
+}
+
+func countImportableRows(workbook *workbookData, layout importLayout) int {
+	rowsExpected := 0
+	for rowNumber := layout.HeaderRowNumber() + 1; rowNumber <= workbook.maxRow; rowNumber++ {
+		if layout.IsRowEmpty(workbook.rows[rowNumber]) {
+			continue
+		}
+
+		rowsExpected++
+	}
+
+	return rowsExpected
+}
+
+func buildImportExecutionResponse(
+	importBatchID int64,
+	previewID string,
+	status string,
+	startedAt time.Time,
+	finishedAt sql.NullTime,
+	summary dto.ExecuteBudgetImportSummary,
+	resultMessage string,
+) *dto.ExecuteBudgetImportResponse {
+	return &dto.ExecuteBudgetImportResponse{
+		ImportID:   strconv.FormatInt(importBatchID, 10),
+		PreviewID:  previewID,
+		Status:     status,
+		StartedAt:  startedAt.Format(time.RFC3339),
+		FinishedAt: formatImportFinishedAt(finishedAt),
+		Summary:    summary,
+		Result: dto.ExecuteBudgetImportResult{
+			Message: resultMessage,
+		},
+	}
+}
+
+func formatImportFinishedAt(finishedAt sql.NullTime) string {
+	if !finishedAt.Valid {
+		return ""
+	}
+
+	return finishedAt.Time.Format(time.RFC3339)
+}
+
+func mapImportBatchToExecutionResponse(batch *model.BudgetImportBatchModel) *dto.ExecuteBudgetImportResponse {
+	resultMessage := strings.TrimSpace(batch.ResultMessage)
+	if resultMessage == "" {
+		switch batch.Status {
+		case "processing":
+			resultMessage = "Importacao em processamento."
+		case "completed_with_errors":
+			resultMessage = "Importacao concluida com inconsistencias."
+		case "failed":
+			resultMessage = "Nao foi possivel concluir a importacao."
+		default:
+			resultMessage = "Importacao concluida com sucesso."
+		}
+	}
+
+	return buildImportExecutionResponse(
+		batch.ID,
+		batch.PreviewID,
+		batch.Status,
+		batch.StartedAt,
+		batch.FinishedAt,
+		dto.ExecuteBudgetImportSummary{
+			RowsExpected:    batch.RowsExpected,
+			RowsProcessed:   batch.RowsProcessed,
+			BudgetsCreated:  batch.BudgetsCreated,
+			BudgetsUpdated:  batch.BudgetsUpdated,
+			BudgetsIgnored:  batch.BudgetsIgnored,
+			RowsFailed:      batch.RowsFailed,
+			CatalogsCreated: batch.CatalogsCreated,
+		},
+		resultMessage,
+	)
 }
 
 func (s *service) recordImportRow(
@@ -484,7 +745,7 @@ func fallbackName(raw string) string {
 	if isMissingValue(raw) {
 		return notInformedName
 	}
-	return normalizeCellText(raw)
+	return normalizeDisplayText(raw)
 }
 
 func shouldSkipProjectAssociation(projectName string) bool {
@@ -552,7 +813,33 @@ func (s *service) loadCatalogRuntime(ctx context.Context) (*catalogRuntime, erro
 		runtime.projectTypes[normalizeLookupKey(item.Name)] = item.ID
 	}
 	for _, item := range salespeople {
-		runtime.salespeople[normalizeLookupKey(item.Name)] = item.ID
+		key := normalizeLookupKey(item.Name)
+		if key == "" {
+			continue
+		}
+
+		runtime.salespeople[key] = item.ID
+	}
+	for aliasKey, canonicalID := range buildCanonicalSalespersonFirstNameIDs(salespeople) {
+		if aliasKey == "" || canonicalID <= 0 {
+			continue
+		}
+
+		runtime.salespeople[aliasKey] = canonicalID
+	}
+	for aliasKey, aliasCount := range buildSalespersonFirstNameCounts(salespeople) {
+		if aliasKey == "" || aliasCount != 1 {
+			continue
+		}
+
+		for _, item := range salespeople {
+			if salespersonFirstNameLookupKey(item.Name) != aliasKey {
+				continue
+			}
+
+			runtime.salespeople[aliasKey] = item.ID
+			break
+		}
 	}
 	for _, item := range contacts {
 		key := buildContactRuntimeKey(item.InstallerID, item.Name)
@@ -566,6 +853,7 @@ func (s *service) loadCatalogRuntime(ctx context.Context) (*catalogRuntime, erro
 }
 
 func (s *service) ensureBudgetStatusID(ctx context.Context, catalogs *catalogRuntime, name string, options dto.PreviewBudgetImportOptions) (int64, int, error) {
+	name = normalizeDisplayText(name)
 	key := normalizeLookupKey(name)
 	if id, ok := catalogs.statuses[key]; ok {
 		return id, 0, nil
@@ -598,6 +886,7 @@ func (s *service) ensureBudgetStatusID(ctx context.Context, catalogs *catalogRun
 }
 
 func (s *service) ensurePriorityID(ctx context.Context, catalogs *catalogRuntime, name string, options dto.PreviewBudgetImportOptions) (int64, int, error) {
+	name = normalizeDisplayText(name)
 	key := normalizeLookupKey(name)
 	if id, ok := catalogs.priorities[key]; ok {
 		return id, 0, nil
@@ -628,6 +917,7 @@ func (s *service) ensurePriorityID(ctx context.Context, catalogs *catalogRuntime
 }
 
 func (s *service) ensureProjectTypeID(ctx context.Context, catalogs *catalogRuntime, name string, options dto.PreviewBudgetImportOptions) (int64, int, error) {
+	name = normalizeDisplayText(name)
 	key := normalizeLookupKey(name)
 	if id, ok := catalogs.projectTypes[key]; ok {
 		return id, 0, nil
@@ -658,6 +948,7 @@ func (s *service) ensureProjectTypeID(ctx context.Context, catalogs *catalogRunt
 }
 
 func (s *service) ensureInstallerID(ctx context.Context, catalogs *catalogRuntime, name string, options dto.PreviewBudgetImportOptions) (int64, int, error) {
+	name = normalizeDisplayText(name)
 	key := normalizeLookupKey(name)
 	if id, ok := catalogs.installers[key]; ok {
 		return id, 0, nil
@@ -687,6 +978,7 @@ func (s *service) ensureInstallerID(ctx context.Context, catalogs *catalogRuntim
 }
 
 func (s *service) ensureProjectID(ctx context.Context, catalogs *catalogRuntime, name string, projectTypeID int64, options dto.PreviewBudgetImportOptions) (int64, int, error) {
+	name = normalizeDisplayText(name)
 	key := normalizeLookupKey(name)
 	if id, ok := catalogs.projects[key]; ok {
 		return id, 0, nil
@@ -717,7 +1009,14 @@ func (s *service) ensureProjectID(ctx context.Context, catalogs *catalogRuntime,
 }
 
 func (s *service) ensureSalespersonID(ctx context.Context, catalogs *catalogRuntime, name string, options dto.PreviewBudgetImportOptions) (int64, int, error) {
+	name = normalizeDisplayText(name)
 	key := normalizeLookupKey(name)
+	firstNameKey := salespersonFirstNameLookupKey(name)
+	if firstNameKey != "" {
+		if id, ok := catalogs.salespeople[firstNameKey]; ok {
+			return id, 0, nil
+		}
+	}
 	if id, ok := catalogs.salespeople[key]; ok {
 		return id, 0, nil
 	}
@@ -739,10 +1038,14 @@ func (s *service) ensureSalespersonID(ctx context.Context, catalogs *catalogRunt
 	}
 
 	catalogs.salespeople[key] = id
+	if firstNameKey != "" {
+		catalogs.salespeople[firstNameKey] = id
+	}
 	return id, 1, nil
 }
 
 func (s *service) ensureContactID(ctx context.Context, catalogs *catalogRuntime, installerID int64, name string, options dto.PreviewBudgetImportOptions) (int64, int, error) {
+	name = normalizeDisplayText(name)
 	key := buildContactRuntimeKey(installerID, name)
 	if id, ok := catalogs.contacts[key]; ok {
 		return id, 0, nil
@@ -771,6 +1074,7 @@ func (s *service) ensureContactID(ctx context.Context, catalogs *catalogRuntime,
 }
 
 func (s *service) ensureLossReasonID(ctx context.Context, catalogs *catalogRuntime, name string, options dto.PreviewBudgetImportOptions) (int64, int, error) {
+	name = normalizeDisplayText(name)
 	key := normalizeLookupKey(name)
 	if id, ok := catalogs.lossReasons[key]; ok {
 		return id, 0, nil

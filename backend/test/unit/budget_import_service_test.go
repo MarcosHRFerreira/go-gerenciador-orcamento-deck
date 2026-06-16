@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/dto"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/model"
@@ -241,6 +242,7 @@ type budgetImportAuditRepositoryStub struct {
 	capturedBatchCreate *model.BudgetImportBatchModel
 	capturedBatchUpdate *model.BudgetImportBatchModel
 	capturedRows        []*model.BudgetImportRowRawModel
+	batchesByID         map[int64]*model.BudgetImportBatchModel
 }
 
 func (s *budgetImportAuditRepositoryStub) CreateBatch(_ context.Context, item *model.BudgetImportBatchModel) (int64, error) {
@@ -248,12 +250,37 @@ func (s *budgetImportAuditRepositoryStub) CreateBatch(_ context.Context, item *m
 	if s.createBatchID == 0 {
 		s.createBatchID = 1
 	}
+	if s.batchesByID == nil {
+		s.batchesByID = make(map[int64]*model.BudgetImportBatchModel)
+	}
+	batchCopy := *item
+	batchCopy.ID = s.createBatchID
+	s.batchesByID[s.createBatchID] = &batchCopy
 	return s.createBatchID, nil
 }
 
 func (s *budgetImportAuditRepositoryStub) UpdateBatch(_ context.Context, item *model.BudgetImportBatchModel) error {
 	s.capturedBatchUpdate = item
+	if s.batchesByID == nil {
+		s.batchesByID = make(map[int64]*model.BudgetImportBatchModel)
+	}
+	batchCopy := *item
+	s.batchesByID[item.ID] = &batchCopy
 	return nil
+}
+
+func (s *budgetImportAuditRepositoryStub) GetBatchByID(_ context.Context, batchID int64) (*model.BudgetImportBatchModel, error) {
+	if s.batchesByID == nil {
+		return nil, nil
+	}
+
+	item, exists := s.batchesByID[batchID]
+	if !exists {
+		return nil, nil
+	}
+
+	batchCopy := *item
+	return &batchCopy, nil
 }
 
 func (s *budgetImportAuditRepositoryStub) CreateRowRaw(_ context.Context, item *model.BudgetImportRowRawModel) (int64, error) {
@@ -455,6 +482,94 @@ func TestBudgetImportPreviewShouldMarkExistingBudgetAsIgnore(t *testing.T) {
 	}
 	if response.SampleRows[0].Action != "ignore" {
 		t.Fatalf("expected ignore action, got %s", response.SampleRows[0].Action)
+	}
+}
+
+func TestBudgetImportPreviewShouldReuseSalespersonWhenFirstNameAlreadyExists(t *testing.T) {
+	service := budgetimportservice.NewService(
+		&budgetImportBudgetRepositoryStub{},
+		&budgetImportStatusRepositoryStub{
+			items: []model.BudgetStatusModel{
+				{Name: "Fechado"},
+				{Name: "Nao informado"},
+			},
+		},
+		&budgetImportPriorityRepositoryStub{
+			items: []model.PriorityModel{
+				{Name: "Nao informado"},
+			},
+		},
+		&budgetImportInstallerRepositoryStub{
+			items: []model.InstallerModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		&budgetImportProjectRepositoryStub{
+			items: []model.ProjectModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		&budgetImportProjectTypeRepositoryStub{
+			items: []model.ProjectTypeModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		&budgetImportSalespersonRepositoryStub{
+			items: []model.SalespersonModel{
+				{ID: 10, Name: "Marcos"},
+				{ID: 12, Name: "Marcos Ferreira"},
+				{ID: 11, Name: "Nao informado"},
+			},
+		},
+		&budgetImportContactRepositoryStub{
+			items: []model.ContactModel{
+				{ID: 1, InstallerID: 1, Name: "Nao informado"},
+			},
+		},
+		&budgetImportLossReasonRepositoryStub{
+			items: []model.LossReasonModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		&budgetImportAuditRepositoryStub{},
+	)
+
+	response, err := service.Preview(
+		context.Background(),
+		"orcamentos.xlsx",
+		buildImportWorkbook(t, []map[string]string{
+			{
+				"A": "45660",
+				"B": "1001",
+				"C": "R1",
+				"D": "-",
+				"E": "-",
+				"F": "-",
+				"G": "MARCOS FERREIRA",
+				"H": "-",
+				"I": "1234.56",
+				"J": "0.05",
+				"K": "10",
+				"L": "FECHADO",
+				"M": "-",
+				"N": "-",
+				"O": "-",
+				"P": "1000",
+				"Q": "-",
+				"R": "-",
+			},
+		}),
+		dto.PreviewBudgetImportOptions{
+			CreateMissingCatalogs: true,
+			UseDefaultNotInformed: true,
+		},
+	)
+	if err != nil {
+		t.Fatalf("expected preview without error, got %v", err)
+	}
+
+	if response.CatalogActions.SalespeopleToCreate != 0 {
+		t.Fatalf("expected no salesperson creation when first name already exists, got %d", response.CatalogActions.SalespeopleToCreate)
 	}
 }
 
@@ -712,6 +827,253 @@ func TestBudgetImportExecuteShouldNotAssociateProjectWhenObraIsNaoInformado(t *t
 	}
 	if budgetRepo.capturedCreateItem.ProjectID.Valid {
 		t.Fatalf("expected budget project_id to remain null when obra is 'Nao informado', got %d", budgetRepo.capturedCreateItem.ProjectID.Int64)
+	}
+}
+
+func TestBudgetImportStartImportShouldProcessInBackgroundAndExposeStatus(t *testing.T) {
+	budgetRepo := &budgetImportBudgetRepositoryStub{}
+	auditRepo := &budgetImportAuditRepositoryStub{}
+	service := budgetimportservice.NewService(
+		budgetRepo,
+		&budgetImportStatusRepositoryStub{
+			items: []model.BudgetStatusModel{
+				{ID: 1, Name: "FECHADO"},
+				{ID: 2, Name: "Nao informado"},
+			},
+		},
+		&budgetImportPriorityRepositoryStub{
+			items: []model.PriorityModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		&budgetImportInstallerRepositoryStub{
+			items: []model.InstallerModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		&budgetImportProjectRepositoryStub{
+			items: []model.ProjectModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		&budgetImportProjectTypeRepositoryStub{
+			items: []model.ProjectTypeModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		&budgetImportSalespersonRepositoryStub{
+			items: []model.SalespersonModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		&budgetImportContactRepositoryStub{
+			items: []model.ContactModel{
+				{ID: 1, InstallerID: 1, Name: "Nao informado"},
+			},
+		},
+		&budgetImportLossReasonRepositoryStub{
+			items: []model.LossReasonModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		auditRepo,
+	)
+
+	previewResponse, err := service.Preview(
+		context.Background(),
+		"orcamentos.xlsx",
+		buildImportWorkbook(t, []map[string]string{
+			{
+				"A": "45661",
+				"B": "1002",
+				"C": "R1",
+				"D": "-",
+				"E": "-",
+				"F": "-",
+				"G": "-",
+				"H": "-",
+				"I": "1234.56",
+				"J": "0.05",
+				"K": "10",
+				"L": "FECHADO",
+				"M": "-",
+				"N": "-",
+				"O": "-",
+				"P": "1000",
+				"Q": "-",
+				"R": "-",
+			},
+		}),
+		dto.PreviewBudgetImportOptions{
+			CreateMissingCatalogs: true,
+			UseDefaultNotInformed: true,
+		},
+	)
+	if err != nil {
+		t.Fatalf("expected preview without error, got %v", err)
+	}
+
+	startResponse, err := service.StartImport(context.Background(), &dto.ExecuteBudgetImportRequest{
+		PreviewID: previewResponse.PreviewID,
+	})
+	if err != nil {
+		t.Fatalf("expected async start without error, got %v", err)
+	}
+	if startResponse.Status != "processing" {
+		t.Fatalf("expected processing status, got %s", startResponse.Status)
+	}
+	if startResponse.Summary.RowsExpected != 1 {
+		t.Fatalf("expected one expected row, got %d", startResponse.Summary.RowsExpected)
+	}
+
+	var statusResponse *dto.ExecuteBudgetImportResponse
+	for attempt := 0; attempt < 20; attempt++ {
+		statusResponse, err = service.GetImportStatus(context.Background(), 1)
+		if err != nil {
+			t.Fatalf("expected import status without error, got %v", err)
+		}
+		if statusResponse != nil && statusResponse.Status != "processing" {
+			break
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if statusResponse == nil {
+		t.Fatal("expected import status response")
+	}
+	if statusResponse.Status != "completed" {
+		t.Fatalf("expected completed status, got %s", statusResponse.Status)
+	}
+	if statusResponse.Summary.BudgetsCreated != 1 {
+		t.Fatalf("expected one created budget, got %d", statusResponse.Summary.BudgetsCreated)
+	}
+	if budgetRepo.capturedCreateItem == nil {
+		t.Fatal("expected background import to create budget")
+	}
+}
+
+func TestBudgetImportExecuteShouldNormalizeCatalogNamesAndReuseSalespersonByFirstName(t *testing.T) {
+	budgetRepo := &budgetImportBudgetRepositoryStub{}
+	salespersonRepo := &budgetImportSalespersonRepositoryStub{
+		items: []model.SalespersonModel{
+			{ID: 7, Name: "Marcos"},
+			{ID: 9, Name: "Marcos Ferreira"},
+			{ID: 8, Name: "Nao informado"},
+		},
+	}
+	projectRepo := &budgetImportProjectRepositoryStub{
+		items: []model.ProjectModel{
+			{ID: 1, Name: "Nao informado"},
+		},
+	}
+	installerRepo := &budgetImportInstallerRepositoryStub{
+		items: []model.InstallerModel{
+			{ID: 1, Name: "Nao informado"},
+		},
+	}
+
+	service := budgetimportservice.NewService(
+		budgetRepo,
+		&budgetImportStatusRepositoryStub{
+			items: []model.BudgetStatusModel{
+				{ID: 1, Name: "Fechado"},
+				{ID: 2, Name: "Nao informado"},
+			},
+		},
+		&budgetImportPriorityRepositoryStub{
+			items: []model.PriorityModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		installerRepo,
+		projectRepo,
+		&budgetImportProjectTypeRepositoryStub{
+			items: []model.ProjectTypeModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		salespersonRepo,
+		&budgetImportContactRepositoryStub{
+			items: []model.ContactModel{
+				{ID: 1, InstallerID: 1, Name: "Nao informado"},
+			},
+		},
+		&budgetImportLossReasonRepositoryStub{
+			items: []model.LossReasonModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		&budgetImportAuditRepositoryStub{},
+	)
+
+	previewResponse, err := service.Preview(
+		context.Background(),
+		"orcamentos.xlsx",
+		buildImportWorkbook(t, []map[string]string{
+			{
+				"A": "45662",
+				"B": "1003",
+				"C": "R1",
+				"D": "INSTALADOR ALFA",
+				"E": "OBRA CENTRAL NORTE",
+				"F": "-",
+				"G": "MARCOS FERREIRA",
+				"H": "-",
+				"I": "1234.56",
+				"J": "0.05",
+				"K": "10",
+				"L": "FECHADO",
+				"M": "EM NEGOCIACAO",
+				"N": "CONCORRENTE XPTO",
+				"O": "-",
+				"P": "1000",
+				"Q": "PROJETISTA SUL",
+				"R": "DETALHE TECNICO FINAL",
+			},
+		}),
+		dto.PreviewBudgetImportOptions{
+			CreateMissingCatalogs: true,
+			UseDefaultNotInformed: true,
+		},
+	)
+	if err != nil {
+		t.Fatalf("expected preview without error, got %v", err)
+	}
+
+	_, err = service.ExecuteImport(context.Background(), &dto.ExecuteBudgetImportRequest{
+		PreviewID: previewResponse.PreviewID,
+	})
+	if err != nil {
+		t.Fatalf("expected import without error, got %v", err)
+	}
+
+	if budgetRepo.capturedCreateItem == nil {
+		t.Fatal("expected created budget to be captured")
+	}
+	if !budgetRepo.capturedCreateItem.SalespersonID.Valid || budgetRepo.capturedCreateItem.SalespersonID.Int64 != 7 {
+		t.Fatalf("expected salesperson id 7 to be reused by first name, got %+v", budgetRepo.capturedCreateItem.SalespersonID)
+	}
+	if budgetRepo.capturedCreateItem.CompetitorName != "Concorrente Xpto" {
+		t.Fatalf("expected normalized competitor name, got %s", budgetRepo.capturedCreateItem.CompetitorName)
+	}
+	if budgetRepo.capturedCreateItem.DesignerName != "Projetista Sul" {
+		t.Fatalf("expected normalized designer name, got %s", budgetRepo.capturedCreateItem.DesignerName)
+	}
+	if budgetRepo.capturedCreateItem.SpecificationDetails != "Detalhe Tecnico Final" {
+		t.Fatalf("expected normalized specification, got %s", budgetRepo.capturedCreateItem.SpecificationDetails)
+	}
+	if budgetRepo.capturedCreateItem.CurrentFollowUp != "Em Negociacao" {
+		t.Fatalf("expected normalized current follow-up, got %s", budgetRepo.capturedCreateItem.CurrentFollowUp)
+	}
+	if len(salespersonRepo.items) != 3 {
+		t.Fatalf("expected salesperson list to remain unchanged, got %d items", len(salespersonRepo.items))
+	}
+	if len(projectRepo.items) != 2 || projectRepo.items[1].Name != "Obra Central Norte" {
+		t.Fatalf("expected normalized project creation, got %+v", projectRepo.items)
+	}
+	if len(installerRepo.items) != 2 || installerRepo.items[1].Name != "Instalador Alfa" {
+		t.Fatalf("expected normalized installer creation, got %+v", installerRepo.items)
 	}
 }
 

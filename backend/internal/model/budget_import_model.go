@@ -15,6 +15,7 @@ type BudgetImportBatchModel struct {
 	ExecutedByUserID sql.NullInt64
 	StartedAt        time.Time
 	FinishedAt       sql.NullTime
+	RowsExpected     int
 	RowsProcessed    int
 	BudgetsCreated   int
 	BudgetsUpdated   int

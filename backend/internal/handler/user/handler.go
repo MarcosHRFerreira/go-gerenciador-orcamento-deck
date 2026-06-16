@@ -39,6 +39,7 @@ func (h *Handler) RouteList() {
 	adminRoutes.Use(middleware.RequireRoles(model.RoleAdmin))
 	adminRoutes.POST("", h.CreateUser)
 	adminRoutes.GET("", h.ListUsers)
+	adminRoutes.PUT("/:user_id", h.UpdateUser)
 	adminRoutes.PATCH("/:user_id/role", h.UpdateRole)
 	adminRoutes.PATCH("/:user_id/active", h.UpdateActive)
 	adminRoutes.PATCH("/:user_id/reset-password", h.ResetPassword)
@@ -79,6 +80,25 @@ func (h *Handler) ListUsers(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, users)
+}
+
+func (h *Handler) UpdateUser(c *gin.Context) {
+	userID, ok := parseUserID(c)
+	if !ok {
+		return
+	}
+
+	var req dto.UpdateUserRequest
+	if !httpresponse.BindAndValidateJSON(c, h.validate, &req) {
+		return
+	}
+
+	if err := h.userService.Update(c.Request.Context(), middleware.UserID(c), userID, &req); err != nil {
+		httpresponse.JSONAppError(c, err)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
 }
 
 func (h *Handler) UpdateRole(c *gin.Context) {
