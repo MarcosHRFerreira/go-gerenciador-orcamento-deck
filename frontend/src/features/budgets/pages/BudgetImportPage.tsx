@@ -105,7 +105,7 @@ function createCatalogItems(previewResult: BudgetImportPreviewResult) {
       value: previewResult.catalogActions.installersToCreate,
     },
     {
-      label: "Projetos",
+      label: "Obras",
       value: previewResult.catalogActions.projectsToCreate,
     },
     {

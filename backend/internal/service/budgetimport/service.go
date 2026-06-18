@@ -62,6 +62,12 @@ type projectRepository interface {
 	List(ctx context.Context) ([]model.ProjectModel, error)
 }
 
+type productLineRepository interface {
+	Create(ctx context.Context, item *model.ProductLineModel) (int64, error)
+	GetByCodeOrName(ctx context.Context, code string, name string) (*model.ProductLineModel, error)
+	List(ctx context.Context) ([]model.ProductLineModel, error)
+}
+
 type projectTypeRepository interface {
 	Create(ctx context.Context, item *model.ProjectTypeModel) (int64, error)
 	GetByCodeOrName(ctx context.Context, code string, name string) (*model.ProjectTypeModel, error)
@@ -108,6 +114,7 @@ type service struct {
 	statusRepo      budgetStatusRepository
 	priorityRepo    priorityRepository
 	installerRepo   installerRepository
+	productLineRepo productLineRepository
 	projectRepo     projectRepository
 	projectTypeRepo projectTypeRepository
 	salespersonRepo salespersonRepository
@@ -170,6 +177,7 @@ type catalogIndex struct {
 	statuses                 map[string]struct{}
 	priorities               map[string]struct{}
 	installers               map[string]struct{}
+	productLines             map[string]struct{}
 	projects                 map[string]struct{}
 	projectTypes             map[string]struct{}
 	salespeople              map[string]struct{}
@@ -197,9 +205,15 @@ func NewService(
 	contactRepo contactRepository,
 	lossReasonRepo lossReasonRepository,
 	auditRepo importAuditRepository,
+	productLineRepos ...productLineRepository,
 ) Service {
 	if auditRepo == nil {
 		auditRepo = noopImportAuditRepository{}
+	}
+
+	productLineRepo := productLineRepository(noopProductLineRepository{})
+	if len(productLineRepos) > 0 && productLineRepos[0] != nil {
+		productLineRepo = productLineRepos[0]
 	}
 
 	return &service{
@@ -207,6 +221,7 @@ func NewService(
 		statusRepo:      statusRepo,
 		priorityRepo:    priorityRepo,
 		installerRepo:   installerRepo,
+		productLineRepo: productLineRepo,
 		projectRepo:     projectRepo,
 		projectTypeRepo: projectTypeRepo,
 		salespersonRepo: salespersonRepo,
@@ -218,6 +233,8 @@ func NewService(
 }
 
 type noopImportAuditRepository struct{}
+
+type noopProductLineRepository struct{}
 
 func (noopImportAuditRepository) CreateBatch(_ context.Context, _ *model.BudgetImportBatchModel) (int64, error) {
 	return 0, nil
@@ -233,6 +250,18 @@ func (noopImportAuditRepository) GetBatchByID(_ context.Context, _ int64) (*mode
 
 func (noopImportAuditRepository) CreateRowRaw(_ context.Context, _ *model.BudgetImportRowRawModel) (int64, error) {
 	return 0, nil
+}
+
+func (noopProductLineRepository) Create(_ context.Context, _ *model.ProductLineModel) (int64, error) {
+	return 0, nil
+}
+
+func (noopProductLineRepository) GetByCodeOrName(_ context.Context, _ string, _ string) (*model.ProductLineModel, error) {
+	return nil, nil
+}
+
+func (noopProductLineRepository) List(_ context.Context) ([]model.ProductLineModel, error) {
+	return nil, nil
 }
 
 func validNullTime(value time.Time) sql.NullTime {
@@ -305,6 +334,7 @@ func (s *service) Preview(
 	missingStatuses := make(map[string]struct{})
 	missingPriorities := make(map[string]struct{})
 	missingInstallers := make(map[string]struct{})
+	missingProductLines := make(map[string]struct{})
 	missingProjects := make(map[string]struct{})
 	missingProjectTypes := make(map[string]struct{})
 	missingSalespeople := make(map[string]struct{})
@@ -373,6 +403,7 @@ func (s *service) Preview(
 			missingStatuses,
 			missingPriorities,
 			missingInstallers,
+			missingProductLines,
 			missingProjects,
 			missingProjectTypes,
 			missingSalespeople,
@@ -412,6 +443,7 @@ func (s *service) Preview(
 		BudgetStatusesToCreate: len(missingStatuses),
 		PrioritiesToCreate:     len(missingPriorities),
 		InstallersToCreate:     len(missingInstallers),
+		ProductLinesToCreate:   len(missingProductLines),
 		ProjectsToCreate:       len(missingProjects),
 		ProjectTypesToCreate:   len(missingProjectTypes),
 		SalespeopleToCreate:    len(missingSalespeople),
@@ -459,6 +491,7 @@ func (s *service) buildRowPreview(
 	missingStatuses map[string]struct{},
 	missingPriorities map[string]struct{},
 	missingInstallers map[string]struct{},
+	missingProductLines map[string]struct{},
 	missingProjects map[string]struct{},
 	missingProjectTypes map[string]struct{},
 	missingSalespeople map[string]struct{},
@@ -494,6 +527,20 @@ func (s *service) buildRowPreview(
 	result.hasWarning = result.hasWarning || installerHasWarning
 	result.hasError = result.hasError || installerHasError
 
+	if !shouldSkipProductLineAssociation(normalizedRow.productLineName) {
+		_, productLineHasWarning, productLineHasError := resolveCatalogName(
+			normalizedRow.productLineName,
+			"Linha de produto",
+			catalogs.productLines,
+			false,
+			options,
+			missingProductLines,
+			&previewRow.Messages,
+		)
+		result.hasWarning = result.hasWarning || productLineHasWarning
+		result.hasError = result.hasError || productLineHasError
+	}
+
 	projectTypeName, projectTypeHasWarning, projectTypeHasError := resolveCatalogName(
 		normalizedRow.projectTypeName,
 		"Tipo de obra",
@@ -510,7 +557,7 @@ func (s *service) buildRowPreview(
 
 	projectName, projectHasWarning, projectHasError := resolveCatalogName(
 		normalizedRow.projectName,
-		"Projeto",
+		"Obra",
 		catalogs.projects,
 		catalogs.defaultProjectExists,
 		options,
@@ -663,6 +710,10 @@ func (s *service) loadCatalogIndex(ctx context.Context) (*catalogIndex, error) {
 	if err != nil {
 		return nil, apperror.Internal("failed to load installers", err)
 	}
+	productLines, err := s.productLineRepo.List(ctx)
+	if err != nil {
+		return nil, apperror.Internal("failed to load product lines", err)
+	}
 	projects, err := s.projectRepo.List(ctx)
 	if err != nil {
 		return nil, apperror.Internal("failed to load projects", err)
@@ -688,6 +739,7 @@ func (s *service) loadCatalogIndex(ctx context.Context) (*catalogIndex, error) {
 		statuses:          make(map[string]struct{}, len(statuses)),
 		priorities:        make(map[string]struct{}, len(priorities)),
 		installers:        make(map[string]struct{}, len(installers)),
+		productLines:      make(map[string]struct{}, len(productLines)),
 		projects:          make(map[string]struct{}, len(projects)),
 		projectTypes:      make(map[string]struct{}, len(projectTypes)),
 		salespeople:       make(map[string]struct{}, len(salespeople)),
@@ -717,6 +769,10 @@ func (s *service) loadCatalogIndex(ctx context.Context) (*catalogIndex, error) {
 		if key == normalizeLookupKey(notInformedName) {
 			index.defaultInstallerExists = true
 		}
+	}
+	for _, item := range productLines {
+		key := normalizeLookupKey(item.Name)
+		index.productLines[key] = struct{}{}
 	}
 	for _, item := range projects {
 		key := normalizeLookupKey(item.Name)

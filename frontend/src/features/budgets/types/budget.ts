@@ -1,4 +1,4 @@
-export type BudgetSortBy =
+﻿export type BudgetSortBy =
   | "sent_at"
   | "gross_value"
   | "created_at"
@@ -16,6 +16,8 @@ export type BudgetListFilters = {
   installerId: string;
   projectName: string;
   salespersonId: string;
+  sentAtFrom: string;
+  sentAtTo: string;
   projectId?: string;
   page: number;
   pageSize: number;
@@ -39,9 +41,10 @@ export type BudgetApiItem = {
   salesperson_id?: number | null;
   contact_id?: number | null;
   loss_reason_id?: number | null;
+  construction_company: string;
   competitor_name: string;
   competitor_price?: number | null;
-  designer_name: string;
+  projetista_name: string;
   source_company: string;
   status_name?: string | null;
   priority_name?: string | null;
@@ -79,7 +82,8 @@ export type BudgetListItem = {
   salespersonId: number | null;
   contactId: number | null;
   lossReasonId: number | null;
-  designerName: string;
+  constructionCompany: string;
+  projetistaName: string;
   competitorName: string;
   competitorPrice: number | null;
   statusName: string | null;
@@ -161,7 +165,7 @@ export type BudgetCreatePayload = {
   lossReasonId: number | null;
   competitorName: string;
   competitorPrice: number | null;
-  designerName: string;
+  projetistaName: string;
   specificationDetails: string;
   currentFollowUp: string;
 };

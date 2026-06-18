@@ -15,6 +15,7 @@ import (
 
 type Service interface {
 	Create(ctx context.Context, req *dto.CreateProjectRequest) (int64, error)
+	GetNextCode(ctx context.Context) (string, error)
 	List(ctx context.Context) ([]dto.ProjectResponse, error)
 	GetByID(ctx context.Context, projectID int64) (*dto.ProjectResponse, error)
 	Update(ctx context.Context, projectID int64, req *dto.UpdateProjectRequest) error
@@ -39,8 +40,17 @@ func (s *service) Create(ctx context.Context, req *dto.CreateProjectRequest) (in
 		return 0, err
 	}
 
+	code := strings.TrimSpace(req.Code)
+	if code == "" {
+		code, err = s.repo.GetNextCode(ctx)
+		if err != nil {
+			return 0, apperror.Internal("failed to generate project code", err)
+		}
+	}
+
 	now := time.Now()
 	id, err := s.repo.Create(ctx, &model.ProjectModel{
+		Code:          code,
 		Name:          strings.TrimSpace(req.Name),
 		ProjectTypeID: projectTypeID,
 		City:          strings.TrimSpace(req.City),
@@ -54,6 +64,15 @@ func (s *service) Create(ctx context.Context, req *dto.CreateProjectRequest) (in
 	}
 
 	return id, nil
+}
+
+func (s *service) GetNextCode(ctx context.Context) (string, error) {
+	code, err := s.repo.GetNextCode(ctx)
+	if err != nil {
+		return "", apperror.Internal("failed to generate project code", err)
+	}
+
+	return code, nil
 }
 
 func (s *service) List(ctx context.Context) ([]dto.ProjectResponse, error) {
@@ -72,7 +91,7 @@ func (s *service) List(ctx context.Context) ([]dto.ProjectResponse, error) {
 
 func (s *service) GetByID(ctx context.Context, projectID int64) (*dto.ProjectResponse, error) {
 	if projectID <= 0 {
-		return nil, apperror.BadRequest("project_id e obrigatorio")
+		return nil, apperror.BadRequest("ID da obra e obrigatorio")
 	}
 
 	item, err := s.repo.GetByID(ctx, projectID)
@@ -80,7 +99,7 @@ func (s *service) GetByID(ctx context.Context, projectID int64) (*dto.ProjectRes
 		return nil, apperror.Internal("failed to get project", err)
 	}
 	if item == nil {
-		return nil, apperror.NotFound("Projeto nao encontrado")
+		return nil, apperror.NotFound("Obra nao encontrada")
 	}
 
 	response := toResponse(*item)
@@ -89,7 +108,7 @@ func (s *service) GetByID(ctx context.Context, projectID int64) (*dto.ProjectRes
 
 func (s *service) Update(ctx context.Context, projectID int64, req *dto.UpdateProjectRequest) error {
 	if projectID <= 0 {
-		return apperror.BadRequest("project_id e obrigatorio")
+		return apperror.BadRequest("ID da obra e obrigatorio")
 	}
 
 	currentItem, err := s.repo.GetByID(ctx, projectID)
@@ -97,7 +116,7 @@ func (s *service) Update(ctx context.Context, projectID int64, req *dto.UpdatePr
 		return apperror.Internal("failed to check project", err)
 	}
 	if currentItem == nil {
-		return apperror.NotFound("Projeto nao encontrado")
+		return apperror.NotFound("Obra nao encontrada")
 	}
 
 	projectTypeID, err := s.normalizeProjectTypeID(ctx, req.ProjectTypeID)
@@ -105,8 +124,14 @@ func (s *service) Update(ctx context.Context, projectID int64, req *dto.UpdatePr
 		return err
 	}
 
+	code := strings.TrimSpace(req.Code)
+	if code == "" {
+		code = currentItem.Code
+	}
+
 	err = s.repo.Update(ctx, &model.ProjectModel{
 		ID:            projectID,
+		Code:          code,
 		Name:          strings.TrimSpace(req.Name),
 		ProjectTypeID: projectTypeID,
 		City:          strings.TrimSpace(req.City),
@@ -123,7 +148,7 @@ func (s *service) Update(ctx context.Context, projectID int64, req *dto.UpdatePr
 
 func (s *service) Delete(ctx context.Context, projectID int64) error {
 	if projectID <= 0 {
-		return apperror.BadRequest("project_id e obrigatorio")
+		return apperror.BadRequest("ID da obra e obrigatorio")
 	}
 
 	item, err := s.repo.GetByID(ctx, projectID)
@@ -131,7 +156,7 @@ func (s *service) Delete(ctx context.Context, projectID int64) error {
 		return apperror.Internal("failed to check project", err)
 	}
 	if item == nil {
-		return apperror.NotFound("Projeto nao encontrado")
+		return apperror.NotFound("Obra nao encontrada")
 	}
 
 	if err := s.repo.Delete(ctx, projectID); err != nil {
@@ -155,7 +180,7 @@ func (s *service) normalizeProjectTypeID(ctx context.Context, projectTypeID *int
 		return sql.NullInt64{}, apperror.Internal("failed to check project type", err)
 	}
 	if projectType == nil {
-		return sql.NullInt64{}, apperror.BadRequest("Tipo de projeto nao encontrado")
+		return sql.NullInt64{}, apperror.BadRequest("Tipo de obra nao encontrado")
 	}
 
 	return sql.NullInt64{
@@ -172,6 +197,7 @@ func toResponse(item model.ProjectModel) dto.ProjectResponse {
 
 	return dto.ProjectResponse{
 		ID:            item.ID,
+		Code:          item.Code,
 		Name:          item.Name,
 		ProjectTypeID: projectTypeID,
 		City:          item.City,

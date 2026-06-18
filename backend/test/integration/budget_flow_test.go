@@ -11,7 +11,7 @@ import (
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/httpresponse"
 )
 
-const automaticProjectCancellationNote = "Cancelado automaticamente porque outro orcamento do projeto foi marcado como PEDIDO"
+const automaticProjectCancellationNote = "Cancelado automaticamente porque outro orcamento da obra foi marcado como PEDIDO"
 
 func TestBudgetFollowUpsShouldCreateListAndSyncCurrentFollowUp(t *testing.T) {
 	env := newIntegrationTestEnv(t)
@@ -29,7 +29,7 @@ func TestBudgetFollowUpsShouldCreateListAndSyncCurrentFollowUp(t *testing.T) {
 			time.Date(2026, time.April, 1, 10, 0, 0, 0, time.UTC),
 			2100,
 			seed,
-			"Designer Follow Up",
+			"Projetista Follow Up",
 			"Concorrente Follow Up",
 		),
 	)
@@ -128,7 +128,7 @@ func TestBudgetStatusHistoryShouldChangeStatusListAndSyncBudgetStatus(t *testing
 			time.Date(2026, time.May, 1, 10, 0, 0, 0, time.UTC),
 			2500,
 			seed,
-			"Designer Status",
+			"Projetista Status",
 			"Concorrente Status",
 		),
 	)
@@ -219,7 +219,7 @@ func TestBudgetStatusHistoryShouldRejectSameStatus(t *testing.T) {
 			time.Date(2026, time.June, 1, 10, 0, 0, 0, time.UTC),
 			2600,
 			seed,
-			"Designer Status Igual",
+			"Projetista Status Igual",
 			"Concorrente Status Igual",
 		),
 	)
@@ -265,7 +265,7 @@ func TestBudgetStatusHistoryShouldCancelOtherProjectBudgetsWhenOneBecomesPedido(
 			time.Date(2026, time.July, 1, 10, 0, 0, 0, time.UTC),
 			3200,
 			seed,
-			"Designer Grupo 1",
+			"Projetista Grupo 1",
 			"Concorrente Grupo 1",
 		),
 	)
@@ -284,7 +284,7 @@ func TestBudgetStatusHistoryShouldCancelOtherProjectBudgetsWhenOneBecomesPedido(
 			time.Date(2026, time.July, 2, 10, 0, 0, 0, time.UTC),
 			3300,
 			seed,
-			"Designer Grupo 2",
+			"Projetista Grupo 2",
 			"Concorrente Grupo 2",
 		),
 	)
@@ -300,7 +300,7 @@ func TestBudgetStatusHistoryShouldCancelOtherProjectBudgetsWhenOneBecomesPedido(
 		http.MethodPatch,
 		fmt.Sprintf("/budgets/%d/status", firstBudgetPayload.ID),
 		token,
-		fmt.Sprintf(`{"status_id":%d,"notes":"Projeto aprovado"}`, pedidoStatusID),
+		fmt.Sprintf(`{"status_id":%d,"notes":"Obra aprovada"}`, pedidoStatusID),
 	)
 	if changeStatusResponse.Code != http.StatusCreated {
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, changeStatusResponse.Code)
@@ -404,7 +404,7 @@ func TestBudgetStatusHistoryShouldRejectSecondPedidoFromSameProject(t *testing.T
 			time.Date(2026, time.August, 1, 10, 0, 0, 0, time.UTC),
 			3400,
 			seed,
-			"Designer Grupo 3",
+			"Projetista Grupo 3",
 			"Concorrente Grupo 3",
 		),
 	)
@@ -423,7 +423,7 @@ func TestBudgetStatusHistoryShouldRejectSecondPedidoFromSameProject(t *testing.T
 			time.Date(2026, time.August, 2, 10, 0, 0, 0, time.UTC),
 			3500,
 			seed,
-			"Designer Grupo 4",
+			"Projetista Grupo 4",
 			"Concorrente Grupo 4",
 		),
 	)
@@ -439,7 +439,7 @@ func TestBudgetStatusHistoryShouldRejectSecondPedidoFromSameProject(t *testing.T
 		http.MethodPatch,
 		fmt.Sprintf("/budgets/%d/status", firstBudgetPayload.ID),
 		token,
-		fmt.Sprintf(`{"status_id":%d,"notes":"Primeiro pedido do projeto"}`, pedidoStatusID),
+		fmt.Sprintf(`{"status_id":%d,"notes":"Primeiro pedido da obra"}`, pedidoStatusID),
 	)
 	if firstPedidoResponse.Code != http.StatusCreated {
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, firstPedidoResponse.Code)
@@ -457,7 +457,7 @@ func TestBudgetStatusHistoryShouldRejectSecondPedidoFromSameProject(t *testing.T
 	}
 
 	errorPayload := decodeJSONResponse[httpresponse.ErrorResponse](t, secondPedidoResponse.Body)
-	if errorPayload.Message != "Ja existe outro orcamento do projeto marcado como PEDIDO" {
+	if errorPayload.Message != "Ja existe outro orcamento da obra marcado como PEDIDO" {
 		t.Fatalf("expected conflict message, got %s", errorPayload.Message)
 	}
 

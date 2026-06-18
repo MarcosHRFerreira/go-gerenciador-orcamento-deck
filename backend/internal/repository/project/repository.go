@@ -3,12 +3,14 @@ package project
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/model"
 )
 
 type Repository interface {
 	Create(ctx context.Context, item *model.ProjectModel) (int64, error)
+	GetNextCode(ctx context.Context) (string, error)
 	List(ctx context.Context) ([]model.ProjectModel, error)
 	GetByID(ctx context.Context, projectID int64) (*model.ProjectModel, error)
 	Update(ctx context.Context, item *model.ProjectModel) error
@@ -25,8 +27,8 @@ func NewRepository(db *sql.DB) Repository {
 
 func (r *repository) Create(ctx context.Context, item *model.ProjectModel) (int64, error) {
 	const query = `
-		INSERT INTO projects (name, project_type_id, city, state, notes, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO projects (code, name, project_type_id, city, state, notes, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id
 	`
 
@@ -34,6 +36,7 @@ func (r *repository) Create(ctx context.Context, item *model.ProjectModel) (int6
 	err := r.db.QueryRowContext(
 		ctx,
 		query,
+		item.Code,
 		item.Name,
 		nullableProjectTypeID(item.ProjectTypeID),
 		item.City,
@@ -49,9 +52,24 @@ func (r *repository) Create(ctx context.Context, item *model.ProjectModel) (int6
 	return id, nil
 }
 
+func (r *repository) GetNextCode(ctx context.Context) (string, error) {
+	const query = `
+		SELECT COALESCE(MAX(CAST(SUBSTRING(code FROM '([0-9]+)$') AS INTEGER)), 0)
+		FROM projects
+		WHERE code ~ '^(OBR-[0-9]{6}|PROJECT_[0-9]+)$'
+	`
+
+	var lastCodeNumber int
+	if err := r.db.QueryRowContext(ctx, query).Scan(&lastCodeNumber); err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("OBR-%06d", lastCodeNumber+1), nil
+}
+
 func (r *repository) List(ctx context.Context) ([]model.ProjectModel, error) {
 	const query = `
-		SELECT id, name, project_type_id, city, state, notes, created_at, updated_at
+		SELECT id, code, name, project_type_id, city, state, notes, created_at, updated_at
 		FROM projects
 		ORDER BY name ASC
 	`
@@ -67,6 +85,7 @@ func (r *repository) List(ctx context.Context) ([]model.ProjectModel, error) {
 		var item model.ProjectModel
 		if err := rows.Scan(
 			&item.ID,
+			&item.Code,
 			&item.Name,
 			&item.ProjectTypeID,
 			&item.City,
@@ -90,7 +109,7 @@ func (r *repository) List(ctx context.Context) ([]model.ProjectModel, error) {
 
 func (r *repository) GetByID(ctx context.Context, projectID int64) (*model.ProjectModel, error) {
 	const query = `
-		SELECT id, name, project_type_id, city, state, notes, created_at, updated_at
+		SELECT id, code, name, project_type_id, city, state, notes, created_at, updated_at
 		FROM projects
 		WHERE id = $1
 	`
@@ -100,6 +119,7 @@ func (r *repository) GetByID(ctx context.Context, projectID int64) (*model.Proje
 	var item model.ProjectModel
 	err := row.Scan(
 		&item.ID,
+		&item.Code,
 		&item.Name,
 		&item.ProjectTypeID,
 		&item.City,
@@ -122,7 +142,7 @@ func (r *repository) GetByID(ctx context.Context, projectID int64) (*model.Proje
 func (r *repository) Update(ctx context.Context, item *model.ProjectModel) error {
 	const query = `
 		UPDATE projects
-		SET name = $2, project_type_id = $3, city = $4, state = $5, notes = $6, updated_at = $7
+		SET code = $2, name = $3, project_type_id = $4, city = $5, state = $6, notes = $7, updated_at = $8
 		WHERE id = $1
 	`
 
@@ -130,6 +150,7 @@ func (r *repository) Update(ctx context.Context, item *model.ProjectModel) error
 		ctx,
 		query,
 		item.ID,
+		item.Code,
 		item.Name,
 		nullableProjectTypeID(item.ProjectTypeID),
 		item.City,

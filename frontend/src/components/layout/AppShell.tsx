@@ -1,6 +1,7 @@
 import DashboardRoundedIcon from "@mui/icons-material/DashboardRounded";
 import DarkModeRoundedIcon from "@mui/icons-material/DarkModeRounded";
 import DescriptionRoundedIcon from "@mui/icons-material/DescriptionRounded";
+import ApartmentRoundedIcon from "@mui/icons-material/ApartmentRounded";
 import ManageAccountsRoundedIcon from "@mui/icons-material/ManageAccountsRounded";
 import LightModeRoundedIcon from "@mui/icons-material/LightModeRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
@@ -51,6 +52,12 @@ type NavigationItem = {
 const navigationItems: NavigationItem[] = [
   { icon: <DashboardRoundedIcon />, label: "Dashboard", to: "/dashboard" },
   { icon: <DescriptionRoundedIcon />, label: "Orçamentos", to: "/budgets" },
+  {
+    icon: <ApartmentRoundedIcon />,
+    label: "Obras",
+    requiresAdmin: true,
+    to: "/projects",
+  },
   {
     icon: <UploadFileRoundedIcon />,
     label: "Importação",

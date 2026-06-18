@@ -107,7 +107,7 @@ func (s *service) ChangeStatus(ctx context.Context, budgetID int64, userID int64
 	id, err := s.budgetRepo.ChangeStatus(ctx, changeStatusParams)
 	if err != nil {
 		if errors.Is(err, budgetrepository.ErrProjectAlreadyHasPedido) {
-			return 0, apperror.Conflict("Ja existe outro orcamento do projeto marcado como PEDIDO")
+			return 0, apperror.Conflict("Ja existe outro orcamento da obra marcado como PEDIDO")
 		}
 
 		return 0, apperror.Internal("failed to change budget status", err)

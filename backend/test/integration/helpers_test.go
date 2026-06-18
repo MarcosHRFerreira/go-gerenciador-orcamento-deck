@@ -368,7 +368,8 @@ func (e *integrationTestEnv) seedBudgetData(t *testing.T, suffix string) budgetS
 	projectID := e.insertReturningID(
 		t,
 		ctx,
-		`INSERT INTO projects (name, project_type_id, city, state, notes, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+		`INSERT INTO projects (code, name, project_type_id, city, state, notes, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+		"PROJECT_"+suffix,
 		"Projeto "+suffix,
 		projectTypeID,
 		"Campinas",

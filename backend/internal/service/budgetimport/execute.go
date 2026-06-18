@@ -29,6 +29,7 @@ type catalogRuntime struct {
 	statuses     map[string]int64
 	priorities   map[string]int64
 	installers   map[string]int64
+	productLines map[string]int64
 	projects     map[string]int64
 	projectTypes map[string]int64
 	salespeople  map[string]int64
@@ -367,6 +368,15 @@ func (s *service) importBudgetRow(
 	}
 	catalogsCreated += created
 
+	productLineID := int64(0)
+	if !shouldSkipProductLineAssociation(row.productLineName) {
+		productLineID, created, err = s.ensureProductLineID(ctx, catalogs, row.productLineName, options)
+		if err != nil {
+			return importRowResult{}, err
+		}
+		catalogsCreated += created
+	}
+
 	projectTypeID := int64(0)
 	projectID := int64(0)
 	shouldAssociateProject := !shouldSkipProjectAssociation(row.projectName)
@@ -432,13 +442,15 @@ func (s *service) importBudgetRow(
 		StatusID:             statusID,
 		PriorityID:           validNullInt64(priorityID),
 		InstallerID:          validNullInt64(installerID),
+		ProductLineID:        validNullInt64(productLineID),
 		ProjectID:            validNullInt64(projectID),
 		SalespersonID:        validNullInt64(salespersonID),
 		ContactID:            validNullInt64(contactID),
 		LossReasonID:         validNullInt64(lossReasonID),
+		ConstructionCompany:  row.constructionCompany,
 		CompetitorName:       row.competitorName,
 		CompetitorPrice:      validNullFloat64(row.competitorPrice),
-		DesignerName:         row.designerName,
+		ProjetistaName:       row.projetistaName,
 		SpecificationDetails: row.specification,
 		CurrentFollowUp:      row.currentFollowUp,
 		SourceCompany:        layout.SourceCompany(),
@@ -711,28 +723,30 @@ func buildRawRowData(header []string, rowValues []string) map[string]string {
 
 func buildNormalizedRowData(row normalizedBudgetImportRow) map[string]interface{} {
 	data := map[string]interface{}{
-		"row_number":        row.rowNumber,
-		"budget_number":     row.budgetNumber,
-		"year_budget":       row.yearBudget,
-		"revision":          row.revision,
-		"gross_value":       row.grossValue,
-		"commission_value":  row.commissionValue,
-		"area_m2":           row.areaM2,
-		"status_name":       row.statusName,
-		"priority_name":     row.priorityName,
-		"installer_name":    row.installerName,
-		"project_name":      row.projectName,
-		"project_type_name": row.projectTypeName,
-		"salesperson_name":  row.salespersonName,
-		"contact_name":      row.contactName,
-		"loss_reason_name":  row.lossReasonName,
-		"competitor_name":   row.competitorName,
-		"designer_name":     row.designerName,
-		"specification":     row.specification,
-		"current_follow_up": row.currentFollowUp,
-		"warnings":          row.warnings,
-		"sent_at":           row.sentAt.Format(time.RFC3339),
-		"competitor_price":  nil,
+		"row_number":           row.rowNumber,
+		"budget_number":        row.budgetNumber,
+		"year_budget":          row.yearBudget,
+		"revision":             row.revision,
+		"gross_value":          row.grossValue,
+		"commission_value":     row.commissionValue,
+		"area_m2":              row.areaM2,
+		"status_name":          row.statusName,
+		"priority_name":        row.priorityName,
+		"installer_name":       row.installerName,
+		"product_line_name":    row.productLineName,
+		"project_name":         row.projectName,
+		"project_type_name":    row.projectTypeName,
+		"salesperson_name":     row.salespersonName,
+		"contact_name":         row.contactName,
+		"loss_reason_name":     row.lossReasonName,
+		"construction_company": row.constructionCompany,
+		"competitor_name":      row.competitorName,
+		"projetista_name":      row.projetistaName,
+		"specification":        row.specification,
+		"current_follow_up":    row.currentFollowUp,
+		"warnings":             row.warnings,
+		"sent_at":              row.sentAt.Format(time.RFC3339),
+		"competitor_price":     nil,
 	}
 	if row.competitorPrice != nil {
 		data["competitor_price"] = *row.competitorPrice
@@ -752,6 +766,11 @@ func shouldSkipProjectAssociation(projectName string) bool {
 	return normalizeLookupKey(projectName) == normalizeLookupKey(notInformedName)
 }
 
+func shouldSkipProductLineAssociation(productLineName string) bool {
+	key := normalizeLookupKey(productLineName)
+	return key == "" || key == normalizeLookupKey(notInformedName)
+}
+
 func (s *service) loadCatalogRuntime(ctx context.Context) (*catalogRuntime, error) {
 	statuses, err := s.statusRepo.List(ctx)
 	if err != nil {
@@ -764,6 +783,10 @@ func (s *service) loadCatalogRuntime(ctx context.Context) (*catalogRuntime, erro
 	installers, err := s.installerRepo.List(ctx)
 	if err != nil {
 		return nil, apperror.Internal("failed to load installers", err)
+	}
+	productLines, err := s.productLineRepo.List(ctx)
+	if err != nil {
+		return nil, apperror.Internal("failed to load product lines", err)
 	}
 	projects, err := s.projectRepo.List(ctx)
 	if err != nil {
@@ -790,6 +813,7 @@ func (s *service) loadCatalogRuntime(ctx context.Context) (*catalogRuntime, erro
 		statuses:     make(map[string]int64, len(statuses)),
 		priorities:   make(map[string]int64, len(priorities)),
 		installers:   make(map[string]int64, len(installers)),
+		productLines: make(map[string]int64, len(productLines)),
 		projects:     make(map[string]int64, len(projects)),
 		projectTypes: make(map[string]int64, len(projectTypes)),
 		salespeople:  make(map[string]int64, len(salespeople)),
@@ -805,6 +829,9 @@ func (s *service) loadCatalogRuntime(ctx context.Context) (*catalogRuntime, erro
 	}
 	for _, item := range installers {
 		runtime.installers[normalizeLookupKey(item.Name)] = item.ID
+	}
+	for _, item := range productLines {
+		runtime.productLines[normalizeLookupKey(item.Name)] = item.ID
 	}
 	for _, item := range projects {
 		runtime.projects[normalizeLookupKey(item.Name)] = item.ID
@@ -916,6 +943,38 @@ func (s *service) ensurePriorityID(ctx context.Context, catalogs *catalogRuntime
 	return id, 1, nil
 }
 
+func (s *service) ensureProductLineID(ctx context.Context, catalogs *catalogRuntime, name string, options dto.PreviewBudgetImportOptions) (int64, int, error) {
+	name = normalizeDisplayText(name)
+	key := normalizeLookupKey(name)
+	if id, ok := catalogs.productLines[key]; ok {
+		return id, 0, nil
+	}
+	if !options.CreateMissingCatalogs {
+		return 0, 0, apperror.BadRequest("Linha de produto nao encontrada para importacao")
+	}
+
+	now := time.Now()
+	id, err := s.productLineRepo.Create(ctx, &model.ProductLineModel{
+		Code:        buildCatalogCode(name),
+		Name:        name,
+		Description: "Criado automaticamente pela importacao",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	})
+	if err != nil {
+		existing, getErr := s.productLineRepo.GetByCodeOrName(ctx, buildCatalogCode(name), name)
+		if getErr == nil && existing != nil {
+			catalogs.productLines[key] = existing.ID
+			return existing.ID, 0, nil
+		}
+
+		return 0, 0, apperror.Internal("Falha ao criar linha de produto para importacao", err)
+	}
+
+	catalogs.productLines[key] = id
+	return id, 1, nil
+}
+
 func (s *service) ensureProjectTypeID(ctx context.Context, catalogs *catalogRuntime, name string, options dto.PreviewBudgetImportOptions) (int64, int, error) {
 	name = normalizeDisplayText(name)
 	key := normalizeLookupKey(name)
@@ -923,7 +982,7 @@ func (s *service) ensureProjectTypeID(ctx context.Context, catalogs *catalogRunt
 		return id, 0, nil
 	}
 	if !options.CreateMissingCatalogs {
-		return 0, 0, apperror.BadRequest("Tipo de projeto nao encontrado para importacao")
+		return 0, 0, apperror.BadRequest("Tipo de obra nao encontrado para importacao")
 	}
 
 	now := time.Now()
@@ -940,7 +999,7 @@ func (s *service) ensureProjectTypeID(ctx context.Context, catalogs *catalogRunt
 			catalogs.projectTypes[key] = existing.ID
 			return existing.ID, 0, nil
 		}
-		return 0, 0, apperror.Internal("Falha ao criar tipo de projeto para importacao", err)
+		return 0, 0, apperror.Internal("Falha ao criar tipo de obra para importacao", err)
 	}
 
 	catalogs.projectTypes[key] = id
@@ -984,11 +1043,12 @@ func (s *service) ensureProjectID(ctx context.Context, catalogs *catalogRuntime,
 		return id, 0, nil
 	}
 	if !options.CreateMissingCatalogs {
-		return 0, 0, apperror.BadRequest("Projeto nao encontrado para importacao")
+		return 0, 0, apperror.BadRequest("Obra nao encontrada para importacao")
 	}
 
 	now := time.Now()
 	id, err := s.projectRepo.Create(ctx, &model.ProjectModel{
+		Code: buildCatalogCode(name),
 		Name: name,
 		ProjectTypeID: sql.NullInt64{
 			Int64: projectTypeID,
@@ -1001,7 +1061,7 @@ func (s *service) ensureProjectID(ctx context.Context, catalogs *catalogRuntime,
 		UpdatedAt: now,
 	})
 	if err != nil {
-		return 0, 0, apperror.Internal("Falha ao criar projeto para importacao", err)
+		return 0, 0, apperror.Internal("Falha ao criar obra para importacao", err)
 	}
 
 	catalogs.projects[key] = id

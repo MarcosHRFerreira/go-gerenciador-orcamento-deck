@@ -1,6 +1,8 @@
 package budget
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
@@ -35,12 +37,12 @@ func (h *Handler) RouteList() {
 	protectedRoutes.Use(middleware.Auth(h.secretKey))
 	protectedRoutes.GET("", h.List)
 	protectedRoutes.GET("/:budget_id", h.GetByID)
+	protectedRoutes.PUT("/:budget_id", h.Update)
 
 	adminRoutes := h.router.Group("/budgets")
 	adminRoutes.Use(middleware.Auth(h.secretKey))
 	adminRoutes.Use(middleware.RequireRoles(model.RoleAdmin))
 	adminRoutes.POST("", h.Create)
-	adminRoutes.PUT("/:budget_id", h.Update)
 	adminRoutes.DELETE("/:budget_id", h.Delete)
 }
 
@@ -60,6 +62,26 @@ func (h *Handler) Create(c *gin.Context) {
 }
 
 func (h *Handler) List(c *gin.Context) {
+	// #region debug-point A:budgets-list-entry
+	go func() {
+		payload, _ := json.Marshal(map[string]interface{}{
+			"sessionId":    "login-internal-error",
+			"runId":        "pre-fix",
+			"hypothesisId": "A",
+			"location":     "backend/internal/handler/budget/handler.go:List",
+			"msg":          "[DEBUG] budgets list request started",
+			"data": map[string]interface{}{
+				"path":              c.FullPath(),
+				"raw_query":         c.Request.URL.RawQuery,
+				"role":              middleware.Role(c),
+				"username":          middleware.Username(c),
+				"authorization_set": c.GetHeader("Authorization") != "",
+			},
+			"ts": time.Now().UnixMilli(),
+		})
+		_, _ = http.Post("http://127.0.0.1:7777/event", "application/json", bytes.NewReader(payload))
+	}()
+	// #endregion
 	filters, err := parseListFilters(c)
 	if err != nil {
 		httpresponse.JSONError(c, http.StatusBadRequest, err.Error())
@@ -73,6 +95,26 @@ func (h *Handler) List(c *gin.Context) {
 		middleware.Username(c),
 	)
 	if err != nil {
+		// #region debug-point A:budgets-list-error
+		go func() {
+			payload, _ := json.Marshal(map[string]interface{}{
+				"sessionId":    "login-internal-error",
+				"runId":        "pre-fix",
+				"hypothesisId": "A",
+				"location":     "backend/internal/handler/budget/handler.go:List",
+				"msg":          "[DEBUG] budgets list request failed",
+				"data": map[string]interface{}{
+					"error":     err.Error(),
+					"path":      c.FullPath(),
+					"raw_query": c.Request.URL.RawQuery,
+					"role":      middleware.Role(c),
+					"username":  middleware.Username(c),
+				},
+				"ts": time.Now().UnixMilli(),
+			})
+			_, _ = http.Post("http://127.0.0.1:7777/event", "application/json", bytes.NewReader(payload))
+		}()
+		// #endregion
 		httpresponse.JSONAppError(c, err)
 		return
 	}
@@ -111,7 +153,13 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.Update(c.Request.Context(), budgetID, &req); err != nil {
+	if err := h.service.Update(
+		c.Request.Context(),
+		budgetID,
+		middleware.Role(c),
+		middleware.Username(c),
+		&req,
+	); err != nil {
 		httpresponse.JSONAppError(c, err)
 		return
 	}
@@ -182,7 +230,7 @@ func parseListFilters(c *gin.Context) (*dto.ListBudgetsFilters, error) {
 	if err != nil {
 		return nil, err
 	}
-	pageSize, err := parseOptionalIntValue(c.Query("page_size"), 20)
+	pageSize, err := parseOptionalIntValue(c.Query("page_size"), 50)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +246,7 @@ func parseListFilters(c *gin.Context) (*dto.ListBudgetsFilters, error) {
 		ProjectID:      projectID,
 		ProjectName:    c.Query("project_name"),
 		ProjectTypeID:  projectTypeID,
-		DesignerName:   c.Query("designer_name"),
+		ProjetistaName: c.Query("projetista_name"),
 		CompetitorName: c.Query("competitor_name"),
 		SentAtFrom:     sentAtFrom,
 		SentAtTo:       sentAtTo,

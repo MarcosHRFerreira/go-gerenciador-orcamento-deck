@@ -1,4 +1,5 @@
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
+import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import FolderOpenRoundedIcon from "@mui/icons-material/FolderOpenRounded";
 import LinkRoundedIcon from "@mui/icons-material/LinkRounded";
@@ -16,12 +17,14 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
+  IconButton,
   List,
   ListItem,
   ListItemText,
   LinearProgress,
   MenuItem,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import {
@@ -149,6 +152,8 @@ const projectBudgetsFilters = (projectId: number): BudgetListFilters => ({
   projectId: String(projectId),
   projectName: "",
   salespersonId: "",
+  sentAtFrom: "",
+  sentAtTo: "",
   sourceCompany: "",
   sortBy: "sent_at",
   sortOrder: "desc",
@@ -163,6 +168,8 @@ const associationCandidateFilters: BudgetListFilters = {
   pageSize: 100,
   projectName: "",
   salespersonId: "",
+  sentAtFrom: "",
+  sentAtTo: "",
   sourceCompany: "",
   sortBy: "updated_at",
   sortOrder: "desc",
@@ -182,7 +189,7 @@ function mapBudgetDetailToPayload(
     competitorPrice: budget.competitorPrice,
     contactId: budget.contactId,
     currentFollowUp: budget.currentFollowUp,
-    designerName: budget.designerName,
+    projetistaName: budget.projetistaName,
     grossValue: budget.grossValue,
     installerId: budget.installerId,
     lossReasonId: budget.lossReasonId,
@@ -209,6 +216,8 @@ export default function ProjectDetailPage() {
     null,
   );
   const [associationError, setAssociationError] = useState<string | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const [copyError, setCopyError] = useState<string | null>(null);
   const [candidateSearch, setCandidateSearch] = useState("");
   const [pendingDisassociationBudget, setPendingDisassociationBudget] =
     useState<BudgetListItem | null>(null);
@@ -321,7 +330,7 @@ export default function ProjectDetailPage() {
           const searchableContent = normalizeValue(
             [
               budget.budgetNumber,
-              budget.designerName,
+              budget.projetistaName,
               budget.competitorName,
               budget.salespersonName ?? "",
             ].join(" "),
@@ -356,7 +365,7 @@ export default function ProjectDetailPage() {
       await invalidateProjectQueries(budget.id);
       setAssociationError(null);
       setAssociationFeedback(
-        `Orcamento ${budget.budgetNumber} associado ao projeto com sucesso.`,
+        `Orcamento ${budget.budgetNumber} associado a obra com sucesso.`,
       );
       setAssociationCandidateId("");
       setCandidateSearch("");
@@ -367,7 +376,7 @@ export default function ProjectDetailPage() {
       setAssociationError(
         getErrorMessage(
           error,
-          "Nao foi possivel associar o orcamento ao projeto.",
+          "Nao foi possivel associar o orcamento a obra.",
         ),
       );
     },
@@ -386,7 +395,7 @@ export default function ProjectDetailPage() {
       await invalidateProjectQueries(budget.id);
       setAssociationError(null);
       setAssociationFeedback(
-        `Orcamento ${budget.budgetNumber} removido do projeto com sucesso.`,
+        `Orcamento ${budget.budgetNumber} removido da obra com sucesso.`,
       );
       setPendingDisassociationBudget(null);
     },
@@ -395,7 +404,7 @@ export default function ProjectDetailPage() {
       setAssociationError(
         getErrorMessage(
           error,
-          "Nao foi possivel remover o orcamento do projeto.",
+          "Nao foi possivel remover o orcamento da obra.",
         ),
       );
       setPendingDisassociationBudget(null);
@@ -417,7 +426,7 @@ export default function ProjectDetailPage() {
   if (!hasValidProjectId) {
     return (
       <Box sx={{ p: { md: 3, xs: 2 } }}>
-        <Alert severity="error">Projeto invalido.</Alert>
+        <Alert severity="error">Obra invalida.</Alert>
       </Box>
     );
   }
@@ -433,6 +442,21 @@ export default function ProjectDetailPage() {
     projectTypesQuery.isError ||
     budgetCatalogsQuery.isError ||
     projectBudgetsQuery.isError;
+
+  const handleCopyProjectCode = async () => {
+    if (!project?.code.trim()) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(project.code);
+      setCopyError(null);
+      setCopyFeedback("Codigo da obra copiado.");
+    } catch {
+      setCopyFeedback(null);
+      setCopyError("Nao foi possivel copiar o codigo da obra.");
+    }
+  };
 
   const project = projectQuery.data;
 
@@ -470,8 +494,8 @@ export default function ProjectDetailPage() {
             </Button>
           </Box>
         }
-        description="Acompanhe os orcamentos vinculados ao projeto, o vencedor definido e os itens que ja foram encerrados."
-        title={project?.name ?? "Projeto"}
+        description="Acompanhe os orcamentos vinculados a obra, o vencedor definido e os itens que ja foram encerrados."
+        title={project?.name ?? "Obra"}
       />
 
       {isLoading ? <LinearProgress /> : null}
@@ -482,9 +506,21 @@ export default function ProjectDetailPage() {
         </Alert>
       ) : null}
 
+      {copyFeedback ? (
+        <Alert severity="success" variant="outlined">
+          {copyFeedback}
+        </Alert>
+      ) : null}
+
       {associationError ? (
         <Alert severity="error" variant="outlined">
           {associationError}
+        </Alert>
+      ) : null}
+
+      {copyError ? (
+        <Alert severity="error" variant="outlined">
+          {copyError}
         </Alert>
       ) : null}
 
@@ -495,7 +531,7 @@ export default function ProjectDetailPage() {
               projectTypesQuery.error ??
               budgetCatalogsQuery.error ??
               projectBudgetsQuery.error,
-            "Nao foi possivel carregar os dados do projeto.",
+            "Nao foi possivel carregar os dados da obra.",
           )}
         </Alert>
       ) : null}
@@ -503,8 +539,8 @@ export default function ProjectDetailPage() {
       {project ? (
         <>
           <SectionCard
-            description="Dados principais do projeto e indicadores consolidados do grupo de orcamentos."
-            title="Resumo do projeto"
+            description="Dados principais da obra e indicadores consolidados do grupo de orcamentos."
+            title="Resumo da obra"
           >
             <Box
               sx={{
@@ -519,13 +555,30 @@ export default function ProjectDetailPage() {
             >
               <Box>
                 <Typography color="text.secondary" variant="caption">
-                  Projeto
+                  Codigo
+                </Typography>
+                <Box sx={{ alignItems: "center", display: "flex", gap: 0.5 }}>
+                  <Typography variant="body1">{project.code}</Typography>
+                  <Tooltip title="Copiar codigo">
+                    <IconButton
+                      aria-label="Copiar codigo"
+                      onClick={handleCopyProjectCode}
+                      size="small"
+                    >
+                      <ContentCopyRoundedIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              </Box>
+              <Box>
+                <Typography color="text.secondary" variant="caption">
+                  Obra
                 </Typography>
                 <Typography variant="body1">{project.name}</Typography>
               </Box>
               <Box>
                 <Typography color="text.secondary" variant="caption">
-                  Tipo de projeto
+                  Tipo de obra
                 </Typography>
                 <Typography variant="body1">
                   {formatCatalogName(project.projectTypeId, projectTypeMap)}
@@ -591,12 +644,12 @@ export default function ProjectDetailPage() {
           </SectionCard>
 
           <SectionCard
-            description="Lista de orcamentos atualmente associados ao projeto, com acoes para editar, abrir na listagem e remover o vinculo."
+            description="Lista de orcamentos atualmente associados a obra, com acoes para editar, abrir na listagem e remover o vinculo."
             title="Orcamentos vinculados"
           >
             {projectBudgets.length === 0 ? (
               <Alert severity="info" variant="outlined">
-                Nenhum orcamento vinculado a este projeto ate o momento.
+                Nenhum orcamento vinculado a esta obra ate o momento.
               </Alert>
             ) : (
               <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -669,7 +722,7 @@ export default function ProjectDetailPage() {
                           {isWinner ? (
                             <Chip
                               color="success"
-                              label="Vencedor do projeto"
+                              label="Vencedor da obra"
                               size="small"
                             />
                           ) : null}
@@ -741,10 +794,10 @@ export default function ProjectDetailPage() {
                         </Box>
                         <Box>
                           <Typography color="text.secondary" variant="caption">
-                            Designer
+                            Projetista
                           </Typography>
                           <Typography variant="body2">
-                            {formatOptionalText(budget.designerName)}
+                            {formatOptionalText(budget.projetistaName)}
                           </Typography>
                         </Box>
                         <Box>
@@ -796,7 +849,7 @@ export default function ProjectDetailPage() {
                           startIcon={<LinkOffRoundedIcon />}
                           variant="text"
                         >
-                          Remover do projeto
+                          Remover da obra
                         </Button>
                       </Box>
 
@@ -922,13 +975,13 @@ export default function ProjectDetailPage() {
         }}
         open={associationDialogOpen}
       >
-        <DialogTitle>Associar orcamento ao projeto</DialogTitle>
+        <DialogTitle>Associar orcamento a obra</DialogTitle>
         <DialogContent
           sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 2 }}
         >
           <DialogContentText>
-            Selecione um orcamento sem projeto vinculado para adiciona-lo a este
-            projeto.
+            Selecione um orcamento sem obra vinculada para adiciona-lo a esta
+            obra.
           </DialogContentText>
 
           <TextField
@@ -953,7 +1006,7 @@ export default function ProjectDetailPage() {
             <MenuItem value="">Selecione</MenuItem>
             {availableAssociationCandidates.map((budget) => (
               <MenuItem key={budget.id} value={String(budget.id)}>
-                {budget.budgetNumber} ·{" "}
+                {budget.budgetNumber} Â·{" "}
                 {formatOptionalText(budget.salespersonName)}
               </MenuItem>
             ))}
@@ -997,11 +1050,11 @@ export default function ProjectDetailPage() {
         }}
         open={pendingDisassociationBudget !== null}
       >
-        <DialogTitle>Remover orcamento do projeto</DialogTitle>
+        <DialogTitle>Remover orcamento da obra</DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
           <DialogContentText>
             {pendingDisassociationBudget
-              ? `Confirma a remocao do orcamento ${pendingDisassociationBudget.budgetNumber} deste projeto?`
+              ? `Confirma a remocao do orcamento ${pendingDisassociationBudget.budgetNumber} desta obra?`
               : ""}
           </DialogContentText>
         </DialogContent>
@@ -1037,3 +1090,4 @@ export default function ProjectDetailPage() {
     </Box>
   );
 }
+

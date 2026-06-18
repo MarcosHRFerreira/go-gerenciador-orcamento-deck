@@ -15,8 +15,8 @@ import (
 
 var ErrProjectAlreadyHasPedido = errors.New("project already has pedido budget")
 
-const automaticProjectCancellationNote = "Cancelado automaticamente porque outro orcamento do projeto foi marcado como PEDIDO"
-const normalizedProjectNameExpression = "regexp_replace(translate(lower(coalesce(p.name, '')), 'áàâãäéèêëíìîïóòôõöúùûüç', 'aaaaaeeeeiiiiooooouuuuc'), '[^[:alnum:]]+', '', 'g')"
+const automaticProjectCancellationNote = "Cancelado automaticamente porque outro orcamento da obra foi marcado como PEDIDO"
+const normalizedProjectNameExpression = "regexp_replace(translate(lower(coalesce(p.name, '')), 'Ã¡Ã Ã¢Ã£Ã¤Ã©Ã¨ÃªÃ«Ã­Ã¬Ã®Ã¯Ã³Ã²Ã´ÃµÃ¶ÃºÃ¹Ã»Ã¼Ã§', 'aaaaaeeeeiiiiooooouuuuc'), '[^[:alnum:]]+', '', 'g')"
 
 type ChangeStatusParams struct {
 	BudgetID                 int64
@@ -65,13 +65,15 @@ func (r *repository) Create(ctx context.Context, item *model.BudgetModel) (int64
 			status_id,
 			priority_id,
 			installer_id,
+			product_line_id,
 			project_id,
 			salesperson_id,
 			contact_id,
 			loss_reason_id,
+			construction_company,
 			competitor_name,
 			competitor_price,
-			designer_name,
+			projetista_name,
 			specification_details,
 			current_follow_up,
 			source_company,
@@ -80,7 +82,7 @@ func (r *repository) Create(ctx context.Context, item *model.BudgetModel) (int64
 			created_at,
 			updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
 		RETURNING id
 	`
 
@@ -98,13 +100,15 @@ func (r *repository) Create(ctx context.Context, item *model.BudgetModel) (int64
 		item.StatusID,
 		nullableInt64(item.PriorityID),
 		nullableInt64(item.InstallerID),
+		nullableInt64(item.ProductLineID),
 		nullableInt64(item.ProjectID),
 		nullableInt64(item.SalespersonID),
 		nullableInt64(item.ContactID),
 		nullableInt64(item.LossReasonID),
+		item.ConstructionCompany,
 		item.CompetitorName,
 		nullableFloat64(item.CompetitorPrice),
-		item.DesignerName,
+		item.ProjetistaName,
 		item.SpecificationDetails,
 		item.CurrentFollowUp,
 		item.SourceCompany,
@@ -134,17 +138,21 @@ func (r *repository) List(ctx context.Context, filters *dto.ListBudgetsFilters) 
 			b.status_id,
 			b.priority_id,
 			b.installer_id,
+			b.product_line_id,
 			b.project_id,
 			b.salesperson_id,
 			b.contact_id,
 			b.loss_reason_id,
+			b.construction_company,
 			b.competitor_name,
 			b.competitor_price,
-			b.designer_name,
+			b.projetista_name,
 			b.source_company,
 			bs.name AS status_name,
 			pr.name AS priority_name,
 			i.name AS installer_name,
+			pl.code AS product_line_code,
+			pl.name AS product_line_name,
 			p.name AS project_name,
 			s.name AS salesperson_name,
 			c.name AS contact_name,
@@ -157,6 +165,7 @@ func (r *repository) List(ctx context.Context, filters *dto.ListBudgetsFilters) 
 		LEFT JOIN budget_statuses bs ON bs.id = b.status_id
 		LEFT JOIN priorities pr ON pr.id = b.priority_id
 		LEFT JOIN installers i ON i.id = b.installer_id
+		LEFT JOIN product_lines pl ON pl.id = b.product_line_id
 		LEFT JOIN projects p ON p.id = b.project_id
 		LEFT JOIN salespeople s ON s.id = b.salesperson_id
 		LEFT JOIN contacts c ON c.id = b.contact_id
@@ -194,17 +203,21 @@ func (r *repository) List(ctx context.Context, filters *dto.ListBudgetsFilters) 
 			&item.StatusID,
 			&item.PriorityID,
 			&item.InstallerID,
+			&item.ProductLineID,
 			&item.ProjectID,
 			&item.SalespersonID,
 			&item.ContactID,
 			&item.LossReasonID,
+			&item.ConstructionCompany,
 			&item.CompetitorName,
 			&item.CompetitorPrice,
-			&item.DesignerName,
+			&item.ProjetistaName,
 			&item.SourceCompany,
 			&item.StatusName,
 			&item.PriorityName,
 			&item.InstallerName,
+			&item.ProductLineCode,
+			&item.ProductLineName,
 			&item.ProjectName,
 			&item.SalespersonName,
 			&item.ContactName,
@@ -312,9 +325,9 @@ func buildListWhereClause(filters *dto.ListBudgetsFilters) (string, []interface{
 			args = append(args, *filters.ProjectTypeID)
 			conditions = append(conditions, fmt.Sprintf("p.project_type_id = $%d", len(args)))
 		}
-		if filters.DesignerName != "" {
-			args = append(args, "%"+filters.DesignerName+"%")
-			conditions = append(conditions, fmt.Sprintf("b.designer_name ILIKE $%d", len(args)))
+		if filters.ProjetistaName != "" {
+			args = append(args, "%"+filters.ProjetistaName+"%")
+			conditions = append(conditions, fmt.Sprintf("b.projetista_name ILIKE $%d", len(args)))
 		}
 		if filters.CompetitorName != "" {
 			args = append(args, "%"+filters.CompetitorName+"%")
@@ -349,29 +362,29 @@ func buildListWhereClause(filters *dto.ListBudgetsFilters) (string, []interface{
 
 func normalizeProjectNameSearch(value string) string {
 	accentReplacer := strings.NewReplacer(
-		"á", "a",
-		"à", "a",
-		"â", "a",
-		"ã", "a",
-		"ä", "a",
-		"é", "e",
-		"è", "e",
-		"ê", "e",
-		"ë", "e",
-		"í", "i",
-		"ì", "i",
-		"î", "i",
-		"ï", "i",
-		"ó", "o",
-		"ò", "o",
-		"ô", "o",
-		"õ", "o",
-		"ö", "o",
-		"ú", "u",
-		"ù", "u",
-		"û", "u",
-		"ü", "u",
-		"ç", "c",
+		"Ã¡", "a",
+		"Ã ", "a",
+		"Ã¢", "a",
+		"Ã£", "a",
+		"Ã¤", "a",
+		"Ã©", "e",
+		"Ã¨", "e",
+		"Ãª", "e",
+		"Ã«", "e",
+		"Ã­", "i",
+		"Ã¬", "i",
+		"Ã®", "i",
+		"Ã¯", "i",
+		"Ã³", "o",
+		"Ã²", "o",
+		"Ã´", "o",
+		"Ãµ", "o",
+		"Ã¶", "o",
+		"Ãº", "u",
+		"Ã¹", "u",
+		"Ã»", "u",
+		"Ã¼", "u",
+		"Ã§", "c",
 	)
 
 	normalizedValue := accentReplacer.Replace(strings.ToLower(strings.TrimSpace(value)))
@@ -460,13 +473,17 @@ func (r *repository) GetByNumberAndYear(ctx context.Context, budgetNumber string
 			status_id,
 			priority_id,
 			installer_id,
+			product_line_id,
 			project_id,
 			salesperson_id,
 			contact_id,
 			loss_reason_id,
+			construction_company,
 			competitor_name,
 			competitor_price,
-			designer_name,
+			projetista_name,
+			NULL::text AS product_line_code,
+			NULL::text AS product_line_name,
 			NULL::text AS project_name,
 			NULL::text AS salesperson_name,
 			NULL::text AS contact_name,
@@ -493,13 +510,17 @@ func (r *repository) GetByNumberAndYear(ctx context.Context, budgetNumber string
 		&item.StatusID,
 		&item.PriorityID,
 		&item.InstallerID,
+		&item.ProductLineID,
 		&item.ProjectID,
 		&item.SalespersonID,
 		&item.ContactID,
 		&item.LossReasonID,
+		&item.ConstructionCompany,
 		&item.CompetitorName,
 		&item.CompetitorPrice,
-		&item.DesignerName,
+		&item.ProjetistaName,
+		&item.ProductLineCode,
+		&item.ProductLineName,
 		&item.ProjectName,
 		&item.SalespersonName,
 		&item.ContactName,
@@ -533,13 +554,17 @@ func (r *repository) GetBySourceAndNumberAndYear(ctx context.Context, sourceComp
 			status_id,
 			priority_id,
 			installer_id,
+			product_line_id,
 			project_id,
 			salesperson_id,
 			contact_id,
 			loss_reason_id,
+			construction_company,
 			competitor_name,
 			competitor_price,
-			designer_name,
+			projetista_name,
+			NULL::text AS product_line_code,
+			NULL::text AS product_line_name,
 			NULL::text AS project_name,
 			NULL::text AS salesperson_name,
 			NULL::text AS contact_name,
@@ -573,13 +598,17 @@ func (r *repository) GetBySourceAndNumberAndYear(ctx context.Context, sourceComp
 		&item.StatusID,
 		&item.PriorityID,
 		&item.InstallerID,
+		&item.ProductLineID,
 		&item.ProjectID,
 		&item.SalespersonID,
 		&item.ContactID,
 		&item.LossReasonID,
+		&item.ConstructionCompany,
 		&item.CompetitorName,
 		&item.CompetitorPrice,
-		&item.DesignerName,
+		&item.ProjetistaName,
+		&item.ProductLineCode,
+		&item.ProductLineName,
 		&item.ProjectName,
 		&item.SalespersonName,
 		&item.ContactName,
@@ -620,16 +649,20 @@ func (r *repository) GetByIDScoped(ctx context.Context, budgetID int64, restrict
 			b.status_id,
 			b.priority_id,
 			b.installer_id,
+			b.product_line_id,
 			b.project_id,
 			b.salesperson_id,
 			b.contact_id,
 			b.loss_reason_id,
+			b.construction_company,
 			b.competitor_name,
 			b.competitor_price,
-			b.designer_name,
+			b.projetista_name,
 			bs.name AS status_name,
 			pr.name AS priority_name,
 			i.name AS installer_name,
+			pl.code AS product_line_code,
+			pl.name AS product_line_name,
 			p.name AS project_name,
 			s.name AS salesperson_name,
 			c.name AS contact_name,
@@ -642,6 +675,7 @@ func (r *repository) GetByIDScoped(ctx context.Context, budgetID int64, restrict
 		LEFT JOIN budget_statuses bs ON bs.id = b.status_id
 		LEFT JOIN priorities pr ON pr.id = b.priority_id
 		LEFT JOIN installers i ON i.id = b.installer_id
+		LEFT JOIN product_lines pl ON pl.id = b.product_line_id
 		LEFT JOIN projects p ON p.id = b.project_id
 		LEFT JOIN salespeople s ON s.id = b.salesperson_id
 		LEFT JOIN contacts c ON c.id = b.contact_id
@@ -670,16 +704,20 @@ func (r *repository) GetByIDScoped(ctx context.Context, budgetID int64, restrict
 		&item.StatusID,
 		&item.PriorityID,
 		&item.InstallerID,
+		&item.ProductLineID,
 		&item.ProjectID,
 		&item.SalespersonID,
 		&item.ContactID,
 		&item.LossReasonID,
+		&item.ConstructionCompany,
 		&item.CompetitorName,
 		&item.CompetitorPrice,
-		&item.DesignerName,
+		&item.ProjetistaName,
 		&item.StatusName,
 		&item.PriorityName,
 		&item.InstallerName,
+		&item.ProductLineCode,
+		&item.ProductLineName,
 		&item.ProjectName,
 		&item.SalespersonName,
 		&item.ContactName,
@@ -714,19 +752,21 @@ func (r *repository) Update(ctx context.Context, item *model.BudgetModel) error 
 			status_id = $9,
 			priority_id = $10,
 			installer_id = $11,
-			project_id = $12,
-			salesperson_id = $13,
-			contact_id = $14,
-			loss_reason_id = $15,
-			competitor_name = $16,
-			competitor_price = $17,
-			designer_name = $18,
-			specification_details = $19,
-			current_follow_up = $20,
-			updated_at = $21,
-			source_company = COALESCE(NULLIF($22, ''), source_company),
-			source_layout = COALESCE(NULLIF($23, ''), source_layout),
-			import_batch_id = COALESCE($24, import_batch_id)
+			product_line_id = $12,
+			project_id = $13,
+			salesperson_id = $14,
+			contact_id = $15,
+			loss_reason_id = $16,
+			construction_company = $17,
+			competitor_name = $18,
+			competitor_price = $19,
+			projetista_name = $20,
+			specification_details = $21,
+			current_follow_up = $22,
+			updated_at = $23,
+			source_company = COALESCE(NULLIF($24, ''), source_company),
+			source_layout = COALESCE(NULLIF($25, ''), source_layout),
+			import_batch_id = COALESCE($26, import_batch_id)
 		WHERE id = $1
 	`
 
@@ -744,13 +784,15 @@ func (r *repository) Update(ctx context.Context, item *model.BudgetModel) error 
 		item.StatusID,
 		nullableInt64(item.PriorityID),
 		nullableInt64(item.InstallerID),
+		nullableInt64(item.ProductLineID),
 		nullableInt64(item.ProjectID),
 		nullableInt64(item.SalespersonID),
 		nullableInt64(item.ContactID),
 		nullableInt64(item.LossReasonID),
+		item.ConstructionCompany,
 		item.CompetitorName,
 		nullableFloat64(item.CompetitorPrice),
-		item.DesignerName,
+		item.ProjetistaName,
 		item.SpecificationDetails,
 		item.CurrentFollowUp,
 		item.UpdatedAt,

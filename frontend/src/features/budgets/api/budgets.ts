@@ -1,4 +1,4 @@
-import { api } from "../../../lib/axios/api";
+﻿import { api } from "../../../lib/axios/api";
 import type {
   BudgetCatalogItem,
   BudgetCatalogsResult,
@@ -35,7 +35,8 @@ function mapBudgetListItem(item: BudgetApiItem) {
     salespersonId: item.salesperson_id ?? null,
     contactId: item.contact_id ?? null,
     lossReasonId: item.loss_reason_id ?? null,
-    designerName: item.designer_name,
+    constructionCompany: item.construction_company,
+    projetistaName: item.projetista_name,
     competitorName: item.competitor_name,
     competitorPrice: item.competitor_price ?? null,
     sourceCompany: item.source_company,
@@ -91,7 +92,7 @@ type CreateBudgetApiPayload = {
   loss_reason_id: number | null;
   competitor_name: string;
   competitor_price: number | null;
-  designer_name: string;
+  projetista_name: string;
   specification_details: string;
   current_follow_up: string;
 };
@@ -321,7 +322,7 @@ function mapCreateBudgetPayload(
     competitor_price: payload.competitorPrice,
     contact_id: payload.contactId,
     current_follow_up: payload.currentFollowUp,
-    designer_name: payload.designerName,
+    projetista_name: payload.projetistaName,
     gross_value: payload.grossValue,
     installer_id: payload.installerId,
     loss_reason_id: payload.lossReasonId,
@@ -345,6 +346,8 @@ function buildBudgetListParams(filters: BudgetListFilters) {
     installer_id: filters.installerId || undefined,
     project_name: filters.projectName || undefined,
     salesperson_id: filters.salespersonId || undefined,
+    sent_at_from: filters.sentAtFrom || undefined,
+    sent_at_to: filters.sentAtTo || undefined,
     project_id: filters.projectId || undefined,
     page: filters.page,
     page_size: filters.pageSize,

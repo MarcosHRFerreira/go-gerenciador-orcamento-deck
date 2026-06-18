@@ -14,28 +14,30 @@ const (
 )
 
 type normalizedBudgetImportRow struct {
-	rowNumber       int
-	budgetNumber    string
-	yearBudget      int
-	revision        int
-	sentAt          time.Time
-	grossValue      float64
-	commissionValue float64
-	areaM2          float64
-	statusName      string
-	priorityName    string
-	installerName   string
-	projectName     string
-	projectTypeName string
-	salespersonName string
-	contactName     string
-	lossReasonName  string
-	competitorName  string
-	competitorPrice *float64
-	designerName    string
-	specification   string
-	currentFollowUp string
-	warnings        []string
+	rowNumber           int
+	budgetNumber        string
+	yearBudget          int
+	revision            int
+	sentAt              time.Time
+	grossValue          float64
+	commissionValue     float64
+	areaM2              float64
+	statusName          string
+	priorityName        string
+	installerName       string
+	productLineName     string
+	projectName         string
+	projectTypeName     string
+	salespersonName     string
+	contactName         string
+	lossReasonName      string
+	constructionCompany string
+	competitorName      string
+	competitorPrice     *float64
+	projetistaName      string
+	specification       string
+	currentFollowUp     string
+	warnings            []string
 }
 
 type rocktecImportLayout struct{}
@@ -131,7 +133,7 @@ func (rocktecImportLayout) Governance() dto.BudgetImportPreviewGovernance {
 		DuplicateScope:      "source_company + budget_number + year_budget",
 		DuplicatePolicy:     "A Rocktec concilia duplicidade pela origem Rocktec, numero do orcamento e ano. Registros legados sem origem definida ainda podem ser conciliados para evitar duplicacao na migracao.",
 		MissingValuePolicy:  "Campos ausentes podem usar o item padrao Nao informado quando a opcao correspondente estiver ativa no preview.",
-		DefaultCatalogs:     []string{"Status", "Prioridade", "Instalador", "Projeto", "Tipo de obra", "Vendedor", "Contato", "Motivo de perda"},
+		DefaultCatalogs:     []string{"Status", "Prioridade", "Instalador", "Obra", "Tipo de obra", "Vendedor", "Contato", "Motivo de perda"},
 		LegacyMatchingScope: "Registros sem source_company continuam elegiveis como correspondencia legado durante a transicao.",
 	}
 }
@@ -213,7 +215,7 @@ func (rocktecImportLayout) ParseNormalizedRow(rowNumber int, rowValues []string)
 	row.contactName = fallbackName(getCell(rowValues, 7))
 	row.lossReasonName = fallbackName(getCell(rowValues, 14))
 	row.competitorName = fallbackName(getCell(rowValues, 13))
-	row.designerName = fallbackName(getCell(rowValues, 16))
+	row.projetistaName = fallbackName(getCell(rowValues, 16))
 	row.specification = fallbackName(getCell(rowValues, 17))
 	row.currentFollowUp = fallbackName(getCell(rowValues, 12))
 

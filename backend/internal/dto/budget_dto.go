@@ -13,13 +13,15 @@ type CreateBudgetRequest struct {
 	StatusID             int64     `json:"status_id" validate:"required"`
 	PriorityID           *int64    `json:"priority_id"`
 	InstallerID          *int64    `json:"installer_id"`
+	ProductLineID        *int64    `json:"product_line_id"`
 	ProjectID            *int64    `json:"project_id"`
 	SalespersonID        *int64    `json:"salesperson_id"`
 	ContactID            *int64    `json:"contact_id"`
 	LossReasonID         *int64    `json:"loss_reason_id"`
+	ConstructionCompany  string    `json:"construction_company" validate:"max=200"`
 	CompetitorName       string    `json:"competitor_name" validate:"max=150"`
 	CompetitorPrice      *float64  `json:"competitor_price"`
-	DesignerName         string    `json:"designer_name" validate:"max=150"`
+	ProjetistaName       string    `json:"projetista_name" validate:"max=150"`
 	SpecificationDetails string    `json:"specification_details"`
 	CurrentFollowUp      string    `json:"current_follow_up"`
 }
@@ -35,13 +37,15 @@ type UpdateBudgetRequest struct {
 	StatusID             int64     `json:"status_id" validate:"required"`
 	PriorityID           *int64    `json:"priority_id"`
 	InstallerID          *int64    `json:"installer_id"`
+	ProductLineID        *int64    `json:"product_line_id"`
 	ProjectID            *int64    `json:"project_id"`
 	SalespersonID        *int64    `json:"salesperson_id"`
 	ContactID            *int64    `json:"contact_id"`
 	LossReasonID         *int64    `json:"loss_reason_id"`
+	ConstructionCompany  string    `json:"construction_company" validate:"max=200"`
 	CompetitorName       string    `json:"competitor_name" validate:"max=150"`
 	CompetitorPrice      *float64  `json:"competitor_price"`
-	DesignerName         string    `json:"designer_name" validate:"max=150"`
+	ProjetistaName       string    `json:"projetista_name" validate:"max=150"`
 	SpecificationDetails string    `json:"specification_details"`
 	CurrentFollowUp      string    `json:"current_follow_up"`
 }
@@ -55,10 +59,11 @@ type ListBudgetsFilters struct {
 	RestrictedSalespersonID *int64
 	InstallerID             *int64
 	PriorityID              *int64
+	ProductLineID           *int64
 	ProjectID               *int64
 	ProjectName             string
 	ProjectTypeID           *int64
-	DesignerName            string
+	ProjetistaName          string
 	CompetitorName          string
 	SentAtFrom              *time.Time
 	SentAtTo                *time.Time
@@ -82,17 +87,21 @@ type BudgetResponse struct {
 	StatusID             int64     `json:"status_id"`
 	PriorityID           *int64    `json:"priority_id,omitempty"`
 	InstallerID          *int64    `json:"installer_id,omitempty"`
+	ProductLineID        *int64    `json:"product_line_id,omitempty"`
 	ProjectID            *int64    `json:"project_id,omitempty"`
 	SalespersonID        *int64    `json:"salesperson_id,omitempty"`
 	ContactID            *int64    `json:"contact_id,omitempty"`
 	LossReasonID         *int64    `json:"loss_reason_id,omitempty"`
+	ConstructionCompany  string    `json:"construction_company"`
 	CompetitorName       string    `json:"competitor_name"`
 	CompetitorPrice      *float64  `json:"competitor_price,omitempty"`
-	DesignerName         string    `json:"designer_name"`
+	ProjetistaName       string    `json:"projetista_name"`
 	SourceCompany        string    `json:"source_company"`
 	StatusName           *string   `json:"status_name,omitempty"`
 	PriorityName         *string   `json:"priority_name,omitempty"`
 	InstallerName        *string   `json:"installer_name,omitempty"`
+	ProductLineCode      *string   `json:"product_line_code,omitempty"`
+	ProductLineName      *string   `json:"product_line_name,omitempty"`
 	ProjectName          *string   `json:"project_name,omitempty"`
 	SalespersonName      *string   `json:"salesperson_name,omitempty"`
 	ContactName          *string   `json:"contact_name,omitempty"`

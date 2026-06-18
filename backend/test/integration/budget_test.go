@@ -41,7 +41,7 @@ func TestBudgetsCRUDFlow(t *testing.T) {
 		"loss_reason_id":%d,
 		"competitor_name":"Concorrente A",
 		"competitor_price":%.2f,
-		"designer_name":"Designer A",
+		"projetista_name":"Projetista A",
 		"specification_details":"Especificacao inicial",
 		"current_follow_up":"Primeiro contato"
 	}`,
@@ -100,7 +100,7 @@ func TestBudgetsCRUDFlow(t *testing.T) {
 		"loss_reason_id":null,
 		"competitor_name":"Concorrente B",
 		"competitor_price":null,
-		"designer_name":"Designer B",
+		"projetista_name":"Projetista B",
 		"specification_details":"Especificacao atualizada",
 		"current_follow_up":"Retorno enviado"
 	}`,
@@ -159,7 +159,7 @@ func TestBudgetsListShouldSupportFiltersPaginationAndSorting(t *testing.T) {
 		time.Date(2026, time.January, 5, 10, 0, 0, 0, time.UTC),
 		1200,
 		seedA,
-		"Designer Alfa",
+		"Projetista Alfa",
 		"Concorrente Alfa",
 	))
 	if createBudgetResponseA1.Code != http.StatusCreated {
@@ -172,7 +172,7 @@ func TestBudgetsListShouldSupportFiltersPaginationAndSorting(t *testing.T) {
 		time.Date(2026, time.January, 6, 10, 0, 0, 0, time.UTC),
 		1800,
 		seedA,
-		"Designer Alfa",
+		"Projetista Alfa",
 		"Concorrente Alfa",
 	))
 	if createBudgetResponseA2.Code != http.StatusCreated {
@@ -185,7 +185,7 @@ func TestBudgetsListShouldSupportFiltersPaginationAndSorting(t *testing.T) {
 		time.Date(2026, time.February, 1, 10, 0, 0, 0, time.UTC),
 		3000,
 		seedB,
-		"Designer Beta",
+		"Projetista Beta",
 		"Concorrente Beta",
 	))
 	if createBudgetResponseB.Code != http.StatusCreated {
@@ -193,7 +193,7 @@ func TestBudgetsListShouldSupportFiltersPaginationAndSorting(t *testing.T) {
 	}
 
 	listPath := fmt.Sprintf(
-		"/budgets?year_budget=2026&status_id=%d&project_type_id=%d&designer_name=Designer%%20Alfa&page=1&page_size=1&sort_by=budget_number&sort_order=asc",
+		"/budgets?year_budget=2026&status_id=%d&project_type_id=%d&projetista_name=Projetista%%20Alfa&page=1&page_size=1&sort_by=budget_number&sort_order=asc",
 		seedA.statusID,
 		seedA.projectTypeID,
 	)
@@ -232,7 +232,7 @@ func TestBudgetsListShouldSupportProjectIDFilter(t *testing.T) {
 		time.Date(2026, time.March, 5, 10, 0, 0, 0, time.UTC),
 		1600,
 		seedA,
-		"Designer Projeto A",
+		"Projetista Projeto A",
 		"Concorrente Projeto A",
 	))
 	if createBudgetResponseA.Code != http.StatusCreated {
@@ -245,7 +245,7 @@ func TestBudgetsListShouldSupportProjectIDFilter(t *testing.T) {
 		time.Date(2026, time.March, 6, 10, 0, 0, 0, time.UTC),
 		2600,
 		seedB,
-		"Designer Projeto B",
+		"Projetista Projeto B",
 		"Concorrente Projeto B",
 	))
 	if createBudgetResponseB.Code != http.StatusCreated {
@@ -290,7 +290,7 @@ func TestBudgetsListShouldSupportProjectNameFilter(t *testing.T) {
 		time.Date(2026, time.March, 10, 10, 0, 0, 0, time.UTC),
 		2200,
 		seedA,
-		"Designer Nome A",
+		"Projetista Nome A",
 		"Concorrente Nome A",
 	))
 	if createBudgetResponseA.Code != http.StatusCreated {
@@ -303,7 +303,7 @@ func TestBudgetsListShouldSupportProjectNameFilter(t *testing.T) {
 		time.Date(2026, time.March, 11, 10, 0, 0, 0, time.UTC),
 		2600,
 		seedB,
-		"Designer Nome B",
+		"Projetista Nome B",
 		"Concorrente Nome B",
 	))
 	if createBudgetResponseB.Code != http.StatusCreated {
@@ -346,7 +346,7 @@ func TestBudgetsListShouldSupportNormalizedProjectNameFilter(t *testing.T) {
 		time.Date(2026, time.March, 12, 10, 0, 0, 0, time.UTC),
 		2200,
 		seedA,
-		"Designer Normalizado A",
+		"Projetista Normalizado A",
 		"Concorrente Normalizado A",
 	))
 	if createBudgetResponseA.Code != http.StatusCreated {
@@ -359,7 +359,7 @@ func TestBudgetsListShouldSupportNormalizedProjectNameFilter(t *testing.T) {
 		time.Date(2026, time.March, 13, 10, 0, 0, 0, time.UTC),
 		2600,
 		seedB,
-		"Designer Normalizado B",
+		"Projetista Normalizado B",
 		"Concorrente Normalizado B",
 	))
 	if createBudgetResponseB.Code != http.StatusCreated {
@@ -401,7 +401,7 @@ func TestBudgetsListShouldSupportSourceCompanyFilter(t *testing.T) {
 		time.Date(2026, time.March, 20, 10, 0, 0, 0, time.UTC),
 		2100,
 		seed,
-		"Designer Rocktec",
+		"Projetista Rocktec",
 		"Concorrente Rocktec",
 	))
 	if createRocktecResponse.Code != http.StatusCreated {
@@ -414,7 +414,7 @@ func TestBudgetsListShouldSupportSourceCompanyFilter(t *testing.T) {
 		time.Date(2026, time.March, 21, 10, 0, 0, 0, time.UTC),
 		2200,
 		seed,
-		"Designer Trox",
+		"Projetista Trox",
 		"Concorrente Trox",
 	))
 	if createTroxResponse.Code != http.StatusCreated {
@@ -476,7 +476,7 @@ func TestBudgetsCreateShouldRejectDuplicateNumberAndYear(t *testing.T) {
 		time.Date(2026, time.March, 1, 10, 0, 0, 0, time.UTC),
 		1900,
 		seed,
-		"Designer Duplicado",
+		"Projetista Duplicado",
 		"Concorrente Duplicado",
 	)
 
@@ -499,8 +499,17 @@ func TestBudgetsCreateShouldRejectDuplicateNumberAndYear(t *testing.T) {
 func TestBudgetsWriteRoutesShouldRespectAdminAuthorization(t *testing.T) {
 	env := newIntegrationTestEnv(t)
 	adminToken := env.createAdminToken(t)
-	userToken := env.createUserToken(t, adminToken, uniqueSuffix(), "user")
-	seed := env.seedBudgetData(t, uniqueSuffix())
+	suffix := uniqueSuffix()
+	seed := env.seedBudgetData(t, suffix)
+	normalizedSuffix := strings.ToLower(strings.NewReplacer("-", "", "_", "", " ", "").Replace(suffix))
+	userToken := env.createUserTokenWithCredentials(
+		t,
+		adminToken,
+		"Vendedor Auth",
+		fmt.Sprintf("auth.user.%s@local.dev", normalizedSuffix),
+		fmt.Sprintf("sales.%s", normalizedSuffix),
+		"user",
+	)
 
 	createBody := buildBudgetRequestBody(
 		"AUTH-001",
@@ -508,7 +517,7 @@ func TestBudgetsWriteRoutesShouldRespectAdminAuthorization(t *testing.T) {
 		time.Date(2026, time.July, 1, 10, 0, 0, 0, time.UTC),
 		1800,
 		seed,
-		"Designer Auth",
+		"Projetista Auth",
 		"Concorrente Auth",
 	)
 
@@ -534,18 +543,13 @@ func TestBudgetsWriteRoutesShouldRespectAdminAuthorization(t *testing.T) {
 		time.Date(2026, time.July, 2, 10, 0, 0, 0, time.UTC),
 		1900,
 		seed,
-		"Designer Auth Atualizado",
+		"Projetista Auth Atualizado",
 		"Concorrente Auth Atualizado",
 	)
 
-	forbiddenUpdateResponse := env.doJSONRequest(t, http.MethodPut, fmt.Sprintf("/budgets/%d", createdBudget.ID), userToken, updateBody)
-	if forbiddenUpdateResponse.Code != http.StatusForbidden {
-		t.Fatalf("expected status %d, got %d", http.StatusForbidden, forbiddenUpdateResponse.Code)
-	}
-
-	forbiddenUpdatePayload := decodeJSONResponse[httpresponse.ErrorResponse](t, forbiddenUpdateResponse.Body)
-	if forbiddenUpdatePayload.Message != "Permissoes insuficientes" {
-		t.Fatalf("expected forbidden message, got %s", forbiddenUpdatePayload.Message)
+	allowedUpdateResponse := env.doJSONRequest(t, http.MethodPut, fmt.Sprintf("/budgets/%d", createdBudget.ID), userToken, updateBody)
+	if allowedUpdateResponse.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d", http.StatusNoContent, allowedUpdateResponse.Code)
 	}
 
 	forbiddenDeleteResponse := env.doJSONRequest(t, http.MethodDelete, fmt.Sprintf("/budgets/%d", createdBudget.ID), userToken, "")
@@ -556,6 +560,116 @@ func TestBudgetsWriteRoutesShouldRespectAdminAuthorization(t *testing.T) {
 	forbiddenDeletePayload := decodeJSONResponse[httpresponse.ErrorResponse](t, forbiddenDeleteResponse.Body)
 	if forbiddenDeletePayload.Message != "Permissoes insuficientes" {
 		t.Fatalf("expected forbidden message, got %s", forbiddenDeletePayload.Message)
+	}
+}
+
+func TestBudgetsUpdateRouteShouldRestrictUserToOwnSalespersonScope(t *testing.T) {
+	env := newIntegrationTestEnv(t)
+	adminToken := env.createAdminToken(t)
+	ownSuffix := uniqueSuffix()
+	otherSuffix := uniqueSuffix()
+	seedOwn := env.seedBudgetData(t, ownSuffix)
+	seedOther := env.seedBudgetData(t, otherSuffix)
+
+	ownCreateResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/budgets",
+		adminToken,
+		buildBudgetRequestBody(
+			"SCOPE-UPD-001",
+			2026,
+			time.Date(2026, time.November, 1, 10, 0, 0, 0, time.UTC),
+			2100,
+			seedOwn,
+			"Projetista Scope Update",
+			"Concorrente Scope Update",
+		),
+	)
+	if ownCreateResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, ownCreateResponse.Code)
+	}
+	ownBudget := decodeJSONResponse[createResourceResponse](t, ownCreateResponse.Body)
+
+	otherCreateResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/budgets",
+		adminToken,
+		buildBudgetRequestBody(
+			"SCOPE-UPD-002",
+			2026,
+			time.Date(2026, time.November, 2, 10, 0, 0, 0, time.UTC),
+			2200,
+			seedOther,
+			"Projetista Scope Update B",
+			"Concorrente Scope Update B",
+		),
+	)
+	if otherCreateResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, otherCreateResponse.Code)
+	}
+	otherBudget := decodeJSONResponse[createResourceResponse](t, otherCreateResponse.Body)
+
+	normalizedOwnSuffix := strings.ToLower(strings.NewReplacer("-", "", "_", "", " ", "").Replace(ownSuffix))
+	userToken := env.createUserTokenWithCredentials(
+		t,
+		adminToken,
+		"Vendedor Escopo Update",
+		fmt.Sprintf("scope.update.user.%s@local.dev", normalizedOwnSuffix),
+		fmt.Sprintf("sales.%s", normalizedOwnSuffix),
+		"user",
+	)
+
+	ownUpdateResponse := env.doJSONRequest(
+		t,
+		http.MethodPut,
+		fmt.Sprintf("/budgets/%d", ownBudget.ID),
+		userToken,
+		buildBudgetRequestBody(
+			"SCOPE-UPD-001",
+			2026,
+			time.Date(2026, time.November, 3, 10, 0, 0, 0, time.UTC),
+			2300,
+			seedOwn,
+			"Projetista Scope Update OK",
+			"Concorrente Scope Update OK",
+		),
+	)
+	if ownUpdateResponse.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d", http.StatusNoContent, ownUpdateResponse.Code)
+	}
+
+	updatedOwnResponse := env.doJSONRequest(t, http.MethodGet, fmt.Sprintf("/budgets/%d", ownBudget.ID), userToken, "")
+	if updatedOwnResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, updatedOwnResponse.Code)
+	}
+
+	updatedOwnPayload := decodeJSONResponse[dto.BudgetResponse](t, updatedOwnResponse.Body)
+	if updatedOwnPayload.ProjetistaName != "Projetista Scope Update OK" {
+		t.Fatalf("expected updated projetista name, got %s", updatedOwnPayload.ProjetistaName)
+	}
+	if updatedOwnPayload.GrossValue != 2300 {
+		t.Fatalf("expected updated gross value 2300, got %.2f", updatedOwnPayload.GrossValue)
+	}
+
+	otherUpdateResponse := env.doJSONRequest(
+		t,
+		http.MethodPut,
+		fmt.Sprintf("/budgets/%d", otherBudget.ID),
+		userToken,
+		buildBudgetRequestBody(
+			"SCOPE-UPD-002",
+			2026,
+			time.Date(2026, time.November, 4, 10, 0, 0, 0, time.UTC),
+			2400,
+			seedOther,
+			"Projetista Scope Update NOK",
+			"Concorrente Scope Update NOK",
+		),
+	)
+	if otherUpdateResponse.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d", http.StatusNotFound, otherUpdateResponse.Code)
 	}
 }
 
@@ -578,7 +692,7 @@ func TestBudgetsReadRoutesShouldRestrictUserToOwnSalespersonScope(t *testing.T) 
 			time.Date(2026, time.September, 1, 10, 0, 0, 0, time.UTC),
 			2100,
 			seedOwn,
-			"Designer Scope",
+			"Projetista Scope",
 			"Concorrente Scope",
 		),
 	)
@@ -598,7 +712,7 @@ func TestBudgetsReadRoutesShouldRestrictUserToOwnSalespersonScope(t *testing.T) 
 			time.Date(2026, time.September, 2, 10, 0, 0, 0, time.UTC),
 			2200,
 			seedOther,
-			"Designer Scope B",
+			"Projetista Scope B",
 			"Concorrente Scope B",
 		),
 	)
@@ -672,7 +786,7 @@ func TestBudgetsReadRoutesShouldRestrictUserToOwnSalespersonScopeBySalespersonNa
 			time.Date(2026, time.October, 1, 10, 0, 0, 0, time.UTC),
 			2300,
 			seedOwn,
-			"Designer Scope Name",
+			"Projetista Scope Name",
 			"Concorrente Scope Name",
 		),
 	)
@@ -692,7 +806,7 @@ func TestBudgetsReadRoutesShouldRestrictUserToOwnSalespersonScopeBySalespersonNa
 			time.Date(2026, time.October, 2, 10, 0, 0, 0, time.UTC),
 			2400,
 			seedOther,
-			"Designer Scope Name B",
+			"Projetista Scope Name B",
 			"Concorrente Scope Name B",
 		),
 	)
@@ -741,7 +855,7 @@ func buildBudgetRequestBody(
 	sentAt time.Time,
 	grossValue float64,
 	seed budgetSeedData,
-	designerName string,
+	projetistaName string,
 	competitorName string,
 ) string {
 	return fmt.Sprintf(`{
@@ -759,9 +873,10 @@ func buildBudgetRequestBody(
 		"salesperson_id":%d,
 		"contact_id":%d,
 		"loss_reason_id":%d,
+		"construction_company":"Construtora Teste",
 		"competitor_name":"%s",
 		"competitor_price":900.00,
-		"designer_name":"%s",
+		"projetista_name":"%s",
 		"specification_details":"Especificacao de teste",
 		"current_follow_up":"Follow up inicial"
 	}`,
@@ -777,6 +892,6 @@ func buildBudgetRequestBody(
 		seed.contactID,
 		seed.lossReasonID,
 		competitorName,
-		designerName,
+		projetistaName,
 	)
 }

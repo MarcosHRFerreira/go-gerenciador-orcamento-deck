@@ -29,6 +29,7 @@ type BudgetImportCatalogActions struct {
 	BudgetStatusesToCreate int `json:"budget_statuses_to_create"`
 	LossReasonsToCreate    int `json:"loss_reasons_to_create"`
 	InstallersToCreate     int `json:"installers_to_create"`
+	ProductLinesToCreate   int `json:"product_lines_to_create"`
 	ProjectsToCreate       int `json:"projects_to_create"`
 	ProjectTypesToCreate   int `json:"project_types_to_create"`
 	SalespeopleToCreate    int `json:"salespeople_to_create"`

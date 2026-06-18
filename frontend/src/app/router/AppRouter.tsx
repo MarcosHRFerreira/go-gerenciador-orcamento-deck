@@ -10,7 +10,10 @@ import { BudgetEditPage } from "../../features/budgets/pages/BudgetEditPage";
 import { BudgetImportPage } from "../../features/budgets/pages/BudgetImportPage";
 import { BudgetListPage } from "../../features/budgets/pages/BudgetListPage";
 import { DashboardPage } from "../../features/dashboard/pages/DashboardPage";
+import ProjectCreatePage from "../../features/projects/pages/ProjectCreatePage";
 import ProjectDetailPage from "../../features/projects/pages/ProjectDetailPage";
+import ProjectEditPage from "../../features/projects/pages/ProjectEditPage";
+import ProjectListPage from "../../features/projects/pages/ProjectListPage";
 import SalespersonListPage from "../../features/salespeople/pages/SalespersonListPage";
 import { UserCreatePage } from "../../features/users/pages/UserCreatePage";
 import { UserEditPage } from "../../features/users/pages/UserEditPage";
@@ -28,17 +31,20 @@ export function AppRouter() {
           <Route path="/" element={<Navigate replace to="/budgets" />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/budgets" element={<BudgetListPage />} />
+          <Route path="/budgets/:budgetId/edit" element={<BudgetEditPage />} />
           <Route element={<AdminRoute />}>
+            <Route path="/projects" element={<ProjectListPage />} />
+            <Route path="/projects/new" element={<ProjectCreatePage />} />
+            <Route
+              path="/projects/:projectId/edit"
+              element={<ProjectEditPage />}
+            />
             <Route
               path="/projects/:projectId"
               element={<ProjectDetailPage />}
             />
             <Route path="/budgets/import" element={<BudgetImportPage />} />
             <Route path="/budgets/new" element={<BudgetCreatePage />} />
-            <Route
-              path="/budgets/:budgetId/edit"
-              element={<BudgetEditPage />}
-            />
             <Route path="/salespeople" element={<SalespersonListPage />} />
             <Route path="/users" element={<UserListPage />} />
             <Route path="/users/new" element={<UserCreatePage />} />

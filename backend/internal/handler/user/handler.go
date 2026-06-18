@@ -1,8 +1,11 @@
 package user
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/dto"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/httpresponse"
@@ -63,8 +66,44 @@ func (h *Handler) CreateUser(c *gin.Context) {
 }
 
 func (h *Handler) GetMe(c *gin.Context) {
+	// #region debug-point B:users-me-entry
+	go func() {
+		payload, _ := json.Marshal(map[string]interface{}{
+			"sessionId":    "login-internal-error",
+			"runId":        "pre-fix",
+			"hypothesisId": "B",
+			"location":     "backend/internal/handler/user/handler.go:GetMe",
+			"msg":          "[DEBUG] users me request started",
+			"data": map[string]interface{}{
+				"path":              c.FullPath(),
+				"user_id":           middleware.UserID(c),
+				"authorization_set": c.GetHeader("Authorization") != "",
+			},
+			"ts": time.Now().UnixMilli(),
+		})
+		_, _ = http.Post("http://127.0.0.1:7777/event", "application/json", bytes.NewReader(payload))
+	}()
+	// #endregion
 	user, err := h.userService.GetMe(c.Request.Context(), middleware.UserID(c))
 	if err != nil {
+		// #region debug-point B:users-me-error
+		go func() {
+			payload, _ := json.Marshal(map[string]interface{}{
+				"sessionId":    "login-internal-error",
+				"runId":        "pre-fix",
+				"hypothesisId": "B",
+				"location":     "backend/internal/handler/user/handler.go:GetMe",
+				"msg":          "[DEBUG] users me request failed",
+				"data": map[string]interface{}{
+					"error":   err.Error(),
+					"path":    c.FullPath(),
+					"user_id": middleware.UserID(c),
+				},
+				"ts": time.Now().UnixMilli(),
+			})
+			_, _ = http.Post("http://127.0.0.1:7777/event", "application/json", bytes.NewReader(payload))
+		}()
+		// #endregion
 		httpresponse.JSONAppError(c, err)
 		return
 	}

@@ -147,6 +147,6 @@ Nesta primeira etapa o projeto ja possui:
 
 ## Observacao
 
-- `GET /budgets` aceita filtros por query string: `budget_number`, `year_budget`, `status_id`, `salesperson_id`, `installer_id`, `priority_id`, `project_type_id`, `designer_name`, `competitor_name`, `sent_at_from`, `sent_at_to`, `gross_value_min`, `gross_value_max`, `page`, `page_size`, `sort_by` e `sort_order`
+- `GET /budgets` aceita filtros por query string: `budget_number`, `year_budget`, `status_id`, `salesperson_id`, `installer_id`, `priority_id`, `project_type_id`, `projetista_name`, `competitor_name`, `sent_at_from`, `sent_at_to`, `gross_value_min`, `gross_value_max`, `page`, `page_size`, `sort_by` e `sort_order`
 - `POST /auth/register` fica disponivel apenas enquanto nao existir nenhum usuario cadastrado
 - o primeiro usuario criado por esse endpoint nasce com perfil `admin`

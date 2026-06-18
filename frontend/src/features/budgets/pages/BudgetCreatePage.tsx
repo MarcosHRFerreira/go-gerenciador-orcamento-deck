@@ -65,9 +65,9 @@ export function BudgetCreatePage() {
 
   const initialDataError =
     searchParams.get("projectId") !== null && projectId === null
-      ? "Projeto informado para o novo orcamento e invalido."
+      ? "Obra informada para o novo orcamento e invalida."
       : projectQuery.isError
-        ? "Nao foi possivel carregar o projeto informado para o novo orcamento."
+        ? "Nao foi possivel carregar a obra informada para o novo orcamento."
         : null;
 
   return (
@@ -82,10 +82,10 @@ export function BudgetCreatePage() {
       submitLabel="Salvar orçamento"
       subtitle={
         projectId !== null
-          ? `Preencha os dados para cadastrar um novo orcamento ja vinculado ao projeto ${projectQuery.data?.name ?? `#${projectId}`}.`
+          ? `Preencha os dados para cadastrar um novo orcamento ja vinculado a obra ${projectQuery.data?.name ?? `#${projectId}`}.`
           : "Preencha os dados do orçamento para cadastrar um novo registro na base."
       }
-      title={projectId !== null ? "Novo orçamento do projeto" : "Novo orçamento"}
+      title={projectId !== null ? "Novo orçamento da obra" : "Novo orçamento"}
     />
   );
 }

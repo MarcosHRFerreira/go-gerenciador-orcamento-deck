@@ -33,7 +33,7 @@ func (troxImportLayout) SourceCompany() string {
 }
 
 func (troxImportLayout) Description() string {
-	return "Layout resumido da Trox com aba Capa, cabecalho na linha 1 e campos comerciais normalizados para o dominio atual."
+	return "Layout resumido da Trox com aba Capa, cabecalho na linha 1 e campos comerciais normalizados para o dominio atual, incluindo linha de produto e construtora."
 }
 
 func (troxImportLayout) SheetName() string {
@@ -48,11 +48,11 @@ func (troxImportLayout) PreviewWarnings() []dto.BudgetImportPreviewMessage {
 	return []dto.BudgetImportPreviewMessage{
 		{
 			Code:    "TROX_STATUS_AS_FOLLOW_UP",
-			Message: "A coluna Status da Trox foi tratada como follow-up atual, mantendo o status principal como Nao informado.",
+			Message: "A coluna Status da Trox continua como follow-up atual, enquanto o status principal da importacao passa a iniciar como Em Negociacao.",
 		},
 		{
-			Code:    "TROX_ORIGIN_FIELDS_IGNORED",
-			Message: "As colunas Tipo, Linha de produtos, Codigo Cliente, Nome Cliente e Fator Medio nao entram no dominio principal nesta fase.",
+			Code:    "TROX_PRODUCT_LINE_AND_CUSTOMER_MAPPED",
+			Message: "Linha de produtos passa a alimentar catalogo auxiliar e Nome Cliente passa a preencher Construtora.",
 		},
 	}
 }
@@ -67,6 +67,8 @@ func (troxImportLayout) FieldGroups() []dto.BudgetImportPreviewFieldGroup {
 				"Orcamento",
 				"Revisao",
 				"Data de Emissao",
+				"Linha de produtos",
+				"Construtora",
 				"Obra",
 				"Vendedor",
 				"Instalador",
@@ -81,9 +83,7 @@ func (troxImportLayout) FieldGroups() []dto.BudgetImportPreviewFieldGroup {
 			Description: "Ficam gravados nas linhas brutas/normalizadas do lote, sem entrar no dominio principal nesta fase.",
 			Fields: []string{
 				"Tipo",
-				"Linha de produtos",
 				"Codigo Cliente",
-				"Nome Cliente",
 				"Fator Medio",
 			},
 		},
@@ -93,7 +93,7 @@ func (troxImportLayout) FieldGroups() []dto.BudgetImportPreviewFieldGroup {
 			Description: "Transformacoes e convencoes especificas usadas para a Trox.",
 			Fields: []string{
 				"Prefixo DECK - removido do vendedor",
-				"Status principal definido como Nao informado",
+				"Status principal definido como Em Negociacao",
 				"Status da Trox enviado para follow-up atual",
 				"Tipo e Linha de produtos nao viram tipo de obra",
 			},
@@ -106,7 +106,7 @@ func (troxImportLayout) Governance() dto.BudgetImportPreviewGovernance {
 		DuplicateScope:      "source_company + budget_number + year_budget",
 		DuplicatePolicy:     "A Trox concilia duplicidade pela origem Trox, numero do orcamento e ano. Registros legados sem origem definida ainda podem ser conciliados para evitar duplicacao na migracao.",
 		MissingValuePolicy:  "Campos sem aderencia ao dominio principal usam Nao informado ou seguem apenas para rastreabilidade, conforme o mapeamento aprovado da Trox.",
-		DefaultCatalogs:     []string{"Status", "Prioridade", "Instalador", "Projeto", "Tipo de obra", "Vendedor", "Contato", "Motivo de perda"},
+		DefaultCatalogs:     []string{"Status", "Prioridade", "Instalador", "Linha de produto", "Obra", "Tipo de obra", "Vendedor", "Contato", "Motivo de perda"},
 		LegacyMatchingScope: "Registros sem source_company continuam elegiveis como correspondencia legado durante a transicao.",
 	}
 }
@@ -153,16 +153,18 @@ func (troxImportLayout) ParseNormalizedRow(rowNumber int, rowValues []string) (n
 		return row, fmt.Errorf("Valor bruto invalido.")
 	}
 
-	row.statusName = notInformedName
+	row.statusName = "Em Negociacao"
 	row.priorityName = notInformedName
 	row.installerName = fallbackName(getCell(rowValues, 11))
+	row.productLineName = normalizeDisplayText(getCell(rowValues, 6))
 	row.projectName = fallbackName(getCell(rowValues, 9))
 	row.projectTypeName = notInformedName
 	row.salespersonName = fallbackName(normalizeTroxSalespersonName(getCell(rowValues, 10)))
 	row.contactName = fallbackName(getCell(rowValues, 5))
 	row.lossReasonName = notInformedName
+	row.constructionCompany = fallbackName(getCell(rowValues, 8))
 	row.competitorName = notInformedName
-	row.designerName = notInformedName
+	row.projetistaName = notInformedName
 	row.specification = notInformedName
 	row.currentFollowUp = fallbackName(getCell(rowValues, 4))
 

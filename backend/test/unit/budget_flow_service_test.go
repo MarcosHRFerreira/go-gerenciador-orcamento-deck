@@ -271,7 +271,7 @@ func TestBudgetStatusHistoryServiceChangeStatusShouldReturnConflictWhenProjectAl
 		StatusID: 2,
 	})
 
-	assertAppError(t, err, 409, "Ja existe outro orcamento do projeto marcado como PEDIDO")
+	assertAppError(t, err, 409, "Ja existe outro orcamento da obra marcado como PEDIDO")
 }
 
 func TestBudgetStatusHistoryServiceChangeStatusShouldReturnBadRequestWhenCancelledStatusDoesNotExist(t *testing.T) {

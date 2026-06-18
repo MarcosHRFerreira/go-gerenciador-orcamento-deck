@@ -1,4 +1,4 @@
-import type { BudgetDetailItem } from "../types/budget";
+﻿import type { BudgetDetailItem } from "../types/budget";
 
 export type BudgetFormValues = {
   areaM2: string;
@@ -8,7 +8,7 @@ export type BudgetFormValues = {
   competitorPrice: string;
   contactId: string;
   currentFollowUp: string;
-  designerName: string;
+  projetistaName: string;
   grossValue: string;
   installerId: string;
   lossReasonId: string;
@@ -38,7 +38,7 @@ export function createDefaultBudgetFormValues(): BudgetFormValues {
     competitorPrice: "",
     contactId: "",
     currentFollowUp: "",
-    designerName: "",
+    projetistaName: "",
     grossValue: "",
     installerId: "",
     lossReasonId: "",
@@ -65,7 +65,7 @@ export function mapBudgetDetailToFormValues(
       budget.competitorPrice === null ? "" : String(budget.competitorPrice),
     contactId: budget.contactId === null ? "" : String(budget.contactId),
     currentFollowUp: budget.currentFollowUp,
-    designerName: budget.designerName,
+    projetistaName: budget.projetistaName,
     grossValue: String(budget.grossValue),
     installerId: budget.installerId === null ? "" : String(budget.installerId),
     lossReasonId:
@@ -81,3 +81,4 @@ export function mapBudgetDetailToFormValues(
     yearBudget: String(budget.yearBudget),
   };
 }
+

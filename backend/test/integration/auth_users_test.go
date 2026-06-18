@@ -199,7 +199,7 @@ func TestProjectsRoutesShouldRespectAdminAuthorization(t *testing.T) {
 		http.MethodPost,
 		"/projects",
 		adminToken,
-		`{"name":"Projeto Admin","city":"Campinas","state":"SP","notes":"projeto liberado para admin"}`,
+		`{"code":"PROJETO_ADMIN","name":"Projeto Admin","city":"Campinas","state":"SP","notes":"projeto liberado para admin"}`,
 	)
 	if adminCreateResponse.Code != http.StatusCreated {
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, adminCreateResponse.Code)
@@ -210,7 +210,7 @@ func TestProjectsRoutesShouldRespectAdminAuthorization(t *testing.T) {
 		http.MethodPost,
 		"/projects",
 		userToken,
-		`{"name":"Projeto User","city":"Campinas","state":"SP","notes":"projeto bloqueado para user"}`,
+		`{"code":"PROJETO_USER","name":"Projeto User","city":"Campinas","state":"SP","notes":"projeto bloqueado para user"}`,
 	)
 	if forbiddenCreateResponse.Code != http.StatusForbidden {
 		t.Fatalf("expected status %d, got %d", http.StatusForbidden, forbiddenCreateResponse.Code)

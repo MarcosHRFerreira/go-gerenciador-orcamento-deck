@@ -41,14 +41,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
-import {
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type UIEvent,
-} from "react";
+import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { SectionCard } from "../../../components/common/SectionCard";
 import { useAuth } from "../../auth/hooks/useAuth";
@@ -86,7 +79,7 @@ const decimalFormatter = new Intl.NumberFormat("pt-BR", {
   minimumFractionDigits: 2,
 });
 
-const pageSize = 20;
+const defaultPageSize = 50;
 
 const defaultFilters: BudgetListFilters = {
   budgetNumber: "",
@@ -96,8 +89,10 @@ const defaultFilters: BudgetListFilters = {
   installerId: "",
   projectName: "",
   salespersonId: "",
+  sentAtFrom: "",
+  sentAtTo: "",
   page: 1,
-  pageSize,
+  pageSize: defaultPageSize,
   sortBy: "sent_at",
   sortOrder: "desc",
 };
@@ -144,6 +139,8 @@ function getFiltersFromSearchParams(
     projectName: searchParams.get("projectName") ?? defaultFilters.projectName,
     salespersonId:
       searchParams.get("salespersonId") ?? defaultFilters.salespersonId,
+    sentAtFrom: searchParams.get("sentAtFrom") ?? defaultFilters.sentAtFrom,
+    sentAtTo: searchParams.get("sentAtTo") ?? defaultFilters.sentAtTo,
     page: parsePositiveInteger(searchParams.get("page"), defaultFilters.page),
     pageSize: parsePositiveInteger(
       searchParams.get("pageSize"),
@@ -177,6 +174,12 @@ function buildSearchParams(filters: BudgetListFilters) {
   }
   if (filters.salespersonId) {
     nextSearchParams.set("salespersonId", filters.salespersonId);
+  }
+  if (filters.sentAtFrom) {
+    nextSearchParams.set("sentAtFrom", filters.sentAtFrom);
+  }
+  if (filters.sentAtTo) {
+    nextSearchParams.set("sentAtTo", filters.sentAtTo);
   }
   if (filters.page !== defaultFilters.page) {
     nextSearchParams.set("page", String(filters.page));
@@ -349,40 +352,13 @@ const singleLineTableCellSx = {
   whiteSpace: "nowrap",
 };
 
-const frozenBudgetTableCellSx = {
-  ...singleLineTableCellSx,
-  height: "100%",
-  px: 1.5,
-  py: 2.1,
-  textAlign: "center",
-};
-
-const stickyBudgetColumnWidth = 140;
-const frozenColumnsWidth = stickyBudgetColumnWidth;
+const budgetNumberColumnWidth = 140;
+const floatingBudgetMirrorColumnWidth = 156;
 const tableMaxHeight = "calc(100vh - 280px)";
 
 const compactFilterFieldSx = {
   width: "100%",
-  "@media (min-width:900px)": {
-    width: "auto",
-  },
 };
-
-function resetTableRowHeight(row: HTMLTableRowElement | null) {
-  if (!row) {
-    return;
-  }
-
-  row.style.height = "";
-}
-
-function applyTableRowHeight(row: HTMLTableRowElement | null, height: number) {
-  if (!row) {
-    return;
-  }
-
-  row.style.height = `${height}px`;
-}
 
 export function BudgetListPage() {
   const navigate = useNavigate();
@@ -409,15 +385,9 @@ export function BudgetListPage() {
     budgetNumber: string;
   } | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const frozenTableContainerRef = useRef<HTMLDivElement | null>(null);
-  const mainTableContainerRef = useRef<HTMLDivElement | null>(null);
-  const frozenTableRef = useRef<HTMLTableElement | null>(null);
-  const mainTableRef = useRef<HTMLTableElement | null>(null);
-  const frozenHeaderRowRef = useRef<HTMLTableRowElement | null>(null);
-  const mainHeaderRowRef = useRef<HTMLTableRowElement | null>(null);
-  const frozenBodyRowRefs = useRef<Array<HTMLTableRowElement | null>>([]);
-  const mainBodyRowRefs = useRef<Array<HTMLTableRowElement | null>>([]);
-  const scrollSyncSourceRef = useRef<"frozen" | "main" | null>(null);
+  const listTableContainerRef = useRef<HTMLDivElement | null>(null);
+  const [showFloatingBudgetMirror, setShowFloatingBudgetMirror] =
+    useState(false);
   const [draftFilters, setDraftFilters] = useState(() => ({
     budgetNumber: effectiveFilters.budgetNumber,
     sourceCompany: effectiveFilters.sourceCompany,
@@ -426,8 +396,10 @@ export function BudgetListPage() {
     installerId: effectiveFilters.installerId,
     projectName: effectiveFilters.projectName,
     salespersonId: effectiveFilters.salespersonId,
+    sentAtFrom: effectiveFilters.sentAtFrom,
+    sentAtTo: effectiveFilters.sentAtTo,
   }));
-  const [viewMode, setViewMode] = useState<BudgetViewMode>("project");
+  const [viewMode, setViewMode] = useState<BudgetViewMode>("list");
 
   useEffect(() => {
     if (isAdmin || !filters.salespersonId) {
@@ -540,7 +512,7 @@ export function BudgetListPage() {
         budget.projectId,
         budget.projectName,
         projectMap,
-        "Projeto nao informado",
+        "Obra nao informada",
       );
       const groupKey = `project-${budget.projectId}`;
       const existingGroup = currentGroups.get(groupKey);
@@ -656,133 +628,16 @@ export function BudgetListPage() {
     : budgetListQuery;
 
   useEffect(() => {
-    frozenBodyRowRefs.current = frozenBodyRowRefs.current.slice(
-      0,
-      budgetItems.length,
-    );
-    mainBodyRowRefs.current = mainBodyRowRefs.current.slice(
-      0,
-      budgetItems.length,
-    );
-  }, [budgetItems.length]);
-
-  useLayoutEffect(() => {
-    let isCancelled = false;
-
-    const syncRowHeights = () => {
-      if (isCancelled) {
-        return;
-      }
-
-      resetTableRowHeight(frozenHeaderRowRef.current);
-      resetTableRowHeight(mainHeaderRowRef.current);
-      frozenBodyRowRefs.current.forEach((row) => resetTableRowHeight(row));
-      mainBodyRowRefs.current.forEach((row) => resetTableRowHeight(row));
-
-      const headerHeight = Math.max(
-        frozenHeaderRowRef.current?.getBoundingClientRect().height ?? 0,
-        mainHeaderRowRef.current?.getBoundingClientRect().height ?? 0,
-      );
-
-      if (headerHeight > 0) {
-        applyTableRowHeight(frozenHeaderRowRef.current, headerHeight);
-        applyTableRowHeight(mainHeaderRowRef.current, headerHeight);
-      }
-
-      budgetItems.forEach((_, index) => {
-        const frozenRow = frozenBodyRowRefs.current[index] ?? null;
-        const mainRow = mainBodyRowRefs.current[index] ?? null;
-        const rowHeight = Math.max(
-          frozenRow?.getBoundingClientRect().height ?? 0,
-          mainRow?.getBoundingClientRect().height ?? 0,
-        );
-
-        if (rowHeight > 0) {
-          applyTableRowHeight(frozenRow, rowHeight);
-          applyTableRowHeight(mainRow, rowHeight);
-        }
-      });
-    };
-
-    const scheduleSyncRowHeights = () => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          syncRowHeights();
-        });
-      });
-    };
-
-    syncRowHeights();
-    scheduleSyncRowHeights();
-    window.addEventListener("resize", scheduleSyncRowHeights);
-
-    const resizeObserver =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(() => {
-            scheduleSyncRowHeights();
-          });
-
-    [
-      frozenTableContainerRef.current,
-      mainTableContainerRef.current,
-      frozenTableRef.current,
-      mainTableRef.current,
-    ].forEach((element) => {
-      if (element !== null) {
-        resizeObserver?.observe(element);
-      }
-    });
-
-    if ("fonts" in document) {
-      void document.fonts.ready.then(() => {
-        scheduleSyncRowHeights();
-      });
-    }
-
-    return () => {
-      isCancelled = true;
-      resizeObserver?.disconnect();
-      window.removeEventListener("resize", scheduleSyncRowHeights);
-    };
-  }, [budgetCatalogsQuery.data, budgetItems, isAdmin]);
-
-  const handleMainTableScroll = (event: UIEvent<HTMLDivElement>) => {
-    if (scrollSyncSourceRef.current === "frozen") {
-      scrollSyncSourceRef.current = null;
+    setShowFloatingBudgetMirror(false);
+    if (!listTableContainerRef.current) {
       return;
     }
 
-    if (!frozenTableContainerRef.current) {
-      return;
-    }
+    listTableContainerRef.current.scrollLeft = 0;
+  }, [filters.page, filters.pageSize, isProjectView]);
 
-    scrollSyncSourceRef.current = "main";
-    frozenTableContainerRef.current.scrollTop = event.currentTarget.scrollTop;
-    requestAnimationFrame(() => {
-      if (scrollSyncSourceRef.current === "main") {
-        scrollSyncSourceRef.current = null;
-      }
-    });
-  };
-
-  const handleFrozenTableScroll = (event: UIEvent<HTMLDivElement>) => {
-    if (scrollSyncSourceRef.current === "main") {
-      scrollSyncSourceRef.current = null;
-      return;
-    }
-
-    if (!mainTableContainerRef.current) {
-      return;
-    }
-
-    scrollSyncSourceRef.current = "frozen";
-    mainTableContainerRef.current.scrollTop = event.currentTarget.scrollTop;
-    requestAnimationFrame(() => {
-      if (scrollSyncSourceRef.current === "frozen") {
-        scrollSyncSourceRef.current = null;
-      }
-    });
+  const handleListTableScroll = (event: UIEvent<HTMLDivElement>) => {
+    setShowFloatingBudgetMirror(event.currentTarget.scrollLeft > 12);
   };
 
   const handleDraftChange = (
@@ -815,6 +670,8 @@ export function BudgetListPage() {
       installerId: defaultFilters.installerId,
       projectName: defaultFilters.projectName,
       salespersonId: isAdmin ? defaultFilters.salespersonId : "",
+      sentAtFrom: defaultFilters.sentAtFrom,
+      sentAtTo: defaultFilters.sentAtTo,
     });
     setSearchParams(
       buildSearchParams({
@@ -836,8 +693,18 @@ export function BudgetListPage() {
     );
   };
 
+  const handlePageSizeChange = (value: number) => {
+    setSearchParams(
+      buildSearchParams({
+        ...effectiveFilters,
+        page: 1,
+        pageSize: value,
+      }),
+    );
+  };
+
   const handleBudgetRowDoubleClick = (budgetId: number) => {
-    if (!isAdmin) {
+    if (!user) {
       return;
     }
 
@@ -930,7 +797,7 @@ export function BudgetListPage() {
             startIcon={<AddRoundedIcon />}
             variant="contained"
           >
-            Novo orçamento
+            Novo orcamento
           </Button>
         </Box>
       ) : null}
@@ -952,7 +819,7 @@ export function BudgetListPage() {
           }}
         >
           <TextField
-            label="Nro. orçamento"
+            label="Nro. orcamento"
             onChange={(event) =>
               handleDraftChange("budgetNumber", event.target.value)
             }
@@ -1052,6 +919,45 @@ export function BudgetListPage() {
               )}
             </TextField>
           ) : null}
+          <Box
+            sx={{
+              display: "grid",
+              gap: 2,
+              gridColumn: {
+                lg: "span 2",
+                md: "span 2",
+                xs: "span 1",
+              },
+              gridTemplateColumns: {
+                sm: "repeat(2, minmax(0, 1fr))",
+                xs: "minmax(0, 1fr)",
+              },
+              minWidth: 0,
+            }}
+          >
+            <TextField
+              label="Envio de"
+              onChange={(event) =>
+                handleDraftChange("sentAtFrom", event.target.value)
+              }
+              size="small"
+              slotProps={{ inputLabel: { shrink: true } }}
+              sx={compactFilterFieldSx}
+              type="date"
+              value={draftFilters.sentAtFrom}
+            />
+            <TextField
+              label="Envio ate"
+              onChange={(event) =>
+                handleDraftChange("sentAtTo", event.target.value)
+              }
+              size="small"
+              slotProps={{ inputLabel: { shrink: true } }}
+              sx={compactFilterFieldSx}
+              type="date"
+              value={draftFilters.sentAtTo}
+            />
+          </Box>
         </Box>
 
         <Box
@@ -1170,32 +1076,56 @@ export function BudgetListPage() {
                 ) : null}
                 <Typography color="text.secondary" variant="body2">
                   {isProjectView
-                    ? `${groupedProjectsCount} projeto(s) sem PEDIDO definido entre os 20 mais recentes, com prioridade para quem tem mais orcamentos`
-                    : `${budgetListQuery.data?.total ?? 0} orçamento(s) encontrado(s)`}
+                    ? `${groupedProjectsCount} obra(s) sem PEDIDO definido entre as 20 mais recentes, com prioridade para quem tem mais orcamentos`
+                    : `${budgetListQuery.data?.total ?? 0} orcamento(s) encontrado(s)`}
                 </Typography>
               </Box>
 
-              <ToggleButtonGroup
-                exclusive
-                onChange={handleViewModeChange}
-                size="small"
-                value={viewMode}
+              <Box
+                sx={{
+                  alignItems: { sm: "center", xs: "stretch" },
+                  display: "flex",
+                  flexDirection: { sm: "row", xs: "column" },
+                  gap: 1.5,
+                }}
               >
-                <ToggleButton value="project">
-                  <ApartmentRoundedIcon fontSize="small" sx={{ mr: 1 }} />
-                  Por projeto
-                </ToggleButton>
-                <ToggleButton value="list">
-                  <TableRowsRoundedIcon fontSize="small" sx={{ mr: 1 }} />
-                  Lista completa
-                </ToggleButton>
-              </ToggleButtonGroup>
+                {!isProjectView ? (
+                  <TextField
+                    label="Linhas por pagina"
+                    onChange={(event) =>
+                      handlePageSizeChange(Number(event.target.value))
+                    }
+                    select
+                    size="small"
+                    sx={{ minWidth: 160 }}
+                    value={filters.pageSize}
+                  >
+                    <MenuItem value={50}>50</MenuItem>
+                    <MenuItem value={100}>100</MenuItem>
+                  </TextField>
+                ) : null}
+                <ToggleButtonGroup
+                  exclusive
+                  onChange={handleViewModeChange}
+                  size="small"
+                  value={viewMode}
+                >
+                  <ToggleButton value="project">
+                    <ApartmentRoundedIcon fontSize="small" sx={{ mr: 1 }} />
+                    Por obra
+                  </ToggleButton>
+                  <ToggleButton value="list">
+                    <TableRowsRoundedIcon fontSize="small" sx={{ mr: 1 }} />
+                    Lista completa
+                  </ToggleButton>
+                </ToggleButtonGroup>
+              </Box>
             </Box>
 
             {isProjectView ? (
               <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
                 <Alert severity="info" variant="outlined">
-                  Nesta visualizacao aparecem apenas projetos sem{" "}
+                  Nesta visualizacao aparecem apenas obras sem{" "}
                   <strong>PEDIDO</strong> definido, limitados aos 20 mais
                   recentes pela ultima atualizacao dos orcamentos do grupo e
                   ordenados no topo por quantidade de orcamentos vinculados.
@@ -1203,13 +1133,13 @@ export function BudgetListPage() {
 
                 {projectBudgetItems.length === 0 ? (
                   <Alert severity="info" variant="outlined">
-                    Nenhum orçamento foi encontrado para os filtros informados.
+                    Nenhum orcamento foi encontrado para os filtros informados.
                   </Alert>
                 ) : projectGroups.length === 0 ? (
                   <Alert severity="info" variant="outlined">
                     Foram encontrados{" "}
-                    <strong>{projectBudgetItems.length} orçamento(s)</strong> na
-                    busca atual, mas todos os projetos ja possuem{" "}
+                    <strong>{projectBudgetItems.length} orcamento(s)</strong> na
+                    busca atual, mas todas as obras ja possuem{" "}
                     <strong>PEDIDO</strong> definido e por isso nao aparecem
                     nesta visualizacao.
                   </Alert>
@@ -1244,7 +1174,7 @@ export function BudgetListPage() {
                               {group.projectName}
                             </Typography>
                             <Typography color="text.secondary" variant="body2">
-                              {`Projeto #${group.projectId} · ${group.items.length} orcamento(s) vinculado(s) · ${group.items[0]?.sourceCompany || "Nao informado"}`}
+                              {`Obra #${group.projectId} - ${group.items.length} orcamento(s) vinculado(s) - ${group.items[0]?.sourceCompany || "Nao informado"}`}
                             </Typography>
                           </Box>
 
@@ -1288,7 +1218,7 @@ export function BudgetListPage() {
                                 startIcon={<VisibilityRoundedIcon />}
                                 variant="text"
                               >
-                                Abrir projeto
+                                Abrir obra
                               </Button>
                             ) : null}
                           </Box>
@@ -1365,7 +1295,7 @@ export function BudgetListPage() {
                                       color="text.secondary"
                                       variant="body2"
                                     >
-                                      ID {budget.id} · envio{" "}
+                                      ID {budget.id} - envio{" "}
                                       {dateFormatter.format(
                                         new Date(budget.sentAt),
                                       )}
@@ -1401,7 +1331,7 @@ export function BudgetListPage() {
                                     {isWinner ? (
                                       <Chip
                                         color="success"
-                                        label="Vencedor do projeto"
+                                        label="Vencedor da obra"
                                         size="small"
                                       />
                                     ) : null}
@@ -1514,10 +1444,12 @@ export function BudgetListPage() {
                                       color="text.secondary"
                                       variant="caption"
                                     >
-                                      Designer
+                                      Projetista
                                     </Typography>
                                     <Typography variant="body2">
-                                      {formatOptionalText(budget.designerName)}
+                                      {formatOptionalText(
+                                        budget.projetistaName,
+                                      )}
                                     </Typography>
                                   </Box>
                                   <Box>
@@ -1535,7 +1467,7 @@ export function BudgetListPage() {
                                   </Box>
                                 </Box>
 
-                                {isAdmin ? (
+                                {user ? (
                                   <Box
                                     sx={{
                                       display: "flex",
@@ -1554,20 +1486,22 @@ export function BudgetListPage() {
                                     >
                                       Editar
                                     </Button>
-                                    <Button
-                                      color="error"
-                                      onClick={() =>
-                                        handleOpenDeleteDialog(
-                                          budget.id,
-                                          budget.budgetNumber,
-                                        )
-                                      }
-                                      size="small"
-                                      startIcon={<DeleteOutlineRoundedIcon />}
-                                      variant="text"
-                                    >
-                                      Excluir
-                                    </Button>
+                                    {isAdmin ? (
+                                      <Button
+                                        color="error"
+                                        onClick={() =>
+                                          handleOpenDeleteDialog(
+                                            budget.id,
+                                            budget.budgetNumber,
+                                          )
+                                        }
+                                        size="small"
+                                        startIcon={<DeleteOutlineRoundedIcon />}
+                                        variant="text"
+                                      >
+                                        Excluir
+                                      </Button>
+                                    ) : null}
                                   </Box>
                                 ) : null}
                               </Box>
@@ -1582,10 +1516,8 @@ export function BudgetListPage() {
             ) : activeBudgetItems.length ? (
               <Box
                 sx={{
-                  alignItems: "stretch",
                   border: (theme) => `1px solid ${theme.palette.divider}`,
                   borderRadius: 3,
-                  display: "flex",
                   height: tableMaxHeight,
                   minWidth: 0,
                   overflow: "hidden",
@@ -1593,118 +1525,21 @@ export function BudgetListPage() {
                 }}
               >
                 <TableContainer
-                  onScroll={handleFrozenTableScroll}
-                  ref={frozenTableContainerRef}
-                  sx={{
-                    borderRight: (theme) =>
-                      `1px solid ${theme.palette.divider}`,
-                    boxSizing: "border-box",
-                    flex: "0 0 auto",
-                    height: "100%",
-                    overflowX: "hidden",
-                    overflowY: "auto",
-                    scrollbarWidth: "none",
-                    width: frozenColumnsWidth,
-                    "&::-webkit-scrollbar": {
-                      display: "none",
-                    },
-                  }}
-                >
-                  <Table
-                    ref={frozenTableRef}
-                    size="small"
-                    stickyHeader
-                    sx={{
-                      borderCollapse: "separate",
-                      borderSpacing: 0,
-                      tableLayout: "fixed",
-                      width: frozenColumnsWidth,
-                      "& .MuiTableCell-stickyHeader": {
-                        backgroundColor: "background.paper",
-                        top: 0,
-                        zIndex: 2,
-                      },
-                    }}
-                  >
-                    <TableHead>
-                      <TableRow ref={frozenHeaderRowRef}>
-                        <TableCell
-                          sx={{
-                            ...tableHeadCellSx,
-                            minWidth: stickyBudgetColumnWidth,
-                            textAlign: "center",
-                            width: stickyBudgetColumnWidth,
-                          }}
-                        >
-                          Orçamento
-                        </TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {budgetItems.map((budget, index) => (
-                        <TableRow
-                          hover
-                          key={budget.id}
-                          onDoubleClick={() =>
-                            handleBudgetRowDoubleClick(budget.id)
-                          }
-                          ref={(element) => {
-                            frozenBodyRowRefs.current[index] = element;
-                          }}
-                          sx={{ cursor: isAdmin ? "pointer" : "default" }}
-                        >
-                          <TableCell sx={frozenBudgetTableCellSx}>
-                            <Box
-                              sx={{
-                                alignItems: "center",
-                                display: "flex",
-                                flexDirection: "column",
-                                gap: 0.5,
-                                height: "100%",
-                                justifyContent: "center",
-                                minWidth: 0,
-                              }}
-                            >
-                              <Typography
-                                noWrap
-                                sx={{
-                                  fontSize: "0.75rem",
-                                  fontWeight: 600,
-                                  textAlign: "center",
-                                  width: "100%",
-                                }}
-                                title={budget.budgetNumber}
-                                variant="body2"
-                              >
-                                {budget.budgetNumber}
-                              </Typography>
-                            </Box>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-
-                <TableContainer
-                  onScroll={handleMainTableScroll}
-                  ref={mainTableContainerRef}
+                  onScroll={handleListTableScroll}
+                  ref={listTableContainerRef}
                   sx={{
                     boxSizing: "border-box",
-                    flex: 1,
                     height: "100%",
-                    minWidth: 0,
                     overflow: "auto",
                   }}
                 >
                   <Table
-                    ref={mainTableRef}
                     size="small"
                     stickyHeader
                     sx={{
                       borderCollapse: "separate",
                       borderSpacing: 0,
-                      minWidth: 1600,
+                      minWidth: 1740,
                       "& .MuiTableCell-stickyHeader": {
                         backgroundColor: "background.paper",
                         top: 0,
@@ -1713,36 +1548,46 @@ export function BudgetListPage() {
                     }}
                   >
                     <TableHead>
-                      <TableRow ref={mainHeaderRowRef}>
+                      <TableRow>
+                        <TableCell
+                          sx={{
+                            ...tableHeadCellSx,
+                            minWidth: budgetNumberColumnWidth,
+                            width: budgetNumberColumnWidth,
+                          }}
+                        >
+                          Orcamento
+                        </TableCell>
                         <TableCell sx={tableHeadCellSx}>Ano</TableCell>
                         <TableCell sx={tableHeadCellSx}>Empresa</TableCell>
-                        <TableCell sx={tableHeadCellSx}>Revisão</TableCell>
+                        <TableCell sx={tableHeadCellSx}>Revisao</TableCell>
                         <TableCell sx={tableHeadCellSx}>Envio</TableCell>
                         <TableCell sx={tableHeadCellSx}>Status</TableCell>
                         <TableCell sx={tableHeadCellSx}>Prioridade</TableCell>
                         <TableCell sx={tableHeadCellSx}>Instalador</TableCell>
-                        <TableCell sx={tableHeadCellSx}>Projeto</TableCell>
+                        <TableCell sx={tableHeadCellSx}>Obra</TableCell>
+                        <TableCell sx={tableHeadCellSx}>Construtora</TableCell>
                         <TableCell sx={tableHeadCellSx}>Vendedor</TableCell>
                         <TableCell sx={tableHeadCellSx}>Contato</TableCell>
                         <TableCell sx={tableHeadCellSx}>
                           Motivo de perda
                         </TableCell>
-                        <TableCell sx={tableHeadCellSx}>Designer</TableCell>
+                        <TableCell sx={tableHeadCellSx}>Projetista</TableCell>
                         <TableCell sx={tableHeadCellSx}>Concorrente</TableCell>
                         <TableCell align="right" sx={tableHeadCellSx}>
-                          Preço concorrente
+                          Preco concorrente
                         </TableCell>
                         <TableCell sx={tableHeadCellSx}>
-                          Especificações
+                          Especificacoes
                         </TableCell>
                         <TableCell sx={tableHeadCellSx}>
                           Follow-up atual
                         </TableCell>
                         <TableCell align="right" sx={tableHeadCellSx}>
-                          Área m²
+                          Area m2
                         </TableCell>
                         <TableCell align="right" sx={tableHeadCellSx}>
-                          Comissão
+                          Comissao
                         </TableCell>
                         <TableCell align="right" sx={tableHeadCellSx}>
                           Valor bruto
@@ -1751,24 +1596,61 @@ export function BudgetListPage() {
                         <TableCell sx={tableHeadCellSx}>
                           Atualizado em
                         </TableCell>
-                        {isAdmin ? (
-                          <TableCell sx={tableHeadCellSx}>Ações</TableCell>
+                        {user ? (
+                          <TableCell sx={tableHeadCellSx}>Acoes</TableCell>
                         ) : null}
+                        <TableCell
+                          sx={{
+                            ...tableHeadCellSx,
+                            borderLeft: (theme) =>
+                              showFloatingBudgetMirror
+                                ? `1px solid ${theme.palette.divider}`
+                                : "none",
+                            boxShadow: showFloatingBudgetMirror
+                              ? "-10px 0 24px rgba(15, 23, 42, 0.12)"
+                              : "none",
+                            minWidth: floatingBudgetMirrorColumnWidth,
+                            opacity: showFloatingBudgetMirror ? 1 : 0,
+                            pointerEvents: showFloatingBudgetMirror
+                              ? "auto"
+                              : "none",
+                            position: "sticky",
+                            right: 0,
+                            transform: showFloatingBudgetMirror
+                              ? "translateX(0)"
+                              : "translateX(12px)",
+                            transition:
+                              "opacity 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease",
+                            width: floatingBudgetMirrorColumnWidth,
+                            zIndex: 4,
+                          }}
+                        >
+                          Orcamento
+                        </TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {budgetItems.map((budget, index) => (
+                      {budgetItems.map((budget) => (
                         <TableRow
                           hover
                           key={budget.id}
                           onDoubleClick={() =>
                             handleBudgetRowDoubleClick(budget.id)
                           }
-                          ref={(element) => {
-                            mainBodyRowRefs.current[index] = element;
-                          }}
-                          sx={{ cursor: isAdmin ? "pointer" : "default" }}
+                          sx={{ cursor: user ? "pointer" : "default" }}
                         >
+                          <TableCell
+                            sx={{
+                              ...singleLineTableCellSx,
+                              fontWeight: 600,
+                              maxWidth: budgetNumberColumnWidth,
+                              minWidth: budgetNumberColumnWidth,
+                              width: budgetNumberColumnWidth,
+                            }}
+                            title={budget.budgetNumber}
+                          >
+                            {budget.budgetNumber}
+                          </TableCell>
                           <TableCell sx={singleLineTableCellSx}>
                             {budget.yearBudget}
                           </TableCell>
@@ -1843,6 +1725,14 @@ export function BudgetListPage() {
                           </TableCell>
                           <TableCell
                             sx={singleLineTableCellSx}
+                            title={formatOptionalText(
+                              budget.constructionCompany,
+                            )}
+                          >
+                            {formatOptionalText(budget.constructionCompany)}
+                          </TableCell>
+                          <TableCell
+                            sx={singleLineTableCellSx}
                             title={formatResolvedCatalogName(
                               budget.salespersonId,
                               budget.salespersonName,
@@ -1885,9 +1775,9 @@ export function BudgetListPage() {
                           </TableCell>
                           <TableCell
                             sx={singleLineTableCellSx}
-                            title={formatOptionalText(budget.designerName)}
+                            title={formatOptionalText(budget.projetistaName)}
                           >
-                            {formatOptionalText(budget.designerName)}
+                            {formatOptionalText(budget.projetistaName)}
                           </TableCell>
                           <TableCell
                             sx={singleLineTableCellSx}
@@ -1931,7 +1821,7 @@ export function BudgetListPage() {
                               new Date(budget.updatedAt),
                             )}
                           </TableCell>
-                          {isAdmin ? (
+                          {user ? (
                             <TableCell
                               sx={{
                                 ...tableDetailCellSx,
@@ -1949,23 +1839,69 @@ export function BudgetListPage() {
                               >
                                 Editar
                               </Button>
-                              <Button
-                                color="error"
-                                onClick={() =>
-                                  handleOpenDeleteDialog(
-                                    budget.id,
-                                    budget.budgetNumber,
-                                  )
-                                }
-                                size="small"
-                                startIcon={<DeleteOutlineRoundedIcon />}
-                                sx={{ minWidth: "auto", px: 0.75, py: 0.25 }}
-                                variant="text"
-                              >
-                                Excluir
-                              </Button>
+                              {isAdmin ? (
+                                <Button
+                                  color="error"
+                                  onClick={() =>
+                                    handleOpenDeleteDialog(
+                                      budget.id,
+                                      budget.budgetNumber,
+                                    )
+                                  }
+                                  size="small"
+                                  startIcon={<DeleteOutlineRoundedIcon />}
+                                  sx={{ minWidth: "auto", px: 0.75, py: 0.25 }}
+                                  variant="text"
+                                >
+                                  Excluir
+                                </Button>
+                              ) : null}
                             </TableCell>
                           ) : null}
+                          <TableCell
+                            sx={{
+                              ...tableDetailCellSx,
+                              backgroundColor: "background.paper",
+                              borderLeft: (theme) =>
+                                showFloatingBudgetMirror
+                                  ? `1px solid ${theme.palette.divider}`
+                                  : "none",
+                              boxShadow: showFloatingBudgetMirror
+                                ? "-10px 0 24px rgba(15, 23, 42, 0.08)"
+                                : "none",
+                              opacity: showFloatingBudgetMirror ? 1 : 0,
+                              pointerEvents: showFloatingBudgetMirror
+                                ? "auto"
+                                : "none",
+                              position: "sticky",
+                              right: 0,
+                              textAlign: "center",
+                              transform: showFloatingBudgetMirror
+                                ? "translateX(0)"
+                                : "translateX(12px)",
+                              transition:
+                                "opacity 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease",
+                              width: floatingBudgetMirrorColumnWidth,
+                              zIndex: 1,
+                            }}
+                          >
+                            <Chip
+                              label={budget.budgetNumber}
+                              size="small"
+                              sx={{
+                                fontSize: "0.68rem",
+                                fontWeight: 700,
+                                maxWidth: "100%",
+                                "& .MuiChip-label": {
+                                  overflow: "hidden",
+                                  px: 1.25,
+                                  textOverflow: "ellipsis",
+                                },
+                              }}
+                              title={budget.budgetNumber}
+                              variant="outlined"
+                            />
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -1990,7 +1926,7 @@ export function BudgetListPage() {
             >
               <Typography color="text.secondary" variant="body2">
                 {isProjectView
-                  ? `${projectBudgetListQuery.data?.total ?? 0} orçamento(s) carregado(s) para agrupamento`
+                  ? `${projectBudgetListQuery.data?.total ?? 0} orcamento(s) carregado(s) para agrupamento`
                   : `${budgetListQuery.data?.total ?? 0} resultado(s) encontrado(s)`}
               </Typography>
               {!isProjectView ? (
@@ -2011,10 +1947,10 @@ export function BudgetListPage() {
         onClose={handleCloseDeleteDialog}
         open={budgetPendingDelete !== null}
       >
-        <DialogTitle>Excluir orçamento</DialogTitle>
+        <DialogTitle>Excluir orcamento</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Confirma a exclusao do orçamento{" "}
+            Confirma a exclusao do orcamento{" "}
             <strong>{budgetPendingDelete?.budgetNumber ?? ""}</strong>?
           </DialogContentText>
         </DialogContent>

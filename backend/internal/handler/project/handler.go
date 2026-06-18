@@ -33,6 +33,7 @@ func (h *Handler) RouteList() {
 	adminRoutes := h.router.Group("/projects")
 	adminRoutes.Use(middleware.Auth(h.secretKey))
 	adminRoutes.Use(middleware.RequireRoles(model.RoleAdmin))
+	adminRoutes.GET("/next-code", h.GetNextCode)
 	adminRoutes.GET("", h.List)
 	adminRoutes.GET("/:project_id", h.GetByID)
 	adminRoutes.POST("", h.Create)
@@ -53,6 +54,16 @@ func (h *Handler) Create(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"id": id})
+}
+
+func (h *Handler) GetNextCode(c *gin.Context) {
+	code, err := h.service.GetNextCode(c.Request.Context())
+	if err != nil {
+		httpresponse.JSONAppError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": code})
 }
 
 func (h *Handler) List(c *gin.Context) {

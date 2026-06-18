@@ -17,13 +17,15 @@ type BudgetModel struct {
 	StatusID             int64
 	PriorityID           sql.NullInt64
 	InstallerID          sql.NullInt64
+	ProductLineID        sql.NullInt64
 	ProjectID            sql.NullInt64
 	SalespersonID        sql.NullInt64
 	ContactID            sql.NullInt64
 	LossReasonID         sql.NullInt64
+	ConstructionCompany  string
 	CompetitorName       string
 	CompetitorPrice      sql.NullFloat64
-	DesignerName         string
+	ProjetistaName       string
 	SpecificationDetails string
 	CurrentFollowUp      string
 	SourceCompany        string
@@ -34,6 +36,8 @@ type BudgetModel struct {
 	StatusName           sql.NullString
 	PriorityName         sql.NullString
 	InstallerName        sql.NullString
+	ProductLineCode      sql.NullString
+	ProductLineName      sql.NullString
 	ProjectName          sql.NullString
 	SalespersonName      sql.NullString
 	ContactName          sql.NullString

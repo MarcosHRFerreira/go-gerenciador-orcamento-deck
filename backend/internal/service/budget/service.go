@@ -20,7 +20,7 @@ type Service interface {
 	Create(ctx context.Context, req *dto.CreateBudgetRequest) (int64, error)
 	List(ctx context.Context, filters *dto.ListBudgetsFilters, role model.UserRole, username string) (*dto.ListBudgetsResponse, error)
 	GetByID(ctx context.Context, budgetID int64, role model.UserRole, username string) (*dto.BudgetResponse, error)
-	Update(ctx context.Context, budgetID int64, req *dto.UpdateBudgetRequest) error
+	Update(ctx context.Context, budgetID int64, role model.UserRole, username string, req *dto.UpdateBudgetRequest) error
 	Delete(ctx context.Context, budgetID int64) error
 }
 
@@ -78,13 +78,15 @@ func (s *service) Create(ctx context.Context, req *dto.CreateBudgetRequest) (int
 		StatusID:             req.StatusID,
 		PriorityID:           newNullInt64(req.PriorityID),
 		InstallerID:          newNullInt64(req.InstallerID),
+		ProductLineID:        newNullInt64(req.ProductLineID),
 		ProjectID:            newNullInt64(req.ProjectID),
 		SalespersonID:        newNullInt64(req.SalespersonID),
 		ContactID:            newNullInt64(req.ContactID),
 		LossReasonID:         newNullInt64(req.LossReasonID),
+		ConstructionCompany:  strings.TrimSpace(req.ConstructionCompany),
 		CompetitorName:       strings.TrimSpace(req.CompetitorName),
 		CompetitorPrice:      newNullFloat64(req.CompetitorPrice),
-		DesignerName:         strings.TrimSpace(req.DesignerName),
+		ProjetistaName:       strings.TrimSpace(req.ProjetistaName),
 		SpecificationDetails: strings.TrimSpace(req.SpecificationDetails),
 		CurrentFollowUp:      strings.TrimSpace(req.CurrentFollowUp),
 		CreatedAt:            now,
@@ -144,12 +146,17 @@ func (s *service) GetByID(ctx context.Context, budgetID int64, role model.UserRo
 	return &response, nil
 }
 
-func (s *service) Update(ctx context.Context, budgetID int64, req *dto.UpdateBudgetRequest) error {
+func (s *service) Update(ctx context.Context, budgetID int64, role model.UserRole, username string, req *dto.UpdateBudgetRequest) error {
 	if budgetID <= 0 {
 		return apperror.BadRequest("budget_id e obrigatorio")
 	}
 
-	currentBudget, err := s.repo.GetByID(ctx, budgetID)
+	restrictedSalespersonID, err := accessscope.ResolveRestrictedSalespersonID(ctx, role, username, s.salespersonRepo)
+	if err != nil {
+		return err
+	}
+
+	currentBudget, err := s.repo.GetByIDScoped(ctx, budgetID, restrictedSalespersonID)
 	if err != nil {
 		return apperror.Internal("failed to check budget", err)
 	}
@@ -200,13 +207,15 @@ func (s *service) Update(ctx context.Context, budgetID int64, req *dto.UpdateBud
 		StatusID:             req.StatusID,
 		PriorityID:           newNullInt64(req.PriorityID),
 		InstallerID:          newNullInt64(req.InstallerID),
+		ProductLineID:        newNullInt64(req.ProductLineID),
 		ProjectID:            newNullInt64(req.ProjectID),
 		SalespersonID:        newNullInt64(req.SalespersonID),
 		ContactID:            newNullInt64(req.ContactID),
 		LossReasonID:         newNullInt64(req.LossReasonID),
+		ConstructionCompany:  strings.TrimSpace(req.ConstructionCompany),
 		CompetitorName:       strings.TrimSpace(req.CompetitorName),
 		CompetitorPrice:      newNullFloat64(req.CompetitorPrice),
-		DesignerName:         strings.TrimSpace(req.DesignerName),
+		ProjetistaName:       strings.TrimSpace(req.ProjetistaName),
 		SpecificationDetails: strings.TrimSpace(req.SpecificationDetails),
 		CurrentFollowUp:      strings.TrimSpace(req.CurrentFollowUp),
 		UpdatedAt:            time.Now(),
@@ -250,8 +259,10 @@ func mapBudgetPersistenceError(action string, err error) error {
 			return apperror.BadRequest("Prioridade nao encontrada")
 		case "fk_budgets_installer_id":
 			return apperror.BadRequest("Instalador nao encontrado")
+		case "fk_budgets_product_line_id":
+			return apperror.BadRequest("Linha de produto nao encontrada")
 		case "fk_budgets_project_id":
-			return apperror.BadRequest("Projeto nao encontrado")
+			return apperror.BadRequest("Obra nao encontrada")
 		case "fk_budgets_salesperson_id":
 			return apperror.BadRequest("Vendedor nao encontrado")
 		case "fk_budgets_contact_id":
@@ -280,7 +291,7 @@ func normalizeListFilters(filters *dto.ListBudgetsFilters) (*dto.ListBudgetsFilt
 	normalized.BudgetNumber = strings.TrimSpace(filters.BudgetNumber)
 	normalized.SourceCompany = strings.TrimSpace(filters.SourceCompany)
 	normalized.ProjectName = strings.TrimSpace(filters.ProjectName)
-	normalized.DesignerName = strings.TrimSpace(filters.DesignerName)
+	normalized.ProjetistaName = strings.TrimSpace(filters.ProjetistaName)
 	normalized.CompetitorName = strings.TrimSpace(filters.CompetitorName)
 	normalized.SortBy = strings.TrimSpace(strings.ToLower(filters.SortBy))
 	normalized.SortOrder = strings.TrimSpace(strings.ToLower(filters.SortOrder))
@@ -289,7 +300,7 @@ func normalizeListFilters(filters *dto.ListBudgetsFilters) (*dto.ListBudgetsFilt
 		normalized.Page = 1
 	}
 	if normalized.PageSize <= 0 {
-		normalized.PageSize = 20
+		normalized.PageSize = 50
 	}
 	if normalized.PageSize > 100 {
 		return nil, apperror.BadRequest("page_size nao pode ser maior que 100")
@@ -380,17 +391,21 @@ func mapBudgetResponse(item *model.BudgetModel) dto.BudgetResponse {
 		StatusID:             item.StatusID,
 		PriorityID:           nullableInt64Pointer(item.PriorityID),
 		InstallerID:          nullableInt64Pointer(item.InstallerID),
+		ProductLineID:        nullableInt64Pointer(item.ProductLineID),
 		ProjectID:            nullableInt64Pointer(item.ProjectID),
 		SalespersonID:        nullableInt64Pointer(item.SalespersonID),
 		ContactID:            nullableInt64Pointer(item.ContactID),
 		LossReasonID:         nullableInt64Pointer(item.LossReasonID),
+		ConstructionCompany:  item.ConstructionCompany,
 		CompetitorName:       item.CompetitorName,
 		CompetitorPrice:      nullableFloat64Pointer(item.CompetitorPrice),
-		DesignerName:         item.DesignerName,
+		ProjetistaName:       item.ProjetistaName,
 		SourceCompany:        item.SourceCompany,
 		StatusName:           nullableStringPointer(item.StatusName),
 		PriorityName:         nullableStringPointer(item.PriorityName),
 		InstallerName:        nullableStringPointer(item.InstallerName),
+		ProductLineCode:      nullableStringPointer(item.ProductLineCode),
+		ProductLineName:      nullableStringPointer(item.ProductLineName),
 		ProjectName:          nullableStringPointer(item.ProjectName),
 		SalespersonName:      nullableStringPointer(item.SalespersonName),
 		ContactName:          nullableStringPointer(item.ContactName),

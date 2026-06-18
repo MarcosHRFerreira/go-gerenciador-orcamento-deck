@@ -156,6 +156,7 @@ func TestBudgetServiceCreateShouldReturnConflictWhenBudgetAlreadyExists(t *testi
 
 func TestBudgetServiceCreateShouldTrimFieldsAndMapNullableValues(t *testing.T) {
 	priorityID := int64(11)
+	productLineID := int64(14)
 	projectID := int64(22)
 	competitorPrice := 890.5
 	repo := &budgetRepositoryStub{
@@ -166,10 +167,12 @@ func TestBudgetServiceCreateShouldTrimFieldsAndMapNullableValues(t *testing.T) {
 	req := validCreateBudgetRequest()
 	req.BudgetNumber = "  ORC-100  "
 	req.PriorityID = &priorityID
+	req.ProductLineID = &productLineID
 	req.ProjectID = &projectID
+	req.ConstructionCompany = "  Construtora XPTO  "
 	req.CompetitorPrice = &competitorPrice
 	req.CompetitorName = "  Concorrente X  "
-	req.DesignerName = "  Projetista Y  "
+	req.ProjetistaName = "  Projetista Y  "
 	req.SpecificationDetails = "  detalhe tecnico  "
 	req.CurrentFollowUp = "  retorno agendado  "
 
@@ -190,8 +193,8 @@ func TestBudgetServiceCreateShouldTrimFieldsAndMapNullableValues(t *testing.T) {
 	if repo.capturedCreateItem.CompetitorName != "Concorrente X" {
 		t.Fatalf("expected trimmed competitor name, got %s", repo.capturedCreateItem.CompetitorName)
 	}
-	if repo.capturedCreateItem.DesignerName != "Projetista Y" {
-		t.Fatalf("expected trimmed designer name, got %s", repo.capturedCreateItem.DesignerName)
+	if repo.capturedCreateItem.ProjetistaName != "Projetista Y" {
+		t.Fatalf("expected trimmed projetista name, got %s", repo.capturedCreateItem.ProjetistaName)
 	}
 	if repo.capturedCreateItem.SpecificationDetails != "detalhe tecnico" {
 		t.Fatalf("expected trimmed specification details, got %s", repo.capturedCreateItem.SpecificationDetails)
@@ -202,11 +205,17 @@ func TestBudgetServiceCreateShouldTrimFieldsAndMapNullableValues(t *testing.T) {
 	if !repo.capturedCreateItem.PriorityID.Valid || repo.capturedCreateItem.PriorityID.Int64 != priorityID {
 		t.Fatalf("expected priority id %d, got %+v", priorityID, repo.capturedCreateItem.PriorityID)
 	}
+	if !repo.capturedCreateItem.ProductLineID.Valid || repo.capturedCreateItem.ProductLineID.Int64 != productLineID {
+		t.Fatalf("expected product line id %d, got %+v", productLineID, repo.capturedCreateItem.ProductLineID)
+	}
 	if !repo.capturedCreateItem.ProjectID.Valid || repo.capturedCreateItem.ProjectID.Int64 != projectID {
 		t.Fatalf("expected project id %d, got %+v", projectID, repo.capturedCreateItem.ProjectID)
 	}
 	if !repo.capturedCreateItem.CompetitorPrice.Valid || repo.capturedCreateItem.CompetitorPrice.Float64 != competitorPrice {
 		t.Fatalf("expected competitor price %.2f, got %+v", competitorPrice, repo.capturedCreateItem.CompetitorPrice)
+	}
+	if repo.capturedCreateItem.ConstructionCompany != "Construtora XPTO" {
+		t.Fatalf("expected trimmed construction company, got %s", repo.capturedCreateItem.ConstructionCompany)
 	}
 }
 
@@ -254,8 +263,8 @@ func TestBudgetServiceListShouldNormalizeFiltersAndReturnPaginatedResponse(t *te
 	if response.Page != 1 {
 		t.Fatalf("expected page 1, got %d", response.Page)
 	}
-	if response.PageSize != 20 {
-		t.Fatalf("expected page size 20, got %d", response.PageSize)
+	if response.PageSize != 50 {
+		t.Fatalf("expected page size 50, got %d", response.PageSize)
 	}
 	if len(response.Items) != 1 {
 		t.Fatalf("expected 1 item, got %d", len(response.Items))
@@ -356,7 +365,7 @@ func TestBudgetServiceUpdateShouldReturnConflictWhenNumberAndYearAlreadyExist(t 
 	}
 	service := budgetservice.NewService(repo, &salespersonRepositoryStub{})
 
-	err := service.Update(context.Background(), 5, &dto.UpdateBudgetRequest{
+	err := service.Update(context.Background(), 5, model.RoleAdmin, "", &dto.UpdateBudgetRequest{
 		BudgetNumber: "ORC-NEW",
 		YearBudget:   2026,
 		SentAt:       time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
@@ -378,7 +387,7 @@ func TestBudgetServiceUpdateShouldSkipUniquenessCheckWhenNumberAndYearDoNotChang
 	}
 	service := budgetservice.NewService(repo, &salespersonRepositoryStub{})
 
-	err := service.Update(context.Background(), 5, &dto.UpdateBudgetRequest{
+	err := service.Update(context.Background(), 5, model.RoleAdmin, "", &dto.UpdateBudgetRequest{
 		BudgetNumber: "  ORC-100  ",
 		YearBudget:   2026,
 		SentAt:       time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
@@ -398,6 +407,55 @@ func TestBudgetServiceUpdateShouldSkipUniquenessCheckWhenNumberAndYearDoNotChang
 	if repo.capturedUpdateItem.BudgetNumber != "ORC-100" {
 		t.Fatalf("expected trimmed budget number, got %s", repo.capturedUpdateItem.BudgetNumber)
 	}
+}
+
+func TestBudgetServiceUpdateShouldRestrictUserBySalespersonResolvedFromUsername(t *testing.T) {
+	repo := &budgetRepositoryStub{
+		getByIDItem: &model.BudgetModel{
+			ID:           5,
+			BudgetNumber: "ORC-100",
+			YearBudget:   2026,
+			StatusID:     1,
+		},
+	}
+	service := budgetservice.NewService(repo, &salespersonRepositoryStub{
+		getByUsernameItem: &model.SalespersonModel{ID: 27, Active: true},
+	})
+
+	err := service.Update(context.Background(), 5, model.RoleUser, "sales.gamma", &dto.UpdateBudgetRequest{
+		BudgetNumber: "ORC-100",
+		YearBudget:   2026,
+		SentAt:       time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
+		GrossValue:   1000,
+		StatusID:     1,
+	})
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if repo.capturedListFilters == nil || repo.capturedListFilters.RestrictedSalespersonID == nil {
+		t.Fatal("expected restricted salesperson id to be applied on update")
+	}
+	if *repo.capturedListFilters.RestrictedSalespersonID != 27 {
+		t.Fatalf("expected restricted salesperson id 27, got %d", *repo.capturedListFilters.RestrictedSalespersonID)
+	}
+}
+
+func TestBudgetServiceUpdateShouldReturnNotFoundWhenUserIsOutsideScope(t *testing.T) {
+	repo := &budgetRepositoryStub{}
+	service := budgetservice.NewService(repo, &salespersonRepositoryStub{
+		getByUsernameItem: &model.SalespersonModel{ID: 19, Active: true},
+	})
+
+	err := service.Update(context.Background(), 5, model.RoleUser, "sales.delta", &dto.UpdateBudgetRequest{
+		BudgetNumber: "ORC-100",
+		YearBudget:   2026,
+		SentAt:       time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
+		GrossValue:   1000,
+		StatusID:     1,
+	})
+
+	assertAppError(t, err, 404, "Orcamento nao encontrado")
 }
 
 func TestBudgetServiceDeleteShouldReturnNotFoundWhenBudgetDoesNotExist(t *testing.T) {

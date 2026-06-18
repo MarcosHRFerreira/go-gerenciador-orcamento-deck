@@ -82,6 +82,7 @@ type ProjectTypeModel struct {
 
 type ProjectModel struct {
 	ID            int64
+	Code          string
 	Name          string
 	ProjectTypeID sql.NullInt64
 	City          string
@@ -89,4 +90,13 @@ type ProjectModel struct {
 	Notes         string
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+}
+
+type ProductLineModel struct {
+	ID          int64
+	Code        string
+	Name        string
+	Description string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }

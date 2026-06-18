@@ -3,6 +3,7 @@ import SaveRoundedIcon from "@mui/icons-material/SaveRounded";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   CircularProgress,
@@ -11,11 +12,13 @@ import {
 } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
-import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useEffect, useMemo, useState } from "react";
+import { Controller, useForm } from "react-hook-form";
 import { PageHeader } from "../../../components/common/PageHeader";
 import { SectionCard } from "../../../components/common/SectionCard";
+import { useAuth } from "../../auth/hooks/useAuth";
 import { getBudgetCatalogsRequest } from "../api/budgets";
+import { listProjectsRequest } from "../../projects/api/projects";
 import type { BudgetCreatePayload } from "../types/budget";
 import type { BudgetFormValues } from "./budgetFormValues";
 import { z as schema } from "zod";
@@ -24,97 +27,97 @@ const budgetFormSchema = schema.object({
   areaM2: schema
     .string()
     .trim()
-    .min(1, "Informe a área em m²")
+    .min(1, "Informe a area em m2")
     .refine(
       (value) => isValidNonNegativeNumber(value),
-      "Informe uma área válida",
+      "Informe uma area valida",
     ),
   budgetNumber: schema
     .string()
     .trim()
-    .min(1, "Informe o número do orçamento")
-    .max(50, "O número do orçamento deve ter no máximo 50 caracteres"),
+    .min(1, "Informe o numero do orcamento")
+    .max(50, "O numero do orcamento deve ter no maximo 50 caracteres"),
   commissionValue: schema
     .string()
     .trim()
-    .min(1, "Informe a comissão")
+    .min(1, "Informe a comissao")
     .refine(
       (value) => isValidNonNegativeNumber(value),
-      "Informe uma comissão válida",
+      "Informe uma comissao valida",
     ),
   competitorName: schema
     .string()
     .trim()
-    .max(150, "O concorrente deve ter no máximo 150 caracteres"),
+    .max(150, "O concorrente deve ter no maximo 150 caracteres"),
   competitorPrice: schema
     .string()
     .trim()
     .refine(
       (value) => isValidOptionalNonNegativeNumber(value),
-      "Informe um preço concorrente válido",
+      "Informe um preco concorrente valido",
     ),
   contactId: schema
     .string()
     .trim()
     .refine(
       (value) => isValidOptionalPositiveInteger(value),
-      "Selecione um contato válido",
+      "Selecione um contato valido",
     ),
   currentFollowUp: schema.string().trim(),
-  designerName: schema
+  projetistaName: schema
     .string()
     .trim()
-    .max(150, "O designer deve ter no máximo 150 caracteres"),
+    .max(150, "O projetista deve ter no maximo 150 caracteres"),
   grossValue: schema
     .string()
     .trim()
     .min(1, "Informe o valor bruto")
     .refine(
       (value) => isValidPositiveNumber(value),
-      "Informe um valor bruto válido",
+      "Informe um valor bruto valido",
     ),
   installerId: schema
     .string()
     .trim()
     .refine(
       (value) => isValidOptionalPositiveInteger(value),
-      "Selecione um instalador válido",
+      "Selecione um instalador valido",
     ),
   lossReasonId: schema
     .string()
     .trim()
     .refine(
       (value) => isValidOptionalPositiveInteger(value),
-      "Selecione um motivo de perda válido",
+      "Selecione um motivo de perda valido",
     ),
   priorityId: schema
     .string()
     .trim()
     .refine(
       (value) => isValidOptionalPositiveInteger(value),
-      "Selecione uma prioridade válida",
+      "Selecione uma prioridade valida",
     ),
   projectId: schema
     .string()
     .trim()
     .refine(
       (value) => isValidOptionalPositiveInteger(value),
-      "Selecione um projeto válido",
+      "Selecione uma obra valida",
     ),
   revision: schema
     .string()
     .trim()
-    .min(1, "Informe a revisão")
+    .min(1, "Informe a revisao")
     .refine(
       (value) => isValidNonNegativeInteger(value),
-      "Informe uma revisão válida",
+      "Informe uma revisao valida",
     ),
   salespersonId: schema
     .string()
     .trim()
     .refine(
       (value) => isValidOptionalPositiveInteger(value),
-      "Selecione um vendedor válido",
+      "Selecione um vendedor valido",
     ),
   sentAt: schema
     .string()
@@ -122,7 +125,7 @@ const budgetFormSchema = schema.object({
     .min(1, "Informe a data de envio")
     .refine(
       (value) => isValidDateTime(value),
-      "Informe uma data de envio válida",
+      "Informe uma data de envio valida",
     ),
   specificationDetails: schema.string().trim(),
   statusId: schema
@@ -131,13 +134,13 @@ const budgetFormSchema = schema.object({
     .min(1, "Selecione o status")
     .refine(
       (value) => isValidPositiveInteger(value),
-      "Selecione um status válido",
+      "Selecione um status valido",
     ),
   yearBudget: schema
     .string()
     .trim()
     .min(1, "Informe o ano")
-    .refine((value) => isValidPositiveInteger(value), "Informe um ano válido"),
+    .refine((value) => isValidPositiveInteger(value), "Informe um ano valido"),
 });
 
 type BudgetFormProps = {
@@ -145,6 +148,8 @@ type BudgetFormProps = {
   initialDataError?: string | null;
   initialValues: BudgetFormValues;
   isInitialDataLoading?: boolean;
+  currentProjectId?: number | null;
+  currentProjectLabel?: string | null;
   lockedProjectId?: number | null;
   lockedProjectLabel?: string | null;
   mode: "create" | "edit";
@@ -153,6 +158,11 @@ type BudgetFormProps = {
   submitLabel: string;
   subtitle: string;
   title: string;
+};
+
+type ProjectOption = {
+  id: number;
+  name: string;
 };
 
 function isValidPositiveInteger(value: string) {
@@ -167,14 +177,28 @@ function isValidNonNegativeInteger(value: string) {
   return Number.isInteger(parsedValue) && parsedValue >= 0;
 }
 
+function normalizeDecimalString(value: string) {
+  const trimmedValue = value.trim().replace(/\s+/g, "");
+
+  if (trimmedValue.includes(",") && trimmedValue.includes(".")) {
+    return trimmedValue.replaceAll(".", "").replace(",", ".");
+  }
+
+  if (trimmedValue.includes(",")) {
+    return trimmedValue.replace(",", ".");
+  }
+
+  return trimmedValue;
+}
+
 function isValidPositiveNumber(value: string) {
-  const parsedValue = Number(value);
+  const parsedValue = Number(normalizeDecimalString(value));
 
   return Number.isFinite(parsedValue) && parsedValue > 0;
 }
 
 function isValidNonNegativeNumber(value: string) {
-  const parsedValue = Number(value);
+  const parsedValue = Number(normalizeDecimalString(value));
 
   return Number.isFinite(parsedValue) && parsedValue >= 0;
 }
@@ -196,7 +220,7 @@ function parseInteger(value: string) {
 }
 
 function parseDecimal(value: string) {
-  return Number(value);
+  return Number(normalizeDecimalString(value));
 }
 
 function parseOptionalInteger(value: string) {
@@ -212,7 +236,7 @@ function parseOptionalDecimal(value: string) {
     return null;
   }
 
-  return Number(value);
+  return Number(normalizeDecimalString(value));
 }
 
 function getBudgetSubmitErrorMessage(mode: "create" | "edit", error: unknown) {
@@ -220,14 +244,14 @@ function getBudgetSubmitErrorMessage(mode: "create" | "edit", error: unknown) {
     return (
       error.response?.data?.message ??
       (mode === "create"
-        ? "Não foi possível cadastrar o orçamento."
-        : "Não foi possível atualizar o orçamento.")
+        ? "Nao foi possivel cadastrar o orcamento."
+        : "Nao foi possivel atualizar o orcamento.")
     );
   }
 
   return mode === "create"
-    ? "Não foi possível cadastrar o orçamento."
-    : "Não foi possível atualizar o orçamento.";
+    ? "Nao foi possivel cadastrar o orcamento."
+    : "Nao foi possivel atualizar o orcamento.";
 }
 
 function mapFormValuesToPayload(values: BudgetFormValues): BudgetCreatePayload {
@@ -239,7 +263,7 @@ function mapFormValuesToPayload(values: BudgetFormValues): BudgetCreatePayload {
     competitorPrice: parseOptionalDecimal(values.competitorPrice),
     contactId: parseOptionalInteger(values.contactId),
     currentFollowUp: values.currentFollowUp.trim(),
-    designerName: values.designerName.trim(),
+    projetistaName: values.projetistaName.trim(),
     grossValue: parseDecimal(values.grossValue),
     installerId: parseOptionalInteger(values.installerId),
     lossReasonId: parseOptionalInteger(values.lossReasonId),
@@ -256,6 +280,8 @@ function mapFormValuesToPayload(values: BudgetFormValues): BudgetCreatePayload {
 
 export function BudgetForm({
   backLabel = "Voltar",
+  currentProjectId = null,
+  currentProjectLabel = null,
   initialDataError = null,
   initialValues,
   isInitialDataLoading = false,
@@ -269,12 +295,21 @@ export function BudgetForm({
   title,
 }: BudgetFormProps) {
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const budgetCatalogsQuery = useQuery({
     queryKey: ["budget-catalogs"],
     queryFn: getBudgetCatalogsRequest,
     staleTime: 1000 * 60 * 5,
   });
+  const projectsQuery = useQuery({
+    enabled: isAdmin,
+    queryFn: listProjectsRequest,
+    queryKey: ["projects", "budget-form"],
+    staleTime: 1000 * 60 * 5,
+  });
   const {
+    control,
     formState: { errors, isSubmitting },
     handleSubmit,
     register,
@@ -287,6 +322,48 @@ export function BudgetForm({
   useEffect(() => {
     reset(initialValues);
   }, [initialValues, reset]);
+
+  const projectOptions = useMemo<ProjectOption[]>(() => {
+    const optionsMap = new Map<number, string>();
+
+    const appendOption = (
+      projectId: number | null,
+      projectName: string | null,
+    ) => {
+      if (projectId === null) {
+        return;
+      }
+
+      const trimmedProjectName = projectName?.trim() ?? "";
+      const normalizedName =
+        trimmedProjectName.length > 0
+          ? trimmedProjectName
+          : `Obra #${projectId}`;
+
+      optionsMap.set(projectId, normalizedName);
+    };
+
+    (budgetCatalogsQuery.data?.projects ?? []).forEach((project) => {
+      appendOption(project.id, project.name);
+    });
+    (projectsQuery.data ?? []).forEach((project) => {
+      appendOption(project.id, project.name);
+    });
+    appendOption(currentProjectId, currentProjectLabel);
+    appendOption(lockedProjectId, lockedProjectLabel);
+
+    return Array.from(optionsMap.entries()).map(([id, name]) => ({
+      id,
+      name,
+    }));
+  }, [
+    budgetCatalogsQuery.data?.projects,
+    currentProjectId,
+    currentProjectLabel,
+    lockedProjectId,
+    lockedProjectLabel,
+    projectsQuery.data,
+  ]);
 
   const handleFormSubmit = async (values: BudgetFormValues) => {
     try {
@@ -340,15 +417,15 @@ export function BudgetForm({
 
           {budgetCatalogsQuery.isError ? (
             <Alert severity="error">
-              Não foi possível carregar os catálogos necessários para o
-              formulário.
+              Nao foi possivel carregar os catalogos necessarios para o
+              formulario.
             </Alert>
           ) : null}
 
           {submitError ? <Alert severity="error">{submitError}</Alert> : null}
 
           <SectionCard
-            description="Campos principais para identificação e envio do orçamento."
+            description="Campos principais para identificacao e envio do orcamento."
             title="Dados principais"
           >
             <Box
@@ -365,7 +442,7 @@ export function BudgetForm({
               <TextField
                 error={Boolean(errors.budgetNumber)}
                 helperText={errors.budgetNumber?.message}
-                label="Número do orçamento"
+                label="Numero do orcamento"
                 placeholder="Ex: BGT-2026-004"
                 {...register("budgetNumber")}
               />
@@ -379,7 +456,7 @@ export function BudgetForm({
               <TextField
                 error={Boolean(errors.revision)}
                 helperText={errors.revision?.message}
-                label="Revisão"
+                label="Revisao"
                 type="number"
                 {...register("revision")}
               />
@@ -409,8 +486,8 @@ export function BudgetForm({
           </SectionCard>
 
           <SectionCard
-            description="Valores, área e dados comerciais do orçamento."
-            title="Informações comerciais"
+            description="Valores, area e dados comerciais do orcamento."
+            title="Informacoes comerciais"
           >
             <Box
               sx={{
@@ -427,31 +504,34 @@ export function BudgetForm({
                 error={Boolean(errors.grossValue)}
                 helperText={errors.grossValue?.message}
                 label="Valor bruto"
+                slotProps={{ htmlInput: { inputMode: "decimal" } }}
                 placeholder="0,00"
-                type="number"
+                type="text"
                 {...register("grossValue")}
               />
               <TextField
                 error={Boolean(errors.commissionValue)}
                 helperText={errors.commissionValue?.message}
-                label="Comissão"
+                label="Comissao"
+                slotProps={{ htmlInput: { inputMode: "decimal" } }}
                 placeholder="0,00"
-                type="number"
+                type="text"
                 {...register("commissionValue")}
               />
               <TextField
                 error={Boolean(errors.areaM2)}
                 helperText={errors.areaM2?.message}
-                label="Área m²"
+                label="Area m2"
+                slotProps={{ htmlInput: { inputMode: "decimal" } }}
                 placeholder="0,00"
-                type="number"
+                type="text"
                 {...register("areaM2")}
               />
               <TextField
-                error={Boolean(errors.designerName)}
-                helperText={errors.designerName?.message}
-                label="Designer"
-                {...register("designerName")}
+                error={Boolean(errors.projetistaName)}
+                helperText={errors.projetistaName?.message}
+                label="Projetista"
+                {...register("projetistaName")}
               />
               <TextField
                 error={Boolean(errors.competitorName)}
@@ -462,16 +542,17 @@ export function BudgetForm({
               <TextField
                 error={Boolean(errors.competitorPrice)}
                 helperText={errors.competitorPrice?.message}
-                label="Preço concorrente"
+                label="Preco concorrente"
+                slotProps={{ htmlInput: { inputMode: "decimal" } }}
                 placeholder="0,00"
-                type="number"
+                type="text"
                 {...register("competitorPrice")}
               />
             </Box>
           </SectionCard>
 
           <SectionCard
-            description="Vincule o orçamento aos cadastros auxiliares disponíveis."
+            description="Vincule o orcamento aos cadastros auxiliares disponiveis."
             title="Relacionamentos"
           >
             <Box
@@ -492,7 +573,7 @@ export function BudgetForm({
                 select
                 {...register("priorityId")}
               >
-                <MenuItem value="">Não informar</MenuItem>
+                <MenuItem value="">Nao informar</MenuItem>
                 {(budgetCatalogsQuery.data?.priorities ?? []).map(
                   (priority) => (
                     <MenuItem key={priority.id} value={String(priority.id)}>
@@ -508,7 +589,7 @@ export function BudgetForm({
                 select
                 {...register("installerId")}
               >
-                <MenuItem value="">Não informar</MenuItem>
+                <MenuItem value="">Nao informar</MenuItem>
                 {(budgetCatalogsQuery.data?.installers ?? []).map(
                   (installer) => (
                     <MenuItem key={installer.id} value={String(installer.id)}>
@@ -517,26 +598,50 @@ export function BudgetForm({
                   ),
                 )}
               </TextField>
-              <TextField
-                disabled={lockedProjectId !== null}
-                error={Boolean(errors.projectId)}
-                helperText={
-                  errors.projectId?.message ??
-                  (lockedProjectId !== null
-                    ? `Projeto predefinido neste fluxo: ${lockedProjectLabel ?? `#${lockedProjectId}`}.`
-                    : undefined)
-                }
-                label="Projeto"
-                select
-                {...register("projectId")}
-              >
-                <MenuItem value="">Não informar</MenuItem>
-                {(budgetCatalogsQuery.data?.projects ?? []).map((project) => (
-                  <MenuItem key={project.id} value={String(project.id)}>
-                    {project.name}
-                  </MenuItem>
-                ))}
-              </TextField>
+              <Controller
+                control={control}
+                name="projectId"
+                render={({ field }) => {
+                  const selectedProject =
+                    projectOptions.find(
+                      (project) => String(project.id) === field.value,
+                    ) ?? null;
+
+                  return (
+                    <Autocomplete<ProjectOption, false, false, false>
+                      disabled={lockedProjectId !== null}
+                      getOptionLabel={(option) => option.name}
+                      isOptionEqualToValue={(option, value) =>
+                        option.id === value.id
+                      }
+                      loading={projectsQuery.isLoading}
+                      noOptionsText="Nenhuma obra encontrada"
+                      onChange={(_, selectedOption) => {
+                        field.onChange(
+                          selectedOption === null
+                            ? ""
+                            : String(selectedOption.id),
+                        );
+                      }}
+                      options={projectOptions}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          error={Boolean(errors.projectId)}
+                          helperText={
+                            errors.projectId?.message ??
+                            (lockedProjectId !== null
+                              ? `Obra predefinida neste fluxo: ${lockedProjectLabel ?? `#${lockedProjectId}`}.`
+                              : "Digite para filtrar as obras.")
+                          }
+                          label="Obra"
+                        />
+                      )}
+                      value={selectedProject}
+                    />
+                  );
+                }}
+              />
               <TextField
                 error={Boolean(errors.salespersonId)}
                 helperText={errors.salespersonId?.message}
@@ -544,7 +649,7 @@ export function BudgetForm({
                 select
                 {...register("salespersonId")}
               >
-                <MenuItem value="">Não informar</MenuItem>
+                <MenuItem value="">Nao informar</MenuItem>
                 {(budgetCatalogsQuery.data?.salespeople ?? []).map(
                   (salesperson) => (
                     <MenuItem
@@ -563,7 +668,7 @@ export function BudgetForm({
                 select
                 {...register("contactId")}
               >
-                <MenuItem value="">Não informar</MenuItem>
+                <MenuItem value="">Nao informar</MenuItem>
                 {(budgetCatalogsQuery.data?.contacts ?? []).map((contact) => (
                   <MenuItem key={contact.id} value={String(contact.id)}>
                     {contact.name}
@@ -577,7 +682,7 @@ export function BudgetForm({
                 select
                 {...register("lossReasonId")}
               >
-                <MenuItem value="">Não informar</MenuItem>
+                <MenuItem value="">Nao informar</MenuItem>
                 {(budgetCatalogsQuery.data?.lossReasons ?? []).map(
                   (lossReason) => (
                     <MenuItem key={lossReason.id} value={String(lossReason.id)}>
@@ -590,14 +695,14 @@ export function BudgetForm({
           </SectionCard>
 
           <SectionCard
-            description="Descreva detalhes técnicos e o acompanhamento atual do orçamento."
+            description="Descreva detalhes tecnicos e o acompanhamento atual do orcamento."
             title="Detalhes"
           >
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
               <TextField
                 error={Boolean(errors.specificationDetails)}
                 helperText={errors.specificationDetails?.message}
-                label="Especificações"
+                label="Especificacoes"
                 minRows={4}
                 multiline
                 {...register("specificationDetails")}

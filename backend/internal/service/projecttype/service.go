@@ -38,7 +38,7 @@ func (s *service) Create(ctx context.Context, req *dto.CreateProjectTypeRequest)
 		return 0, apperror.Internal("failed to check existing project type", err)
 	}
 	if existingItem != nil {
-		return 0, apperror.Conflict("Tipo de projeto ja existe")
+		return 0, apperror.Conflict("Tipo de obra ja existe")
 	}
 
 	now := time.Now()
@@ -80,7 +80,7 @@ func (s *service) GetByID(ctx context.Context, projectTypeID int64) (*dto.Projec
 		return nil, apperror.Internal("failed to get project type", err)
 	}
 	if item == nil {
-		return nil, apperror.NotFound("Tipo de projeto nao encontrado")
+		return nil, apperror.NotFound("Tipo de obra nao encontrado")
 	}
 
 	response := toResponse(*item)
@@ -97,7 +97,7 @@ func (s *service) Update(ctx context.Context, projectTypeID int64, req *dto.Upda
 		return apperror.Internal("failed to check project type", err)
 	}
 	if currentItem == nil {
-		return apperror.NotFound("Tipo de projeto nao encontrado")
+		return apperror.NotFound("Tipo de obra nao encontrado")
 	}
 
 	code := strings.TrimSpace(req.Code)
@@ -115,7 +115,7 @@ func (s *service) Update(ctx context.Context, projectTypeID int64, req *dto.Upda
 		return apperror.Internal("failed to check existing project type", err)
 	}
 	if existingItem != nil && existingItem.ID != projectTypeID {
-		return apperror.Conflict("Tipo de projeto ja existe")
+		return apperror.Conflict("Tipo de obra ja existe")
 	}
 
 	err = s.repo.Update(ctx, &model.ProjectTypeModel{
@@ -142,7 +142,7 @@ func (s *service) Delete(ctx context.Context, projectTypeID int64) error {
 		return apperror.Internal("failed to check project type", err)
 	}
 	if item == nil {
-		return apperror.NotFound("Tipo de projeto nao encontrado")
+		return apperror.NotFound("Tipo de obra nao encontrado")
 	}
 
 	if err := s.repo.Delete(ctx, projectTypeID); err != nil {
@@ -168,11 +168,11 @@ func mapProjectTypePersistenceError(action string, err error) error {
 	if errors.As(err, &pgError) {
 		switch pgError.ConstraintName {
 		case "project_types_code_key", "project_types_name_key":
-			return apperror.Conflict("Tipo de projeto ja existe")
+			return apperror.Conflict("Tipo de obra ja existe")
 		}
 
 		if pgError.Code == "23505" {
-			return apperror.Conflict("Tipo de projeto ja existe")
+			return apperror.Conflict("Tipo de obra ja existe")
 		}
 	}
 

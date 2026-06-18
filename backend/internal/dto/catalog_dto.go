@@ -184,6 +184,7 @@ type ProjectTypeResponse struct {
 }
 
 type CreateProjectRequest struct {
+	Code          string `json:"code" validate:"max=50"`
 	Name          string `json:"name" validate:"required,min=3,max=200"`
 	ProjectTypeID *int64 `json:"project_type_id"`
 	City          string `json:"city" validate:"max=100"`
@@ -192,6 +193,7 @@ type CreateProjectRequest struct {
 }
 
 type UpdateProjectRequest struct {
+	Code          string `json:"code" validate:"max=50"`
 	Name          string `json:"name" validate:"required,min=3,max=200"`
 	ProjectTypeID *int64 `json:"project_type_id"`
 	City          string `json:"city" validate:"max=100"`
@@ -201,6 +203,7 @@ type UpdateProjectRequest struct {
 
 type ProjectResponse struct {
 	ID            int64     `json:"id"`
+	Code          string    `json:"code"`
 	Name          string    `json:"name"`
 	ProjectTypeID *int64    `json:"project_type_id,omitempty"`
 	City          string    `json:"city"`

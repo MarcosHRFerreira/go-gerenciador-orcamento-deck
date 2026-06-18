@@ -129,6 +129,34 @@ func (s *budgetImportInstallerRepositoryStub) List(_ context.Context) ([]model.I
 	return s.items, nil
 }
 
+type budgetImportProductLineRepositoryStub struct {
+	items []model.ProductLineModel
+}
+
+func (s *budgetImportProductLineRepositoryStub) Create(_ context.Context, item *model.ProductLineModel) (int64, error) {
+	id := int64(len(s.items) + 1)
+	s.items = append(s.items, model.ProductLineModel{
+		ID:   id,
+		Code: item.Code,
+		Name: item.Name,
+	})
+	return id, nil
+}
+
+func (s *budgetImportProductLineRepositoryStub) GetByCodeOrName(_ context.Context, code string, name string) (*model.ProductLineModel, error) {
+	for _, item := range s.items {
+		if item.Code == code || item.Name == name {
+			copyItem := item
+			return &copyItem, nil
+		}
+	}
+	return nil, nil
+}
+
+func (s *budgetImportProductLineRepositoryStub) List(_ context.Context) ([]model.ProductLineModel, error) {
+	return s.items, nil
+}
+
 type budgetImportProjectRepositoryStub struct {
 	items []model.ProjectModel
 }
@@ -1057,8 +1085,8 @@ func TestBudgetImportExecuteShouldNormalizeCatalogNamesAndReuseSalespersonByFirs
 	if budgetRepo.capturedCreateItem.CompetitorName != "Concorrente Xpto" {
 		t.Fatalf("expected normalized competitor name, got %s", budgetRepo.capturedCreateItem.CompetitorName)
 	}
-	if budgetRepo.capturedCreateItem.DesignerName != "Projetista Sul" {
-		t.Fatalf("expected normalized designer name, got %s", budgetRepo.capturedCreateItem.DesignerName)
+	if budgetRepo.capturedCreateItem.ProjetistaName != "Projetista Sul" {
+		t.Fatalf("expected normalized projetista name, got %s", budgetRepo.capturedCreateItem.ProjetistaName)
 	}
 	if budgetRepo.capturedCreateItem.SpecificationDetails != "Detalhe Tecnico Final" {
 		t.Fatalf("expected normalized specification, got %s", budgetRepo.capturedCreateItem.SpecificationDetails)
@@ -1162,6 +1190,7 @@ func TestBudgetImportPreviewShouldRejectWorkbookWithInvalidRocktecHeader(t *test
 }
 
 func TestBudgetImportPreviewShouldDetectTroxLayout(t *testing.T) {
+	productLineRepo := &budgetImportProductLineRepositoryStub{}
 	service := budgetimportservice.NewService(
 		&budgetImportBudgetRepositoryStub{
 			exists:         true,
@@ -1209,6 +1238,7 @@ func TestBudgetImportPreviewShouldDetectTroxLayout(t *testing.T) {
 			},
 		},
 		&budgetImportAuditRepositoryStub{},
+		productLineRepo,
 	)
 
 	response, err := service.Preview(
@@ -1267,12 +1297,16 @@ func TestBudgetImportPreviewShouldDetectTroxLayout(t *testing.T) {
 	if response.Summary.ExistingBudgets != 0 {
 		t.Fatalf("expected zero existing budgets because duplicate is source-aware, got %d", response.Summary.ExistingBudgets)
 	}
+	if response.CatalogActions.ProductLinesToCreate != 1 {
+		t.Fatalf("expected one product line to create, got %d", response.CatalogActions.ProductLinesToCreate)
+	}
 	if response.SampleRows[0].Status != "warning" {
 		t.Fatalf("expected warning row because Trox uses defaults, got %s", response.SampleRows[0].Status)
 	}
 }
 
 func TestBudgetImportExecuteShouldCreateBudgetFromTroxPreview(t *testing.T) {
+	productLineRepo := &budgetImportProductLineRepositoryStub{}
 	budgetRepo := &budgetImportBudgetRepositoryStub{
 		getItem: &model.BudgetModel{
 			ID:            99,
@@ -1286,7 +1320,7 @@ func TestBudgetImportExecuteShouldCreateBudgetFromTroxPreview(t *testing.T) {
 		budgetRepo,
 		&budgetImportStatusRepositoryStub{
 			items: []model.BudgetStatusModel{
-				{ID: 1, Name: "Nao informado"},
+				{ID: 1, Name: "Em Negociacao"},
 			},
 		},
 		&budgetImportPriorityRepositoryStub{
@@ -1329,6 +1363,7 @@ func TestBudgetImportExecuteShouldCreateBudgetFromTroxPreview(t *testing.T) {
 			},
 		},
 		auditRepo,
+		productLineRepo,
 	)
 
 	previewResponse, err := service.Preview(
@@ -1382,8 +1417,17 @@ func TestBudgetImportExecuteShouldCreateBudgetFromTroxPreview(t *testing.T) {
 	if budgetRepo.capturedCreateItem.CurrentFollowUp != "Informado" {
 		t.Fatalf("expected current follow-up Informado, got %s", budgetRepo.capturedCreateItem.CurrentFollowUp)
 	}
+	if budgetRepo.capturedCreateItem.StatusID != 1 {
+		t.Fatalf("expected status id 1 for Em Negociacao, got %d", budgetRepo.capturedCreateItem.StatusID)
+	}
 	if !budgetRepo.capturedCreateItem.ProjectID.Valid || budgetRepo.capturedCreateItem.ProjectID.Int64 != 1 {
 		t.Fatalf("expected project id 1, got %+v", budgetRepo.capturedCreateItem.ProjectID)
+	}
+	if !budgetRepo.capturedCreateItem.ProductLineID.Valid || budgetRepo.capturedCreateItem.ProductLineID.Int64 != 1 {
+		t.Fatalf("expected product line id 1, got %+v", budgetRepo.capturedCreateItem.ProductLineID)
+	}
+	if budgetRepo.capturedCreateItem.ConstructionCompany != "Abecon Engenharia E Climatizacao Lt" {
+		t.Fatalf("expected construction company mapped from Nome Cliente, got %s", budgetRepo.capturedCreateItem.ConstructionCompany)
 	}
 	if budgetRepo.capturedCreateItem.SourceCompany != "Trox" {
 		t.Fatalf("expected source company Trox, got %s", budgetRepo.capturedCreateItem.SourceCompany)
@@ -1405,6 +1449,9 @@ func TestBudgetImportExecuteShouldCreateBudgetFromTroxPreview(t *testing.T) {
 	}
 	if auditRepo.capturedRows[0].Action != "create" {
 		t.Fatalf("expected raw import row action create, got %s", auditRepo.capturedRows[0].Action)
+	}
+	if len(productLineRepo.items) != 1 || productLineRepo.items[0].Name != "Filtros" {
+		t.Fatalf("expected product line catalog to be created from Trox import, got %+v", productLineRepo.items)
 	}
 }
 
@@ -1498,7 +1545,7 @@ func writeZipFile(t *testing.T, zipWriter *zip.Writer, name string, content stri
 func defaultImportWorkbookHeaders() []string {
 	return []string{
 		"DATA",
-		"Nº DE ORCA",
+		"NÂº DE ORCA",
 		"REV.",
 		"INSTALADOR",
 		"NOME DA OBRA",

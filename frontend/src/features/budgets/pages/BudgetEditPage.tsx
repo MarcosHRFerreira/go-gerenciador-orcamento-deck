@@ -54,6 +54,8 @@ export function BudgetEditPage() {
 
   return (
     <BudgetForm
+      currentProjectId={budgetQuery.data?.projectId ?? null}
+      currentProjectLabel={budgetQuery.data?.projectName ?? null}
       initialDataError={initialDataError}
       initialValues={initialValues}
       isInitialDataLoading={budgetQuery.isLoading}
