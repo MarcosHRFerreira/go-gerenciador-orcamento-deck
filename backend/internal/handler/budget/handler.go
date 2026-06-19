@@ -38,6 +38,7 @@ func (h *Handler) RouteList() {
 	protectedRoutes.GET("/:budget_id", h.GetByID)
 	protectedRoutes.POST("", h.Create)
 	protectedRoutes.PUT("/:budget_id", h.Update)
+	protectedRoutes.POST("/:budget_id/elect-winner", h.ElectProjectWinner)
 	protectedRoutes.DELETE("/:budget_id", h.Delete)
 }
 
@@ -167,6 +168,32 @@ func (h *Handler) Update(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+func (h *Handler) ElectProjectWinner(c *gin.Context) {
+	budgetID, ok := parseBudgetID(c)
+	if !ok {
+		return
+	}
+
+	var req dto.ElectBudgetWinnerRequest
+	if !httpresponse.BindAndValidateJSON(c, h.validate, &req) {
+		return
+	}
+
+	if err := h.service.ElectProjectWinner(
+		c.Request.Context(),
+		budgetID,
+		middleware.UserID(c),
+		middleware.Role(c),
+		middleware.Username(c),
+		&req,
+	); err != nil {
+		httpresponse.JSONAppError(c, err)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
 func (h *Handler) Delete(c *gin.Context) {
 	budgetID, ok := parseBudgetID(c)
 	if !ok {
@@ -204,6 +231,10 @@ func parseListFilters(c *gin.Context) (*dto.ListBudgetsFilters, error) {
 		return nil, err
 	}
 	installerID, err := parseOptionalInt64(c.Query("installer_id"))
+	if err != nil {
+		return nil, err
+	}
+	systemTypeID, err := parseOptionalInt64(c.Query("system_type_id"))
 	if err != nil {
 		return nil, err
 	}
@@ -252,9 +283,10 @@ func parseListFilters(c *gin.Context) (*dto.ListBudgetsFilters, error) {
 		SalespersonID:  salespersonID,
 		EstimatorID:    estimatorID,
 		InstallerID:    installerID,
+		SystemTypeID:   systemTypeID,
 		PriorityID:     priorityID,
 		ProjectID:      projectID,
-		ProjectName:    c.Query("project_name"),
+		ProjectCode:    c.Query("project_code"),
 		ProjectTypeID:  projectTypeID,
 		ProjetistaName: c.Query("projetista_name"),
 		CompetitorName: c.Query("competitor_name"),

@@ -15,29 +15,34 @@ import (
 )
 
 type budgetRepositoryStub struct {
-	createID                   int64
-	createErr                  error
-	changeStatusID             int64
-	changeStatusErr            error
-	listItems                  []model.BudgetModel
-	listTotal                  int64
-	listErr                    error
-	existsByNumberAndYear      bool
-	existsByNumberAndYearErr   error
-	getByIDItem                *model.BudgetModel
-	getByIDErr                 error
-	updateErr                  error
-	deleteErr                  error
-	deletedBudgetID            int64
-	capturedCreateItem         *model.BudgetModel
-	capturedChangeStatusParams *budgetrepository.ChangeStatusParams
-	capturedUpdateItem         *model.BudgetModel
-	capturedListFilters        *dto.ListBudgetsFilters
-	capturedCurrentFollowUp    string
-	capturedStatusID           int64
-	existsByNumberAndYearCalls int
-	updateCurrentFollowUpErr   error
-	updateStatusErr            error
+	createID                            int64
+	createErr                           error
+	changeStatusID                      int64
+	changeStatusErr                     error
+	electProjectWinnerErr               error
+	updateAndChangeStatusErr            error
+	listItems                           []model.BudgetModel
+	listTotal                           int64
+	listErr                             error
+	existsByNumberAndYear               bool
+	existsByNumberAndYearErr            error
+	getByIDItem                         *model.BudgetModel
+	getByIDErr                          error
+	updateErr                           error
+	deleteErr                           error
+	deletedBudgetID                     int64
+	capturedCreateItem                  *model.BudgetModel
+	capturedChangeStatusParams          *budgetrepository.ChangeStatusParams
+	capturedElectProjectWinnerParams    *budgetrepository.ElectProjectWinnerParams
+	capturedUpdateItem                  *model.BudgetModel
+	capturedUpdateAndChangeStatusItem   *model.BudgetModel
+	capturedUpdateAndChangeStatusParams *budgetrepository.ChangeStatusParams
+	capturedListFilters                 *dto.ListBudgetsFilters
+	capturedCurrentFollowUp             string
+	capturedStatusID                    int64
+	existsByNumberAndYearCalls          int
+	updateCurrentFollowUpErr            error
+	updateStatusErr                     error
 }
 
 type salespersonRepositoryStub struct {
@@ -118,6 +123,12 @@ func (s *budgetRepositoryStub) Update(_ context.Context, item *model.BudgetModel
 	return s.updateErr
 }
 
+func (s *budgetRepositoryStub) UpdateAndChangeStatus(_ context.Context, item *model.BudgetModel, params *budgetrepository.ChangeStatusParams) error {
+	s.capturedUpdateAndChangeStatusItem = item
+	s.capturedUpdateAndChangeStatusParams = params
+	return s.updateAndChangeStatusErr
+}
+
 func (s *budgetRepositoryStub) Delete(_ context.Context, budgetID int64) error {
 	s.deletedBudgetID = budgetID
 	return s.deleteErr
@@ -138,8 +149,13 @@ func (s *budgetRepositoryStub) ChangeStatus(_ context.Context, params *budgetrep
 	return s.changeStatusID, s.changeStatusErr
 }
 
+func (s *budgetRepositoryStub) ElectProjectWinner(_ context.Context, params *budgetrepository.ElectProjectWinnerParams) error {
+	s.capturedElectProjectWinnerParams = params
+	return s.electProjectWinnerErr
+}
+
 func TestBudgetServiceCreateShouldReturnBadRequestWhenBudgetNumberIsMissing(t *testing.T) {
-	service := budgetservice.NewService(&budgetRepositoryStub{}, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
+	service := budgetservice.NewService(&budgetRepositoryStub{}, &budgetStatusRepositoryStub{}, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
 
 	_, err := service.Create(context.Background(), model.RoleAdmin, "", &dto.CreateBudgetRequest{})
 
@@ -150,7 +166,7 @@ func TestBudgetServiceCreateShouldReturnConflictWhenBudgetAlreadyExists(t *testi
 	repo := &budgetRepositoryStub{
 		existsByNumberAndYear: true,
 	}
-	service := budgetservice.NewService(repo, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
+	service := budgetservice.NewService(repo, &budgetStatusRepositoryStub{}, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
 
 	_, err := service.Create(context.Background(), model.RoleAdmin, "", validCreateBudgetRequest())
 
@@ -165,7 +181,7 @@ func TestBudgetServiceCreateShouldTrimFieldsAndMapNullableValues(t *testing.T) {
 	repo := &budgetRepositoryStub{
 		createID: 77,
 	}
-	service := budgetservice.NewService(repo, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
+	service := budgetservice.NewService(repo, &budgetStatusRepositoryStub{}, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
 
 	req := validCreateBudgetRequest()
 	req.BudgetNumber = "  ORC-100  "
@@ -226,7 +242,7 @@ func TestBudgetServiceCreateShouldAllowEstimatorUserToManageAssignmentsFreely(t 
 	repo := &budgetRepositoryStub{
 		createID: 55,
 	}
-	service := budgetservice.NewService(repo, &userRepositoryStub{
+	service := budgetservice.NewService(repo, &budgetStatusRepositoryStub{}, &userRepositoryStub{
 		getUserByUsernameItem: &model.UserModel{
 			ID:       81,
 			Role:     model.RoleUser,
@@ -266,7 +282,7 @@ func TestBudgetServiceCreateShouldAllowEstimatorUserToManageAssignmentsFreely(t 
 }
 
 func TestBudgetServiceCreateShouldRejectSalespersonUser(t *testing.T) {
-	service := budgetservice.NewService(&budgetRepositoryStub{}, &userRepositoryStub{
+	service := budgetservice.NewService(&budgetRepositoryStub{}, &budgetStatusRepositoryStub{}, &userRepositoryStub{
 		getUserByUsernameItem: &model.UserModel{
 			ID:       82,
 			Role:     model.RoleUser,
@@ -311,12 +327,12 @@ func TestBudgetServiceListShouldNormalizeFiltersAndReturnPaginatedResponse(t *te
 		},
 		listTotal: 1,
 	}
-	service := budgetservice.NewService(repo, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
+	service := budgetservice.NewService(repo, &budgetStatusRepositoryStub{}, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
 	yearBudget := 2026
 
 	response, err := service.List(context.Background(), &dto.ListBudgetsFilters{
 		BudgetNumber: "  ORC  ",
-		ProjectName:  "  Centro  ",
+		ProjectCode:  "  OBR-000090  ",
 		YearBudget:   &yearBudget,
 	}, model.RoleAdmin, "")
 
@@ -353,8 +369,8 @@ func TestBudgetServiceListShouldNormalizeFiltersAndReturnPaginatedResponse(t *te
 	if repo.capturedListFilters.BudgetNumber != "ORC" {
 		t.Fatalf("expected trimmed budget number filter, got %s", repo.capturedListFilters.BudgetNumber)
 	}
-	if repo.capturedListFilters.ProjectName != "Centro" {
-		t.Fatalf("expected trimmed project name filter, got %s", repo.capturedListFilters.ProjectName)
+	if repo.capturedListFilters.ProjectCode != "OBR-000090" {
+		t.Fatalf("expected trimmed project code filter, got %s", repo.capturedListFilters.ProjectCode)
 	}
 	if repo.capturedListFilters.SortBy != "sent_at" {
 		t.Fatalf("expected default sort by sent_at, got %s", repo.capturedListFilters.SortBy)
@@ -365,7 +381,7 @@ func TestBudgetServiceListShouldNormalizeFiltersAndReturnPaginatedResponse(t *te
 }
 
 func TestBudgetServiceListShouldReturnBadRequestWhenPageSizeIsTooLarge(t *testing.T) {
-	service := budgetservice.NewService(&budgetRepositoryStub{}, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
+	service := budgetservice.NewService(&budgetRepositoryStub{}, &budgetStatusRepositoryStub{}, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
 
 	_, err := service.List(context.Background(), &dto.ListBudgetsFilters{
 		PageSize: 101,
@@ -376,7 +392,7 @@ func TestBudgetServiceListShouldReturnBadRequestWhenPageSizeIsTooLarge(t *testin
 
 func TestBudgetServiceListShouldRestrictUserBySalespersonResolvedFromUsername(t *testing.T) {
 	repo := &budgetRepositoryStub{}
-	service := budgetservice.NewService(repo, &userRepositoryStub{
+	service := budgetservice.NewService(repo, &budgetStatusRepositoryStub{}, &userRepositoryStub{
 		getUserByUsernameItem: &model.UserModel{
 			ID:       91,
 			Role:     model.RoleUser,
@@ -401,7 +417,7 @@ func TestBudgetServiceListShouldRestrictUserBySalespersonResolvedFromUsername(t 
 }
 
 func TestBudgetServiceGetByIDShouldReturnNotFoundWhenBudgetDoesNotExist(t *testing.T) {
-	service := budgetservice.NewService(&budgetRepositoryStub{}, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
+	service := budgetservice.NewService(&budgetRepositoryStub{}, &budgetStatusRepositoryStub{}, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
 
 	_, err := service.GetByID(context.Background(), 10, model.RoleAdmin, "")
 
@@ -412,7 +428,7 @@ func TestBudgetServiceGetByIDShouldRestrictUserBySalespersonResolvedFromUsername
 	repo := &budgetRepositoryStub{
 		getByIDItem: &model.BudgetModel{ID: 20, BudgetNumber: "ORC-020", YearBudget: 2026, SentAt: time.Now(), GrossValue: 1000, StatusID: 1},
 	}
-	service := budgetservice.NewService(repo, &userRepositoryStub{
+	service := budgetservice.NewService(repo, &budgetStatusRepositoryStub{}, &userRepositoryStub{
 		getUserByUsernameItem: &model.UserModel{
 			ID:       92,
 			Role:     model.RoleUser,
@@ -446,7 +462,7 @@ func TestBudgetServiceUpdateShouldReturnConflictWhenNumberAndYearAlreadyExist(t 
 		},
 		existsByNumberAndYear: true,
 	}
-	service := budgetservice.NewService(repo, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
+	service := budgetservice.NewService(repo, &budgetStatusRepositoryStub{}, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
 
 	err := service.Update(context.Background(), 5, model.RoleAdmin, "", &dto.UpdateBudgetRequest{
 		BudgetNumber: "ORC-NEW",
@@ -468,7 +484,7 @@ func TestBudgetServiceUpdateShouldSkipUniquenessCheckWhenNumberAndYearDoNotChang
 			StatusID:     1,
 		},
 	}
-	service := budgetservice.NewService(repo, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
+	service := budgetservice.NewService(repo, &budgetStatusRepositoryStub{}, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
 
 	err := service.Update(context.Background(), 5, model.RoleAdmin, "", &dto.UpdateBudgetRequest{
 		BudgetNumber: "  ORC-100  ",
@@ -492,6 +508,132 @@ func TestBudgetServiceUpdateShouldSkipUniquenessCheckWhenNumberAndYearDoNotChang
 	}
 }
 
+func TestBudgetServiceUpdateShouldUseStatusWorkflowWithoutProjectWinnerRule(t *testing.T) {
+	projectID := int64(77)
+	repo := &budgetRepositoryStub{
+		getByIDItem: &model.BudgetModel{
+			ID:        5,
+			StatusID:  1,
+			ProjectID: sql.NullInt64{Int64: projectID, Valid: true},
+		},
+	}
+	service := budgetservice.NewService(
+		repo,
+		&budgetStatusRepositoryStub{
+			getByIDItem: &model.BudgetStatusModel{ID: 2, Code: "PEDIDO", Name: "Pedido"},
+		},
+		&userRepositoryStub{
+			getUserByUsernameItem: &model.UserModel{ID: 40, Active: true},
+		},
+		&salespersonRepositoryStub{},
+		&estimatorRepositoryStub{},
+	)
+
+	err := service.Update(context.Background(), 5, model.RoleAdmin, "admin.master", &dto.UpdateBudgetRequest{
+		BudgetNumber: "ORC-100",
+		YearBudget:   2026,
+		SentAt:       time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
+		GrossValue:   1000,
+		StatusID:     2,
+		ProjectID:    &projectID,
+	})
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if repo.capturedUpdateItem != nil {
+		t.Fatal("expected plain update not to be used when status changes")
+	}
+	if repo.capturedUpdateAndChangeStatusItem == nil {
+		t.Fatal("expected update and change status item to be captured")
+	}
+	if repo.capturedUpdateAndChangeStatusParams == nil {
+		t.Fatal("expected update and change status params to be captured")
+	}
+	if repo.capturedUpdateAndChangeStatusParams.EnforceProjectWinnerRule {
+		t.Fatal("expected project winner rule to stay disabled in common update flow")
+	}
+	if repo.capturedUpdateAndChangeStatusParams.UserID != 40 {
+		t.Fatalf("expected user id 40, got %d", repo.capturedUpdateAndChangeStatusParams.UserID)
+	}
+}
+
+func TestBudgetServiceElectProjectWinnerShouldEnsureStatusesAndCallRepository(t *testing.T) {
+	projectID := int64(77)
+	repo := &budgetRepositoryStub{
+		getByIDItem: &model.BudgetModel{
+			ID:        5,
+			StatusID:  1,
+			ProjectID: sql.NullInt64{Int64: projectID, Valid: true},
+		},
+	}
+	statusRepo := &budgetStatusRepositoryStub{
+		createID:            91,
+		getByCodeOrNameItem: nil,
+	}
+	service := budgetservice.NewService(
+		repo,
+		statusRepo,
+		&userRepositoryStub{},
+		&salespersonRepositoryStub{},
+		&estimatorRepositoryStub{},
+	)
+
+	err := service.ElectProjectWinner(context.Background(), 5, 40, model.RoleAdmin, "admin.master", &dto.ElectBudgetWinnerRequest{
+		Notes: "  Orcamento escolhido como vencedor  ",
+	})
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if repo.capturedElectProjectWinnerParams == nil {
+		t.Fatal("expected elect project winner params to be captured")
+	}
+	if repo.capturedElectProjectWinnerParams.BudgetID != 5 {
+		t.Fatalf("expected budget id 5, got %d", repo.capturedElectProjectWinnerParams.BudgetID)
+	}
+	if repo.capturedElectProjectWinnerParams.UserID != 40 {
+		t.Fatalf("expected user id 40, got %d", repo.capturedElectProjectWinnerParams.UserID)
+	}
+	if repo.capturedElectProjectWinnerParams.Notes != "Orcamento escolhido como vencedor" {
+		t.Fatalf("expected trimmed notes, got %s", repo.capturedElectProjectWinnerParams.Notes)
+	}
+	if repo.capturedElectProjectWinnerParams.PedidoStatusID == 0 {
+		t.Fatal("expected pedido status id to be resolved")
+	}
+	if repo.capturedElectProjectWinnerParams.CancelledStatusID == 0 {
+		t.Fatal("expected cancelled status id to be resolved")
+	}
+	if statusRepo.createCalls != 2 {
+		t.Fatalf("expected 2 required statuses to be created, got %d", statusRepo.createCalls)
+	}
+}
+
+func TestBudgetServiceElectProjectWinnerShouldReturnConflictWhenProjectAlreadyHasPedido(t *testing.T) {
+	projectID := int64(77)
+	repo := &budgetRepositoryStub{
+		getByIDItem: &model.BudgetModel{
+			ID:        5,
+			StatusID:  1,
+			ProjectID: sql.NullInt64{Int64: projectID, Valid: true},
+		},
+		electProjectWinnerErr: budgetrepository.ErrProjectAlreadyHasPedido,
+	}
+	service := budgetservice.NewService(
+		repo,
+		&budgetStatusRepositoryStub{
+			getByCodeOrNameItem: &model.BudgetStatusModel{ID: 3, Code: "PEDIDO", Name: "Pedido"},
+		},
+		&userRepositoryStub{},
+		&salespersonRepositoryStub{},
+		&estimatorRepositoryStub{},
+	)
+
+	err := service.ElectProjectWinner(context.Background(), 5, 40, model.RoleAdmin, "admin.master", &dto.ElectBudgetWinnerRequest{})
+
+	assertAppError(t, err, 409, "Ja existe outro orcamento da obra marcado como PEDIDO")
+}
+
 func TestBudgetServiceUpdateShouldRestrictUserBySalespersonResolvedFromUsername(t *testing.T) {
 	repo := &budgetRepositoryStub{
 		getByIDItem: &model.BudgetModel{
@@ -501,7 +643,7 @@ func TestBudgetServiceUpdateShouldRestrictUserBySalespersonResolvedFromUsername(
 			StatusID:     1,
 		},
 	}
-	service := budgetservice.NewService(repo, &userRepositoryStub{
+	service := budgetservice.NewService(repo, &budgetStatusRepositoryStub{}, &userRepositoryStub{
 		getUserByUsernameItem: &model.UserModel{
 			ID:       93,
 			Role:     model.RoleUser,
@@ -533,7 +675,7 @@ func TestBudgetServiceUpdateShouldRestrictUserBySalespersonResolvedFromUsername(
 
 func TestBudgetServiceUpdateShouldReturnNotFoundWhenUserIsOutsideScope(t *testing.T) {
 	repo := &budgetRepositoryStub{}
-	service := budgetservice.NewService(repo, &userRepositoryStub{
+	service := budgetservice.NewService(repo, &budgetStatusRepositoryStub{}, &userRepositoryStub{
 		getUserByUsernameItem: &model.UserModel{
 			ID:       94,
 			Role:     model.RoleUser,
@@ -556,7 +698,7 @@ func TestBudgetServiceUpdateShouldReturnNotFoundWhenUserIsOutsideScope(t *testin
 }
 
 func TestBudgetServiceDeleteShouldReturnNotFoundWhenBudgetDoesNotExist(t *testing.T) {
-	service := budgetservice.NewService(&budgetRepositoryStub{}, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
+	service := budgetservice.NewService(&budgetRepositoryStub{}, &budgetStatusRepositoryStub{}, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
 
 	err := service.Delete(context.Background(), 8, model.RoleAdmin, "admin")
 
@@ -572,7 +714,7 @@ func TestBudgetServiceDeleteShouldAllowEstimatorUserOutsideOwnScope(t *testing.T
 			StatusID:     1,
 		},
 	}
-	service := budgetservice.NewService(repo, &userRepositoryStub{
+	service := budgetservice.NewService(repo, &budgetStatusRepositoryStub{}, &userRepositoryStub{
 		getUserByUsernameItem: &model.UserModel{
 			ID:       77,
 			Role:     model.RoleUser,
@@ -598,7 +740,7 @@ func TestBudgetServiceDeleteShouldAllowEstimatorUserOutsideOwnScope(t *testing.T
 }
 
 func TestBudgetServiceDeleteShouldBlockSalespersonUser(t *testing.T) {
-	service := budgetservice.NewService(&budgetRepositoryStub{}, &userRepositoryStub{
+	service := budgetservice.NewService(&budgetRepositoryStub{}, &budgetStatusRepositoryStub{}, &userRepositoryStub{
 		getUserByUsernameItem: &model.UserModel{
 			ID:       88,
 			Role:     model.RoleUser,
@@ -618,7 +760,7 @@ func TestBudgetServiceCreateShouldMapPersistenceErrorFromForeignKey(t *testing.T
 	repo := &budgetRepositoryStub{
 		createErr: &pgconn.PgError{ConstraintName: "fk_budgets_status_id"},
 	}
-	service := budgetservice.NewService(repo, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
+	service := budgetservice.NewService(repo, &budgetStatusRepositoryStub{}, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
 
 	_, err := service.Create(context.Background(), model.RoleAdmin, "", validCreateBudgetRequest())
 
@@ -627,7 +769,7 @@ func TestBudgetServiceCreateShouldMapPersistenceErrorFromForeignKey(t *testing.T
 
 func TestBudgetServiceListShouldAllowEstimatorUserToViewFullBudgetScreen(t *testing.T) {
 	repo := &budgetRepositoryStub{}
-	service := budgetservice.NewService(repo, &userRepositoryStub{
+	service := budgetservice.NewService(repo, &budgetStatusRepositoryStub{}, &userRepositoryStub{
 		getUserByUsernameItem: &model.UserModel{
 			ID:       55,
 			Role:     model.RoleUser,
@@ -666,7 +808,7 @@ func TestBudgetServiceUpdateShouldAllowEstimatorUserToEditOutsideOwnScope(t *tes
 			StatusID:     1,
 		},
 	}
-	service := budgetservice.NewService(repo, &userRepositoryStub{
+	service := budgetservice.NewService(repo, &budgetStatusRepositoryStub{}, &userRepositoryStub{
 		getUserByUsernameItem: &model.UserModel{
 			ID:       56,
 			Role:     model.RoleUser,

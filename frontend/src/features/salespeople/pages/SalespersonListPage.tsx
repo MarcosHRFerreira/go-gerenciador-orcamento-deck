@@ -30,6 +30,13 @@ import { isAxiosError } from "axios";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import {
+  compactFilterFieldSx,
+  FilterField,
+  filterGroupSx,
+  filterGroupTitleSx,
+  filterSectionCardSx,
+} from "../../../components/common/FilterField";
 import { PageHeader } from "../../../components/common/PageHeader";
 import { SectionCard } from "../../../components/common/SectionCard";
 import {
@@ -55,13 +62,13 @@ const salespersonSchema = z.object({
     .string()
     .trim()
     .min(3, "Informe um nome com pelo menos 3 caracteres")
-    .max(150, "O nome deve ter no maximo 150 caracteres"),
-  email: z.string().trim().email("Informe um e-mail valido"),
+    .max(150, "O nome deve ter no máximo 150 caracteres"),
+  email: z.string().trim().email("Informe um e-mail válido"),
   phone: z
     .string()
     .trim()
     .min(8, "Informe um telefone com pelo menos 8 caracteres")
-    .max(30, "O telefone deve ter no maximo 30 caracteres"),
+    .max(30, "O telefone deve ter no máximo 30 caracteres"),
 });
 
 type SalespersonFormValues = z.infer<typeof salespersonSchema>;
@@ -79,10 +86,10 @@ const dateTimeFormatter = new Intl.DateTimeFormat("pt-BR", {
 });
 
 const tableHeadCellSx = {
-  backgroundColor: "rgba(37, 99, 235, 0.08)",
-  borderBottomColor: "primary.main",
+  background: "linear-gradient(180deg, #1E3A8A 0%, #1D4ED8 100%)",
+  borderBottomColor: "#1E40AF",
   borderBottomWidth: 2,
-  color: "text.primary",
+  color: "common.white",
   fontSize: "0.75rem",
   fontWeight: 700,
   letterSpacing: "0.04em",
@@ -147,7 +154,7 @@ function getDialogTitle(dialogState: SalespersonDialogState | null) {
 
 function getDialogSubmitLabel(dialogState: SalespersonDialogState | null) {
   return dialogState?.mode === "edit"
-    ? "Salvar alteracoes"
+    ? "Salvar alterações"
     : "Cadastrar vendedor";
 }
 
@@ -196,7 +203,7 @@ export default function SalespersonListPage() {
       setFeedbackError(
         getMutationErrorMessage(
           error,
-          "Nao foi possivel cadastrar o vendedor.",
+          "Não foi possível cadastrar o vendedor.",
         ),
       );
     },
@@ -222,7 +229,7 @@ export default function SalespersonListPage() {
       setFeedbackError(
         getMutationErrorMessage(
           error,
-          "Nao foi possivel atualizar o vendedor.",
+          "Não foi possível atualizar o vendedor.",
         ),
       );
     },
@@ -239,7 +246,7 @@ export default function SalespersonListPage() {
     onError: (error) => {
       setFeedbackMessage(null);
       setFeedbackError(
-        getMutationErrorMessage(error, "Nao foi possivel remover o vendedor."),
+        getMutationErrorMessage(error, "Não foi possível remover o vendedor."),
       );
     },
   });
@@ -365,12 +372,13 @@ export default function SalespersonListPage() {
             Novo vendedor
           </Button>
         }
-        description="Cadastre e gerencie os vendedores usados nos orcamentos do sistema."
+        description="Cadastre e gerencie os vendedores usados nos orçamentos do sistema."
         title="Vendedores"
       />
 
       <SectionCard
         description="Use os filtros para localizar rapidamente um vendedor pelo nome, e-mail ou telefone."
+        sx={filterSectionCardSx}
         title="Filtros"
       >
         <Box
@@ -378,38 +386,53 @@ export default function SalespersonListPage() {
             display: "grid",
             gap: 2,
             gridTemplateColumns: {
-              md: "2fr 1fr",
+              md: "minmax(0, 1.6fr) minmax(0, 1fr)",
               xs: "minmax(0, 1fr)",
             },
           }}
         >
-          <TextField
-            label="Buscar por nome, e-mail ou telefone"
-            onChange={(event) =>
-              setFilters((currentFilters) => ({
-                ...currentFilters,
-                search: event.target.value,
-              }))
-            }
-            size="small"
-            value={filters.search}
-          />
-          <TextField
-            label="Status"
-            onChange={(event) =>
-              setFilters((currentFilters) => ({
-                ...currentFilters,
-                status: event.target.value as SalespersonListFilters["status"],
-              }))
-            }
-            select
-            size="small"
-            value={filters.status}
-          >
-            <MenuItem value="all">Todos</MenuItem>
-            <MenuItem value="active">Ativo</MenuItem>
-            <MenuItem value="inactive">Inativo</MenuItem>
-          </TextField>
+          <Box sx={filterGroupSx}>
+            <Typography sx={filterGroupTitleSx} variant="subtitle2">
+              Identificação
+            </Typography>
+            <FilterField label="Buscar por nome, e-mail ou telefone">
+              <TextField
+                onChange={(event) =>
+                  setFilters((currentFilters) => ({
+                    ...currentFilters,
+                    search: event.target.value,
+                  }))
+                }
+                size="small"
+                sx={compactFilterFieldSx}
+                value={filters.search}
+              />
+            </FilterField>
+          </Box>
+          <Box sx={filterGroupSx}>
+            <Typography sx={filterGroupTitleSx} variant="subtitle2">
+              Classificação
+            </Typography>
+            <FilterField label="Status">
+              <TextField
+                onChange={(event) =>
+                  setFilters((currentFilters) => ({
+                    ...currentFilters,
+                    status: event.target
+                      .value as SalespersonListFilters["status"],
+                  }))
+                }
+                select
+                size="small"
+                sx={compactFilterFieldSx}
+                value={filters.status}
+              >
+                <MenuItem value="all">Todos</MenuItem>
+                <MenuItem value="active">Ativo</MenuItem>
+                <MenuItem value="inactive">Inativo</MenuItem>
+              </TextField>
+            </FilterField>
+          </Box>
         </Box>
       </SectionCard>
 
@@ -420,7 +443,7 @@ export default function SalespersonListPage() {
         {salespeopleQuery.isLoading ? <LinearProgress /> : null}
         {salespeopleQuery.isError ? (
           <Alert severity="error">
-            Nao foi possivel carregar a listagem de vendedores.
+            Não foi possível carregar a listagem de vendedores.
           </Alert>
         ) : null}
         {feedbackMessage ? (
@@ -438,7 +461,7 @@ export default function SalespersonListPage() {
                 <TableCell sx={tableHeadCellSx}>Status</TableCell>
                 <TableCell sx={tableHeadCellSx}>Atualizado em</TableCell>
                 <TableCell align="right" sx={tableHeadCellSx}>
-                  Acoes
+                  Ações
                 </TableCell>
               </TableRow>
             </TableHead>
@@ -596,11 +619,11 @@ export default function SalespersonListPage() {
         }}
         open={pendingDelete !== null}
       >
-        <DialogTitle>Confirmar exclusao</DialogTitle>
+        <DialogTitle>Confirmar exclusão</DialogTitle>
         <DialogContent>
           <DialogContentText>
             {pendingDelete
-              ? `Confirma a exclusao do vendedor ${pendingDelete.name}?`
+              ? `Confirma a exclusão do vendedor ${pendingDelete.name}?`
               : ""}
           </DialogContentText>
         </DialogContent>

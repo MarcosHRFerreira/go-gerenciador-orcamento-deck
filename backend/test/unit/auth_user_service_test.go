@@ -36,8 +36,12 @@ type userRepositoryStub struct {
 	getUserByEmailOrUsernameErr    error
 	getUserByIDItem                *model.UserModel
 	getUserByIDErr                 error
+	getUsersByIDsItems             []model.UserModel
+	getUsersByIDsErr               error
 	listUsersItems                 []model.UserModel
 	listUsersErr                   error
+	listActiveUsersItems           []model.UserModel
+	listActiveUsersErr             error
 	getActiveRefreshTokenByHash    *model.RefreshTokenModel
 	getActiveRefreshTokenByHashErr error
 	storeRefreshTokenErr           error
@@ -90,8 +94,16 @@ func (s *userRepositoryStub) GetUserByID(_ context.Context, _ int64) (*model.Use
 	return s.getUserByIDItem, s.getUserByIDErr
 }
 
+func (s *userRepositoryStub) GetUsersByIDs(_ context.Context, _ []int64) ([]model.UserModel, error) {
+	return s.getUsersByIDsItems, s.getUsersByIDsErr
+}
+
 func (s *userRepositoryStub) ListUsers(_ context.Context) ([]model.UserModel, error) {
 	return s.listUsersItems, s.listUsersErr
+}
+
+func (s *userRepositoryStub) ListActiveUsers(_ context.Context) ([]model.UserModel, error) {
+	return s.listActiveUsersItems, s.listActiveUsersErr
 }
 
 func (s *userRepositoryStub) UpdateUser(_ context.Context, userID int64, name string, email string, username string, role model.UserRole, userKind model.UserKind, _ time.Time) error {

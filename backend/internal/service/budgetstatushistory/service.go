@@ -3,7 +3,6 @@ package budgetstatushistory
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"strings"
 	"time"
 
@@ -99,25 +98,8 @@ func (s *service) ChangeStatus(ctx context.Context, budgetID int64, userID int64
 		ChangedAt: now,
 	}
 
-	if isPedidoStatus(status) && budget.ProjectID.Valid {
-		cancelledStatus, getCancelledStatusErr := s.budgetStatusRepo.GetByCodeOrName(ctx, "CANCELADO", "CANCELADO")
-		if getCancelledStatusErr != nil {
-			return 0, apperror.Internal("failed to check cancelled budget status", getCancelledStatusErr)
-		}
-		if cancelledStatus == nil {
-			return 0, apperror.BadRequest("Status CANCELADO nao encontrado")
-		}
-
-		changeStatusParams.EnforceProjectWinnerRule = true
-		changeStatusParams.CancelledStatusID = cancelledStatus.ID
-	}
-
 	id, err := s.budgetRepo.ChangeStatus(ctx, changeStatusParams)
 	if err != nil {
-		if errors.Is(err, budgetrepository.ErrProjectAlreadyHasPedido) {
-			return 0, apperror.Conflict("Ja existe outro orcamento da obra marcado como PEDIDO")
-		}
-
 		return 0, apperror.Internal("failed to change budget status", err)
 	}
 
@@ -171,12 +153,4 @@ func nullableInt64Pointer(value sql.NullInt64) *int64 {
 	}
 
 	return &value.Int64
-}
-
-func isPedidoStatus(status *model.BudgetStatusModel) bool {
-	if status == nil {
-		return false
-	}
-
-	return strings.EqualFold(strings.TrimSpace(status.Code), "PEDIDO") || strings.EqualFold(strings.TrimSpace(status.Name), "PEDIDO")
 }

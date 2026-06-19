@@ -75,7 +75,7 @@ export function LoginPage() {
       sx={{
         alignItems: "center",
         background:
-          "radial-gradient(circle at top left, rgba(220, 38, 38, 0.18), transparent 28%), radial-gradient(circle at bottom right, rgba(239, 68, 68, 0.18), transparent 26%), linear-gradient(135deg, #08090C 0%, #111827 45%, #F8FAFC 100%)",
+          "radial-gradient(circle at top left, rgba(37, 99, 235, 0.2), transparent 28%), radial-gradient(circle at bottom right, rgba(14, 165, 233, 0.18), transparent 26%), linear-gradient(135deg, #08111F 0%, #0F172A 45%, #F8FAFC 100%)",
         display: "flex",
         minHeight: "100vh",
         position: "relative",
@@ -93,7 +93,7 @@ export function LoginPage() {
         },
         "&::after": {
           background:
-            "radial-gradient(circle, rgba(220,38,38,0.18) 0%, rgba(220,38,38,0) 72%)",
+            "radial-gradient(circle, rgba(37,99,235,0.2) 0%, rgba(37,99,235,0) 72%)",
           bottom: "-14%",
           content: '""',
           height: 360,
@@ -107,10 +107,11 @@ export function LoginPage() {
       <Container maxWidth="lg" sx={{ position: "relative", zIndex: 1 }}>
         <Paper
           sx={{
-            backdropFilter: "blur(14px)",
-            backgroundColor: alpha("#FFFFFF", 0.9),
-            border: `1px solid ${alpha("#FFFFFF", 0.18)}`,
+            backdropFilter: "blur(16px)",
+            backgroundColor: alpha("#FFFFFF", 0.92),
+            border: `1px solid ${alpha("#FFFFFF", 0.2)}`,
             borderRadius: { md: 8, xs: 5 },
+            boxShadow: "0 28px 80px rgba(15, 23, 42, 0.28)",
             overflow: "hidden",
             p: 0,
           }}
@@ -125,7 +126,7 @@ export function LoginPage() {
             <Box
               sx={{
                 background:
-                  "linear-gradient(160deg, #0B0B0F 0%, #151821 38%, #2B1114 100%)",
+                  "linear-gradient(160deg, #08111F 0%, #0F172A 42%, #1E3A8A 100%)",
                 color: "#FFFFFF",
                 display: "flex",
                 flexDirection: "column",
@@ -138,7 +139,7 @@ export function LoginPage() {
               <Box
                 sx={{
                   background:
-                    "radial-gradient(circle at top, rgba(220, 38, 38, 0.28) 0%, rgba(220, 38, 38, 0) 62%)",
+                    "radial-gradient(circle at top, rgba(59, 130, 246, 0.28) 0%, rgba(59, 130, 246, 0) 62%)",
                   inset: 0,
                   pointerEvents: "none",
                   position: "absolute",
@@ -174,7 +175,7 @@ export function LoginPage() {
                       textTransform: "uppercase",
                     }}
                   >
-                    Painel comercial
+                    Plataforma Deck
                   </Typography>
                   <Typography
                     sx={{
@@ -185,7 +186,7 @@ export function LoginPage() {
                       maxWidth: 520,
                     }}
                   >
-                    Gestão de orçamentos com visual forte e foco operacional.
+                    Gestão de orçamentos com leitura premium e foco operacional.
                   </Typography>
                   <Typography
                     sx={{
@@ -196,7 +197,7 @@ export function LoginPage() {
                   >
                     Acesse um ambiente desenhado para acompanhar oportunidades,
                     organizar o funil comercial e manter a equipe alinhada com a
-                    identidade da Deck.
+                    operação da Deck com mais clareza e consistência visual.
                   </Typography>
                 </Stack>
               </Stack>
@@ -228,7 +229,7 @@ export function LoginPage() {
                         width: 44,
                       }}
                     >
-                      <ShieldRoundedIcon sx={{ color: "#FCA5A5" }} />
+                      <ShieldRoundedIcon sx={{ color: "#93C5FD" }} />
                     </Box>
                     <Typography sx={{ fontWeight: 700 }} variant="h5">
                       Acesso protegido
@@ -265,7 +266,7 @@ export function LoginPage() {
                         width: 44,
                       }}
                     >
-                      <QueryStatsRoundedIcon sx={{ color: "#FCA5A5" }} />
+                      <QueryStatsRoundedIcon sx={{ color: "#93C5FD" }} />
                     </Box>
                     <Typography sx={{ fontWeight: 700 }} variant="h5">
                       Operação centralizada
@@ -309,7 +310,7 @@ export function LoginPage() {
                       sx={{
                         alignItems: "center",
                         background:
-                          "linear-gradient(135deg, #111827 0%, #DC2626 100%)",
+                          "linear-gradient(135deg, #0F172A 0%, #1E3A8A 100%)",
                         borderRadius: 3,
                         color: "#FFFFFF",
                         display: "inline-flex",
@@ -323,7 +324,7 @@ export function LoginPage() {
                     <Box>
                       <Typography
                         sx={{
-                          color: "error.main",
+                          color: "primary.main",
                           fontSize: "0.78rem",
                           fontWeight: 700,
                           letterSpacing: "0.16em",
@@ -391,7 +392,8 @@ export function LoginPage() {
                     size="large"
                     sx={{
                       background:
-                        "linear-gradient(135deg, #111827 0%, #DC2626 100%)",
+                        "linear-gradient(135deg, #0F172A 0%, #1E3A8A 100%)",
+                      boxShadow: "0 14px 28px rgba(30, 58, 138, 0.24)",
                       minHeight: 52,
                     }}
                     type="submit"
@@ -417,7 +419,7 @@ export function LoginPage() {
                     <Box
                       component={RouterLink}
                       sx={{
-                        color: "error.main",
+                        color: "primary.main",
                         display: "inline",
                         fontWeight: 700,
                         textDecoration: "none",

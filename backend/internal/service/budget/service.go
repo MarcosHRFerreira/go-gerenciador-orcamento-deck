@@ -12,6 +12,7 @@ import (
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/dto"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/model"
 	budgetrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budget"
+	budgetstatusrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budgetstatus"
 	estimatorrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/estimator"
 	salespersonrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/salesperson"
 	userrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/user"
@@ -23,27 +24,31 @@ type Service interface {
 	List(ctx context.Context, filters *dto.ListBudgetsFilters, role model.UserRole, username string) (*dto.ListBudgetsResponse, error)
 	GetByID(ctx context.Context, budgetID int64, role model.UserRole, username string) (*dto.BudgetResponse, error)
 	Update(ctx context.Context, budgetID int64, role model.UserRole, username string, req *dto.UpdateBudgetRequest) error
+	ElectProjectWinner(ctx context.Context, budgetID int64, userID int64, role model.UserRole, username string, req *dto.ElectBudgetWinnerRequest) error
 	Delete(ctx context.Context, budgetID int64, role model.UserRole, username string) error
 }
 
 type service struct {
-	repo            budgetrepository.Repository
-	userRepo        userrepository.Repository
-	salespersonRepo salespersonrepository.Repository
-	estimatorRepo   estimatorrepository.Repository
+	repo             budgetrepository.Repository
+	budgetStatusRepo budgetstatusrepository.Repository
+	userRepo         userrepository.Repository
+	salespersonRepo  salespersonrepository.Repository
+	estimatorRepo    estimatorrepository.Repository
 }
 
 func NewService(
 	repo budgetrepository.Repository,
+	budgetStatusRepo budgetstatusrepository.Repository,
 	userRepo userrepository.Repository,
 	salespersonRepo salespersonrepository.Repository,
 	estimatorRepo estimatorrepository.Repository,
 ) Service {
 	return &service{
-		repo:            repo,
-		userRepo:        userRepo,
-		salespersonRepo: salespersonRepo,
-		estimatorRepo:   estimatorRepo,
+		repo:             repo,
+		budgetStatusRepo: budgetStatusRepo,
+		userRepo:         userRepo,
+		salespersonRepo:  salespersonRepo,
+		estimatorRepo:    estimatorRepo,
 	}
 }
 
@@ -102,6 +107,7 @@ func (s *service) Create(ctx context.Context, role model.UserRole, username stri
 		PriorityID:           newNullInt64(req.PriorityID),
 		InstallerID:          newNullInt64(req.InstallerID),
 		ProductLineID:        newNullInt64(req.ProductLineID),
+		SystemTypeID:         newNullInt64(req.SystemTypeID),
 		ProjectID:            newNullInt64(req.ProjectID),
 		SalespersonID:        newNullInt64(salespersonID),
 		EstimatorID:          newNullInt64(estimatorID),
@@ -232,7 +238,8 @@ func (s *service) Update(ctx context.Context, budgetID int64, role model.UserRol
 		return err
 	}
 
-	err = s.repo.Update(ctx, &model.BudgetModel{
+	updatedAt := time.Now()
+	updateItem := &model.BudgetModel{
 		ID:                   budgetID,
 		BudgetNumber:         budgetNumber,
 		YearBudget:           req.YearBudget,
@@ -245,6 +252,7 @@ func (s *service) Update(ctx context.Context, budgetID int64, role model.UserRol
 		PriorityID:           newNullInt64(req.PriorityID),
 		InstallerID:          newNullInt64(req.InstallerID),
 		ProductLineID:        newNullInt64(req.ProductLineID),
+		SystemTypeID:         newNullInt64(req.SystemTypeID),
 		ProjectID:            newNullInt64(req.ProjectID),
 		SalespersonID:        newNullInt64(salespersonID),
 		EstimatorID:          newNullInt64(estimatorID),
@@ -256,10 +264,108 @@ func (s *service) Update(ctx context.Context, budgetID int64, role model.UserRol
 		ProjetistaName:       strings.TrimSpace(req.ProjetistaName),
 		SpecificationDetails: strings.TrimSpace(req.SpecificationDetails),
 		CurrentFollowUp:      strings.TrimSpace(req.CurrentFollowUp),
-		UpdatedAt:            time.Now(),
-	})
+		UpdatedAt:            updatedAt,
+	}
+
+	if currentBudget.StatusID == req.StatusID {
+		err = s.repo.Update(ctx, updateItem)
+		if err != nil {
+			return mapBudgetPersistenceError("update", err)
+		}
+
+		return nil
+	}
+
+	changeStatusParams, err := s.buildStatusChangeParams(ctx, username, budgetID, req.StatusID, updatedAt)
+	if err != nil {
+		return err
+	}
+
+	err = s.repo.UpdateAndChangeStatus(ctx, updateItem, changeStatusParams)
 	if err != nil {
 		return mapBudgetPersistenceError("update", err)
+	}
+
+	return nil
+}
+
+func (s *service) ElectProjectWinner(
+	ctx context.Context,
+	budgetID int64,
+	userID int64,
+	role model.UserRole,
+	username string,
+	req *dto.ElectBudgetWinnerRequest,
+) error {
+	if budgetID <= 0 {
+		return apperror.BadRequest("budget_id e obrigatorio")
+	}
+	if userID <= 0 {
+		return apperror.Unauthorized("Usuario autenticado obrigatorio")
+	}
+
+	scope, err := accessscope.ResolveBudgetScope(ctx, role, username, s.userRepo, s.salespersonRepo, s.estimatorRepo)
+	if err != nil {
+		return err
+	}
+
+	currentBudget, err := s.repo.GetByIDScoped(ctx, budgetID, scope.RestrictedSalespersonID, scope.RestrictedEstimatorID)
+	if err != nil {
+		return apperror.Internal("failed to check budget", err)
+	}
+	if currentBudget == nil {
+		return apperror.NotFound("Orcamento nao encontrado")
+	}
+	if !currentBudget.ProjectID.Valid {
+		return apperror.BadRequest("O orcamento precisa estar vinculado a uma obra para definir vencedor")
+	}
+
+	pedidoStatus, err := s.ensureBudgetStatus(
+		ctx,
+		"PEDIDO",
+		"Pedido",
+		"Orcamento vencedor da obra",
+		true,
+		90,
+	)
+	if err != nil {
+		return err
+	}
+
+	cancelledStatus, err := s.ensureBudgetStatus(
+		ctx,
+		"CANCELADO",
+		"Cancelado",
+		"Orcamento encerrado automaticamente apos definicao do vencedor da obra",
+		true,
+		100,
+	)
+	if err != nil {
+		return err
+	}
+
+	notes := "Orcamento definido como vencedor da obra"
+	if req != nil {
+		trimmedNotes := strings.TrimSpace(req.Notes)
+		if trimmedNotes != "" {
+			notes = trimmedNotes
+		}
+	}
+
+	err = s.repo.ElectProjectWinner(ctx, &budgetrepository.ElectProjectWinnerParams{
+		BudgetID:          budgetID,
+		PedidoStatusID:    pedidoStatus.ID,
+		CancelledStatusID: cancelledStatus.ID,
+		UserID:            userID,
+		Notes:             notes,
+		ChangedAt:         time.Now(),
+	})
+	if err != nil {
+		if errors.Is(err, budgetrepository.ErrProjectAlreadyHasPedido) {
+			return apperror.Conflict("Ja existe outro orcamento da obra marcado como PEDIDO")
+		}
+
+		return apperror.Internal("failed to elect project winner", err)
 	}
 
 	return nil
@@ -307,6 +413,8 @@ func mapBudgetPersistenceError(action string, err error) error {
 			return apperror.BadRequest("Instalador nao encontrado")
 		case "fk_budgets_product_line_id":
 			return apperror.BadRequest("Linha de produto nao encontrada")
+		case "fk_budgets_system_type_id":
+			return apperror.BadRequest("Tipo de sistema nao encontrado")
 		case "fk_budgets_project_id":
 			return apperror.BadRequest("Obra nao encontrada")
 		case "fk_budgets_salesperson_id":
@@ -338,7 +446,7 @@ func normalizeListFilters(filters *dto.ListBudgetsFilters) (*dto.ListBudgetsFilt
 	normalized := *filters
 	normalized.BudgetNumber = strings.TrimSpace(filters.BudgetNumber)
 	normalized.SourceCompany = strings.TrimSpace(filters.SourceCompany)
-	normalized.ProjectName = strings.TrimSpace(filters.ProjectName)
+	normalized.ProjectCode = strings.TrimSpace(filters.ProjectCode)
 	normalized.ProjetistaName = strings.TrimSpace(filters.ProjetistaName)
 	normalized.CompetitorName = strings.TrimSpace(filters.CompetitorName)
 	normalized.SortBy = strings.TrimSpace(strings.ToLower(filters.SortBy))
@@ -374,6 +482,9 @@ func normalizeListFilters(filters *dto.ListBudgetsFilters) (*dto.ListBudgetsFilt
 	}
 	if normalized.InstallerID != nil && *normalized.InstallerID <= 0 {
 		return nil, apperror.BadRequest("installer_id deve ser maior que zero")
+	}
+	if normalized.SystemTypeID != nil && *normalized.SystemTypeID <= 0 {
+		return nil, apperror.BadRequest("system_type_id deve ser maior que zero")
 	}
 	if normalized.PriorityID != nil && *normalized.PriorityID <= 0 {
 		return nil, apperror.BadRequest("priority_id deve ser maior que zero")
@@ -443,6 +554,7 @@ func mapBudgetResponse(item *model.BudgetModel) dto.BudgetResponse {
 		PriorityID:           nullableInt64Pointer(item.PriorityID),
 		InstallerID:          nullableInt64Pointer(item.InstallerID),
 		ProductLineID:        nullableInt64Pointer(item.ProductLineID),
+		SystemTypeID:         nullableInt64Pointer(item.SystemTypeID),
 		ProjectID:            nullableInt64Pointer(item.ProjectID),
 		SalespersonID:        nullableInt64Pointer(item.SalespersonID),
 		EstimatorID:          nullableInt64Pointer(item.EstimatorID),
@@ -458,6 +570,9 @@ func mapBudgetResponse(item *model.BudgetModel) dto.BudgetResponse {
 		InstallerName:        nullableStringPointer(item.InstallerName),
 		ProductLineCode:      nullableStringPointer(item.ProductLineCode),
 		ProductLineName:      nullableStringPointer(item.ProductLineName),
+		SystemTypeCode:       nullableStringPointer(item.SystemTypeCode),
+		SystemTypeName:       nullableStringPointer(item.SystemTypeName),
+		ProjectCode:          nullableStringPointer(item.ProjectCode),
 		ProjectName:          nullableStringPointer(item.ProjectName),
 		SalespersonName:      nullableStringPointer(item.SalespersonName),
 		EstimatorName:        nullableStringPointer(item.EstimatorName),
@@ -549,4 +664,89 @@ func (s *service) resolveCreateAndUpdateAssignments(
 	default:
 		return nil, nil, apperror.Forbidden("Usuario operacional sem tipo funcional valido")
 	}
+}
+
+func (s *service) buildStatusChangeParams(
+	ctx context.Context,
+	username string,
+	budgetID int64,
+	statusID int64,
+	changedAt time.Time,
+) (*budgetrepository.ChangeStatusParams, error) {
+	normalizedUsername := strings.TrimSpace(username)
+	if normalizedUsername == "" {
+		return nil, apperror.Unauthorized("Usuario autenticado obrigatorio")
+	}
+
+	user, err := s.userRepo.GetUserByUsername(ctx, normalizedUsername)
+	if err != nil {
+		return nil, apperror.Internal("failed to resolve authenticated user", err)
+	}
+	if user == nil || !user.Active {
+		return nil, apperror.Unauthorized("Usuario autenticado obrigatorio")
+	}
+
+	status, err := s.budgetStatusRepo.GetByID(ctx, statusID)
+	if err != nil {
+		return nil, apperror.Internal("failed to check budget status", err)
+	}
+	if status == nil {
+		return nil, apperror.BadRequest("Status de orcamento nao encontrado")
+	}
+
+	params := &budgetrepository.ChangeStatusParams{
+		BudgetID:  budgetID,
+		StatusID:  statusID,
+		UserID:    user.ID,
+		ChangedAt: changedAt,
+	}
+
+	return params, nil
+}
+
+func (s *service) ensureBudgetStatus(
+	ctx context.Context,
+	code string,
+	name string,
+	description string,
+	isFinal bool,
+	sortOrder int,
+) (*model.BudgetStatusModel, error) {
+	existingStatus, err := s.budgetStatusRepo.GetByCodeOrName(ctx, code, name)
+	if err != nil {
+		return nil, apperror.Internal("failed to check required budget status", err)
+	}
+	if existingStatus != nil {
+		return existingStatus, nil
+	}
+
+	now := time.Now()
+	statusID, err := s.budgetStatusRepo.Create(ctx, &model.BudgetStatusModel{
+		Code:        code,
+		Name:        name,
+		Description: description,
+		IsFinal:     isFinal,
+		SortOrder:   sortOrder,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	})
+	if err != nil {
+		existingStatus, lookupErr := s.budgetStatusRepo.GetByCodeOrName(ctx, code, name)
+		if lookupErr == nil && existingStatus != nil {
+			return existingStatus, nil
+		}
+
+		return nil, apperror.Internal("failed to ensure required budget status", err)
+	}
+
+	return &model.BudgetStatusModel{
+		ID:          statusID,
+		Code:        code,
+		Name:        name,
+		Description: description,
+		IsFinal:     isFinal,
+		SortOrder:   sortOrder,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}, nil
 }

@@ -40,7 +40,7 @@ export default function ProjectCreatePage() {
     <ProjectForm
       initialDataError={
         nextCodeQuery.isError
-          ? "Nao foi possivel gerar o codigo automatico da obra."
+          ? "Não foi possível gerar o código automático da obra."
           : null
       }
       initialValues={{
@@ -52,7 +52,7 @@ export default function ProjectCreatePage() {
       onCancel={() => navigate("/projects")}
       onSubmit={handleSubmit}
       submitLabel="Salvar obra"
-      subtitle="Cadastre uma nova obra com codigo gerado automaticamente para vinculo operacional e consultas futuras."
+      subtitle="Cadastre uma nova obra com código gerado automaticamente para vínculo operacional e consultas futuras."
       title="Nova obra"
     />
   );

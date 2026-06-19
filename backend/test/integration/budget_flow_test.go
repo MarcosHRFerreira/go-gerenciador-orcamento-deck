@@ -384,14 +384,250 @@ func TestBudgetStatusHistoryShouldCancelOtherProjectBudgetsWhenOneBecomesPedido(
 	}
 }
 
-func TestBudgetStatusHistoryShouldRejectSecondPedidoFromSameProject(t *testing.T) {
+func TestBudgetUpdateShouldNotCancelOtherProjectBudgetsWhenOneBecomesPedido(t *testing.T) {
 	env := newIntegrationTestEnv(t)
 	token := env.createAdminToken(t)
 	seed := env.seedBudgetData(t, uniqueSuffix())
-	orcamentoStatusID := insertNamedBudgetStatus(t, env, "ORCAMENTO", "ORCAMENTO", false, 1)
-	pedidoStatusID := insertNamedBudgetStatus(t, env, "PEDIDO", "PEDIDO", true, 2)
-	canceladoStatusID := insertNamedBudgetStatus(t, env, "CANCELADO", "CANCELADO", true, 3)
-	seed.statusID = orcamentoStatusID
+	emNegociacaoStatusID := getBudgetStatusIDByName(t, env, "Em Negociacao")
+	pedidoStatusID := insertNamedBudgetStatus(t, env, "PEDIDO", "Pedido "+uniqueSuffix(), true, 2)
+	seed.statusID = emNegociacaoStatusID
+
+	createFirstBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/budgets",
+		token,
+		buildBudgetRequestBody(
+			"GRP-UPD-001",
+			2026,
+			time.Date(2026, time.September, 1, 10, 0, 0, 0, time.UTC),
+			4200,
+			seed,
+			"Projetista Grupo Update 1",
+			"Concorrente Grupo Update 1",
+		),
+	)
+	if createFirstBudgetResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createFirstBudgetResponse.Code)
+	}
+
+	createSecondBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/budgets",
+		token,
+		buildBudgetRequestBody(
+			"GRP-UPD-002",
+			2026,
+			time.Date(2026, time.September, 2, 10, 0, 0, 0, time.UTC),
+			4300,
+			seed,
+			"Projetista Grupo Update 2",
+			"Concorrente Grupo Update 2",
+		),
+	)
+	if createSecondBudgetResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createSecondBudgetResponse.Code)
+	}
+
+	firstBudgetPayload := decodeJSONResponse[createResourceResponse](t, createFirstBudgetResponse.Body)
+	secondBudgetPayload := decodeJSONResponse[createResourceResponse](t, createSecondBudgetResponse.Body)
+
+	updateFirstBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodPut,
+		fmt.Sprintf("/budgets/%d", firstBudgetPayload.ID),
+		token,
+		fmt.Sprintf(`{
+			"budget_number":"GRP-UPD-001",
+			"year_budget":2026,
+			"revision":0,
+			"sent_at":"%s",
+			"gross_value":4200.00,
+			"commission_value":100.00,
+			"area_m2":35.00,
+			"status_id":%d,
+			"priority_id":%d,
+			"installer_id":%d,
+			"project_id":%d,
+			"salesperson_id":%d,
+			"contact_id":%d,
+			"loss_reason_id":%d,
+			"construction_company":"Construtora Teste",
+			"competitor_name":"Concorrente Grupo Update 1",
+			"competitor_price":900.00,
+			"projetista_name":"Projetista Grupo Update 1",
+			"specification_details":"Especificacao de teste",
+			"current_follow_up":"Follow up inicial"
+		}`,
+			time.Date(2026, time.September, 1, 10, 0, 0, 0, time.UTC).Format(time.RFC3339),
+			pedidoStatusID,
+			seed.priorityID,
+			seed.installerID,
+			seed.projectID,
+			seed.salespersonID,
+			seed.contactID,
+			seed.lossReasonID,
+		),
+	)
+	if updateFirstBudgetResponse.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d", http.StatusNoContent, updateFirstBudgetResponse.Code)
+	}
+
+	getFirstBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		fmt.Sprintf("/budgets/%d", firstBudgetPayload.ID),
+		token,
+		"",
+	)
+	if getFirstBudgetResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, getFirstBudgetResponse.Code)
+	}
+
+	getSecondBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		fmt.Sprintf("/budgets/%d", secondBudgetPayload.ID),
+		token,
+		"",
+	)
+	if getSecondBudgetResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, getSecondBudgetResponse.Code)
+	}
+
+	firstBudget := decodeJSONResponse[dto.BudgetResponse](t, getFirstBudgetResponse.Body)
+	secondBudget := decodeJSONResponse[dto.BudgetResponse](t, getSecondBudgetResponse.Body)
+	if firstBudget.StatusID != pedidoStatusID {
+		t.Fatalf("expected first budget status id %d, got %d", pedidoStatusID, firstBudget.StatusID)
+	}
+	if secondBudget.StatusID != emNegociacaoStatusID {
+		t.Fatalf("expected second budget status id %d, got %d", emNegociacaoStatusID, secondBudget.StatusID)
+	}
+}
+
+func TestBudgetElectWinnerShouldCancelOtherProjectBudgets(t *testing.T) {
+	env := newIntegrationTestEnv(t)
+	token := env.createAdminToken(t)
+	seed := env.seedBudgetData(t, uniqueSuffix())
+	statusSuffix := uniqueSuffix()
+	emNegociacaoStatusID := getBudgetStatusIDByName(t, env, "Em Negociacao")
+	pedidoStatusID := insertNamedBudgetStatus(t, env, "PEDIDO", "Pedido "+statusSuffix, true, 2)
+	canceladoStatusID := insertNamedBudgetStatus(t, env, "CANCELADO", "Cancelado "+statusSuffix, true, 3)
+	seed.statusID = emNegociacaoStatusID
+
+	createFirstBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/budgets",
+		token,
+		buildBudgetRequestBody(
+			"GRP-WIN-001",
+			2026,
+			time.Date(2026, time.September, 1, 10, 0, 0, 0, time.UTC),
+			4200,
+			seed,
+			"Projetista Grupo Winner 1",
+			"Concorrente Grupo Winner 1",
+		),
+	)
+	if createFirstBudgetResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createFirstBudgetResponse.Code)
+	}
+
+	createSecondBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/budgets",
+		token,
+		buildBudgetRequestBody(
+			"GRP-WIN-002",
+			2026,
+			time.Date(2026, time.September, 2, 10, 0, 0, 0, time.UTC),
+			4300,
+			seed,
+			"Projetista Grupo Winner 2",
+			"Concorrente Grupo Winner 2",
+		),
+	)
+	if createSecondBudgetResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createSecondBudgetResponse.Code)
+	}
+
+	firstBudgetPayload := decodeJSONResponse[createResourceResponse](t, createFirstBudgetResponse.Body)
+	secondBudgetPayload := decodeJSONResponse[createResourceResponse](t, createSecondBudgetResponse.Body)
+
+	electWinnerResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		fmt.Sprintf("/budgets/%d/elect-winner", firstBudgetPayload.ID),
+		token,
+		`{"notes":"Definido como vencedor da obra"}`,
+	)
+	if electWinnerResponse.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d", http.StatusNoContent, electWinnerResponse.Code)
+	}
+
+	getFirstBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		fmt.Sprintf("/budgets/%d", firstBudgetPayload.ID),
+		token,
+		"",
+	)
+	if getFirstBudgetResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, getFirstBudgetResponse.Code)
+	}
+
+	getSecondBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		fmt.Sprintf("/budgets/%d", secondBudgetPayload.ID),
+		token,
+		"",
+	)
+	if getSecondBudgetResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, getSecondBudgetResponse.Code)
+	}
+
+	firstBudget := decodeJSONResponse[dto.BudgetResponse](t, getFirstBudgetResponse.Body)
+	secondBudget := decodeJSONResponse[dto.BudgetResponse](t, getSecondBudgetResponse.Body)
+	if firstBudget.StatusID != pedidoStatusID {
+		t.Fatalf("expected first budget status id %d, got %d", pedidoStatusID, firstBudget.StatusID)
+	}
+	if secondBudget.StatusID != canceladoStatusID {
+		t.Fatalf("expected second budget status id %d, got %d", canceladoStatusID, secondBudget.StatusID)
+	}
+
+	secondHistoryResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		fmt.Sprintf("/budgets/%d/status-history", secondBudgetPayload.ID),
+		token,
+		"",
+	)
+	if secondHistoryResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, secondHistoryResponse.Code)
+	}
+
+	secondHistoryPayload := decodeJSONResponse[[]dto.BudgetStatusHistoryResponse](t, secondHistoryResponse.Body)
+	if len(secondHistoryPayload) != 1 {
+		t.Fatalf("expected 1 history item for automatic cancellation, got %d", len(secondHistoryPayload))
+	}
+	if secondHistoryPayload[0].Notes != automaticProjectCancellationNote {
+		t.Fatalf("expected automatic cancellation note, got %s", secondHistoryPayload[0].Notes)
+	}
+}
+
+func TestBudgetElectWinnerShouldReplacePreviousWinnerFromSameProject(t *testing.T) {
+	env := newIntegrationTestEnv(t)
+	token := env.createAdminToken(t)
+	seed := env.seedBudgetData(t, uniqueSuffix())
+	statusSuffix := uniqueSuffix()
+	emNegociacaoStatusID := getBudgetStatusIDByName(t, env, "Em Negociacao")
+	pedidoStatusID := insertNamedBudgetStatus(t, env, "PEDIDO", "Pedido "+statusSuffix, true, 2)
+	canceladoStatusID := insertNamedBudgetStatus(t, env, "CANCELADO", "Cancelado "+statusSuffix, true, 3)
+	seed.statusID = emNegociacaoStatusID
 
 	createFirstBudgetResponse := env.doJSONRequest(
 		t,
@@ -434,31 +670,37 @@ func TestBudgetStatusHistoryShouldRejectSecondPedidoFromSameProject(t *testing.T
 	firstBudgetPayload := decodeJSONResponse[createResourceResponse](t, createFirstBudgetResponse.Body)
 	secondBudgetPayload := decodeJSONResponse[createResourceResponse](t, createSecondBudgetResponse.Body)
 
-	firstPedidoResponse := env.doJSONRequest(
+	firstWinnerResponse := env.doJSONRequest(
 		t,
-		http.MethodPatch,
-		fmt.Sprintf("/budgets/%d/status", firstBudgetPayload.ID),
+		http.MethodPost,
+		fmt.Sprintf("/budgets/%d/elect-winner", firstBudgetPayload.ID),
 		token,
-		fmt.Sprintf(`{"status_id":%d,"notes":"Primeiro pedido da obra"}`, pedidoStatusID),
+		`{"notes":"Primeira eleicao do vencedor"}`,
 	)
-	if firstPedidoResponse.Code != http.StatusCreated {
-		t.Fatalf("expected status %d, got %d", http.StatusCreated, firstPedidoResponse.Code)
+	if firstWinnerResponse.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d", http.StatusNoContent, firstWinnerResponse.Code)
 	}
 
-	secondPedidoResponse := env.doJSONRequest(
+	secondWinnerResponse := env.doJSONRequest(
 		t,
-		http.MethodPatch,
-		fmt.Sprintf("/budgets/%d/status", secondBudgetPayload.ID),
+		http.MethodPost,
+		fmt.Sprintf("/budgets/%d/elect-winner", secondBudgetPayload.ID),
 		token,
-		fmt.Sprintf(`{"status_id":%d,"notes":"Tentativa de segundo pedido"}`, pedidoStatusID),
+		`{"notes":"Troca do vencedor da obra"}`,
 	)
-	if secondPedidoResponse.Code != http.StatusConflict {
-		t.Fatalf("expected status %d, got %d", http.StatusConflict, secondPedidoResponse.Code)
+	if secondWinnerResponse.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d", http.StatusNoContent, secondWinnerResponse.Code)
 	}
 
-	errorPayload := decodeJSONResponse[httpresponse.ErrorResponse](t, secondPedidoResponse.Body)
-	if errorPayload.Message != "Ja existe outro orcamento da obra marcado como PEDIDO" {
-		t.Fatalf("expected conflict message, got %s", errorPayload.Message)
+	getFirstBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		fmt.Sprintf("/budgets/%d", firstBudgetPayload.ID),
+		token,
+		"",
+	)
+	if getFirstBudgetResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, getFirstBudgetResponse.Code)
 	}
 
 	getSecondBudgetResponse := env.doJSONRequest(
@@ -472,9 +714,24 @@ func TestBudgetStatusHistoryShouldRejectSecondPedidoFromSameProject(t *testing.T
 		t.Fatalf("expected status %d, got %d", http.StatusOK, getSecondBudgetResponse.Code)
 	}
 
+	firstBudget := decodeJSONResponse[dto.BudgetResponse](t, getFirstBudgetResponse.Body)
 	secondBudget := decodeJSONResponse[dto.BudgetResponse](t, getSecondBudgetResponse.Body)
-	if secondBudget.StatusID != canceladoStatusID {
-		t.Fatalf("expected second budget to remain with status id %d, got %d", canceladoStatusID, secondBudget.StatusID)
+	if firstBudget.StatusID != canceladoStatusID {
+		t.Fatalf("expected first budget status id %d, got %d", canceladoStatusID, firstBudget.StatusID)
+	}
+	if secondBudget.StatusID != pedidoStatusID {
+		t.Fatalf("expected second budget status id %d, got %d", pedidoStatusID, secondBudget.StatusID)
+	}
+
+	firstHistoryResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		fmt.Sprintf("/budgets/%d/status-history", firstBudgetPayload.ID),
+		token,
+		"",
+	)
+	if firstHistoryResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, firstHistoryResponse.Code)
 	}
 
 	secondHistoryResponse := env.doJSONRequest(
@@ -488,9 +745,19 @@ func TestBudgetStatusHistoryShouldRejectSecondPedidoFromSameProject(t *testing.T
 		t.Fatalf("expected status %d, got %d", http.StatusOK, secondHistoryResponse.Code)
 	}
 
+	firstHistoryPayload := decodeJSONResponse[[]dto.BudgetStatusHistoryResponse](t, firstHistoryResponse.Body)
 	secondHistoryPayload := decodeJSONResponse[[]dto.BudgetStatusHistoryResponse](t, secondHistoryResponse.Body)
-	if len(secondHistoryPayload) != 1 {
-		t.Fatalf("expected 1 history item for automatic cancellation, got %d", len(secondHistoryPayload))
+	if len(firstHistoryPayload) < 3 {
+		t.Fatalf("expected at least 3 history items for previous winner, got %d", len(firstHistoryPayload))
+	}
+	if len(secondHistoryPayload) < 2 {
+		t.Fatalf("expected at least 2 history items for new winner, got %d", len(secondHistoryPayload))
+	}
+	if firstHistoryPayload[0].Notes != "Cancelado automaticamente porque outro orcamento da obra foi marcado como PEDIDO" {
+		t.Fatalf("expected latest first budget history note to be automatic cancellation, got %s", firstHistoryPayload[0].Notes)
+	}
+	if secondHistoryPayload[0].ToStatusID != pedidoStatusID {
+		t.Fatalf("expected latest second budget to_status_id %d, got %d", pedidoStatusID, secondHistoryPayload[0].ToStatusID)
 	}
 }
 
@@ -510,4 +777,23 @@ func insertNamedBudgetStatus(t *testing.T, env *integrationTestEnv, code string,
 		now,
 		now,
 	)
+}
+
+func getBudgetStatusIDByName(t *testing.T, env *integrationTestEnv, name string) int64 {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), integrationRequestTimeout)
+	defer cancel()
+
+	var id int64
+	err := env.db.QueryRowContext(
+		ctx,
+		`SELECT id FROM budget_statuses WHERE name = $1 ORDER BY id ASC LIMIT 1`,
+		name,
+	).Scan(&id)
+	if err != nil {
+		t.Fatalf("failed to query budget status %s: %v", name, err)
+	}
+
+	return id
 }

@@ -9,7 +9,9 @@ import {
   CircularProgress,
   MenuItem,
   TextField,
+  Typography,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import { useQuery } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
 import { useEffect, useMemo, useState } from "react";
@@ -25,116 +27,174 @@ import { listProjectsRequest } from "../../projects/api/projects";
 import type { BudgetCreatePayload } from "../types/budget";
 import type { BudgetFormValues } from "./budgetFormValues";
 import { z as schema } from "zod";
+import type { ReactNode } from "react";
+
+const budgetGridBlue = "#1E3A8A";
+const budgetFormSectionCardSx = {
+  background: (theme: {
+    palette: {
+      info: { main: string };
+      primary: { main: string };
+    };
+  }) =>
+    `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.07)} 0%, ${alpha(theme.palette.info.main, 0.035)} 100%)`,
+  border: "1px solid",
+  borderColor: (theme: { palette: { primary: { main: string } } }) =>
+    alpha(theme.palette.primary.main, 0.16),
+  boxShadow: (theme: { palette: { primary: { main: string } } }) =>
+    `0 12px 24px ${alpha(theme.palette.primary.main, 0.07)}`,
+  "& .MuiTypography-h5": {
+    color: budgetGridBlue,
+    fontWeight: 800,
+  },
+  "& .MuiTypography-body2": {
+    color: "text.primary",
+  },
+};
+
+const budgetFieldContainerSx = {
+  display: "grid",
+  gap: 0.75,
+  minWidth: 0,
+};
+
+const budgetFieldLabelSx = {
+  color: budgetGridBlue,
+  fontSize: "0.82rem",
+  fontWeight: 700,
+  lineHeight: 1.2,
+};
+
+type BudgetFieldProps = {
+  children: ReactNode;
+  label: string;
+};
+
+function BudgetField({ children, label }: BudgetFieldProps) {
+  return (
+    <Box sx={budgetFieldContainerSx}>
+      <Typography sx={budgetFieldLabelSx}>{label}</Typography>
+      {children}
+    </Box>
+  );
+}
 
 const budgetFormSchema = schema.object({
   areaM2: schema
     .string()
     .trim()
-    .min(1, "Informe a area em m2")
+    .min(1, "Informe a área em m2")
     .refine(
       (value) => isValidNonNegativeNumber(value),
-      "Informe uma area valida",
+      "Informe uma área válida",
     ),
   budgetNumber: schema
     .string()
     .trim()
-    .min(1, "Informe o numero do orcamento")
-    .max(50, "O numero do orcamento deve ter no maximo 50 caracteres"),
+    .min(1, "Informe o número do orçamento")
+    .max(50, "O número do orçamento deve ter no máximo 50 caracteres"),
   commissionValue: schema
     .string()
     .trim()
-    .min(1, "Informe a comissao")
+    .min(1, "Informe a comissão")
     .refine(
       (value) => isValidNonNegativeNumber(value),
-      "Informe uma comissao valida",
+      "Informe uma comissão válida",
     ),
   competitorName: schema
     .string()
     .trim()
-    .max(150, "O concorrente deve ter no maximo 150 caracteres"),
+    .max(150, "O concorrente deve ter no máximo 150 caracteres"),
   competitorPrice: schema
     .string()
     .trim()
     .refine(
       (value) => isValidOptionalNonNegativeNumber(value),
-      "Informe um preco concorrente valido",
+      "Informe um preço concorrente válido",
     ),
   contactId: schema
     .string()
     .trim()
     .refine(
       (value) => isValidOptionalPositiveInteger(value),
-      "Selecione um contato valido",
+      "Selecione um contato válido",
     ),
   currentFollowUp: schema.string().trim(),
   projetistaName: schema
     .string()
     .trim()
-    .max(150, "O projetista deve ter no maximo 150 caracteres"),
+    .max(150, "O projetista deve ter no máximo 150 caracteres"),
   grossValue: schema
     .string()
     .trim()
     .min(1, "Informe o valor bruto")
     .refine(
       (value) => isValidPositiveNumber(value),
-      "Informe um valor bruto valido",
+      "Informe um valor bruto válido",
     ),
   installerId: schema
     .string()
     .trim()
     .refine(
       (value) => isValidOptionalPositiveInteger(value),
-      "Selecione um instalador valido",
+      "Selecione um instalador válido",
+    ),
+  systemTypeId: schema
+    .string()
+    .trim()
+    .refine(
+      (value) => isValidOptionalPositiveInteger(value),
+      "Selecione um tipo de sistema válido",
     ),
   productLineId: schema
     .string()
     .trim()
     .refine(
       (value) => isValidOptionalPositiveInteger(value),
-      "Selecione uma linha de produtos valida",
+      "Selecione uma linha de produtos válida",
     ),
   lossReasonId: schema
     .string()
     .trim()
     .refine(
       (value) => isValidOptionalPositiveInteger(value),
-      "Selecione um motivo de perda valido",
+      "Selecione um motivo de perda válido",
     ),
   priorityId: schema
     .string()
     .trim()
     .refine(
       (value) => isValidOptionalPositiveInteger(value),
-      "Selecione uma prioridade valida",
+      "Selecione uma prioridade válida",
     ),
   projectId: schema
     .string()
     .trim()
     .refine(
       (value) => isValidOptionalPositiveInteger(value),
-      "Selecione uma obra valida",
+      "Selecione uma obra válida",
     ),
   revision: schema
     .string()
     .trim()
-    .min(1, "Informe a revisao")
+    .min(1, "Informe a revisão")
     .refine(
       (value) => isValidNonNegativeInteger(value),
-      "Informe uma revisao valida",
+      "Informe uma revisão válida",
     ),
   salespersonId: schema
     .string()
     .trim()
     .refine(
       (value) => isValidOptionalPositiveInteger(value),
-      "Selecione um vendedor valido",
+      "Selecione um vendedor válido",
     ),
   estimatorId: schema
     .string()
     .trim()
     .refine(
       (value) => isValidOptionalPositiveInteger(value),
-      "Selecione um orçamentista valido",
+      "Selecione um orçamentista válido",
     ),
   sentAt: schema
     .string()
@@ -142,7 +202,7 @@ const budgetFormSchema = schema.object({
     .min(1, "Informe a data de envio")
     .refine(
       (value) => isValidDateTime(value),
-      "Informe uma data de envio valida",
+      "Informe uma data de envio válida",
     ),
   specificationDetails: schema.string().trim(),
   statusId: schema
@@ -151,13 +211,13 @@ const budgetFormSchema = schema.object({
     .min(1, "Selecione o status")
     .refine(
       (value) => isValidPositiveInteger(value),
-      "Selecione um status valido",
+      "Selecione um status válido",
     ),
   yearBudget: schema
     .string()
     .trim()
     .min(1, "Informe o ano")
-    .refine((value) => isValidPositiveInteger(value), "Informe um ano valido"),
+    .refine((value) => isValidPositiveInteger(value), "Informe um ano válido"),
 });
 
 type BudgetFormProps = {
@@ -261,14 +321,14 @@ function getBudgetSubmitErrorMessage(mode: "create" | "edit", error: unknown) {
     return (
       error.response?.data?.message ??
       (mode === "create"
-        ? "Nao foi possivel cadastrar o orcamento."
-        : "Nao foi possivel atualizar o orcamento.")
+        ? "Não foi possível cadastrar o orçamento."
+        : "Não foi possível atualizar o orçamento.")
     );
   }
 
   return mode === "create"
-    ? "Nao foi possivel cadastrar o orcamento."
-    : "Nao foi possivel atualizar o orcamento.";
+    ? "Não foi possível cadastrar o orçamento."
+    : "Não foi possível atualizar o orçamento.";
 }
 
 function mapFormValuesToPayload(values: BudgetFormValues): BudgetCreatePayload {
@@ -286,6 +346,7 @@ function mapFormValuesToPayload(values: BudgetFormValues): BudgetCreatePayload {
     lossReasonId: parseOptionalInteger(values.lossReasonId),
     priorityId: parseOptionalInteger(values.priorityId),
     productLineId: parseOptionalInteger(values.productLineId),
+    systemTypeId: parseOptionalInteger(values.systemTypeId),
     projectId: parseOptionalInteger(values.projectId),
     revision: parseInteger(values.revision),
     salespersonId: parseOptionalInteger(values.salespersonId),
@@ -400,22 +461,48 @@ export function BudgetForm({
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
-      <PageHeader
-        action={
-          <Button
-            onClick={onCancel}
-            startIcon={<ArrowBackRoundedIcon />}
-            variant="outlined"
-          >
-            {backLabel}
-          </Button>
-        }
-        description={subtitle}
-        title={title}
-      />
+      <Box
+        sx={{
+          background: (theme) =>
+            `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.08)} 0%, ${alpha(theme.palette.info.main, 0.04)} 100%)`,
+          border: "1px solid",
+          borderColor: (theme) => alpha(theme.palette.primary.main, 0.18),
+          borderRadius: 4,
+          boxShadow: (theme) =>
+            `0 14px 28px ${alpha(theme.palette.primary.main, 0.08)}`,
+          p: { md: 3, xs: 2.5 },
+          "& .MuiTypography-h3": {
+            color: budgetGridBlue,
+            fontWeight: 800,
+          },
+          "& .MuiTypography-body1": {
+            color: "text.primary",
+            lineHeight: 1.7,
+          },
+        }}
+      >
+        <PageHeader
+          action={
+            <Button
+              onClick={onCancel}
+              startIcon={<ArrowBackRoundedIcon />}
+              sx={{
+                borderColor: (theme) => alpha(theme.palette.primary.main, 0.28),
+                color: budgetGridBlue,
+                fontWeight: 700,
+              }}
+              variant="outlined"
+            >
+              {backLabel}
+            </Button>
+          }
+          description={subtitle}
+          title={title}
+        />
+      </Box>
 
       {isInitialDataLoading ? (
-        <SectionCard>
+        <SectionCard sx={budgetFormSectionCardSx}>
           <Box
             sx={{
               alignItems: "center",
@@ -436,19 +523,47 @@ export function BudgetForm({
           sx={{ display: "flex", flexDirection: "column", gap: 3 }}
         >
           {initialDataError ? (
-            <Alert severity="error">{initialDataError}</Alert>
-          ) : null}
-
-          {budgetCatalogsQuery.isError ? (
-            <Alert severity="error">
-              Nao foi possivel carregar os catalogos necessarios para o
-              formulario.
+            <Alert
+              severity="error"
+              sx={{
+                "& .MuiAlert-message": {
+                  fontWeight: 600,
+                },
+              }}
+            >
+              {initialDataError}
             </Alert>
           ) : null}
 
-          {submitError ? <Alert severity="error">{submitError}</Alert> : null}
+          {budgetCatalogsQuery.isError ? (
+            <Alert
+              severity="error"
+              sx={{
+                "& .MuiAlert-message": {
+                  fontWeight: 600,
+                },
+              }}
+            >
+              Não foi possível carregar os catálogos necessários para o
+              formulário.
+            </Alert>
+          ) : null}
+
+          {submitError ? (
+            <Alert
+              severity="error"
+              sx={{
+                "& .MuiAlert-message": {
+                  fontWeight: 600,
+                },
+              }}
+            >
+              {submitError}
+            </Alert>
+          ) : null}
           <SectionCard
-            description="Campos principais para identificacao e envio do orcamento."
+            description="Campos principais para identificação e envio do orçamento."
+            sx={budgetFormSectionCardSx}
             title="Dados principais"
           >
             <Box
@@ -462,55 +577,77 @@ export function BudgetForm({
                 },
               }}
             >
-              <TextField
-                error={Boolean(errors.budgetNumber)}
-                helperText={errors.budgetNumber?.message}
-                label="Numero do orcamento"
-                placeholder="Ex: BGT-2026-004"
-                {...register("budgetNumber")}
-              />
-              <TextField
-                error={Boolean(errors.yearBudget)}
-                helperText={errors.yearBudget?.message}
-                label="Ano"
-                type="number"
-                {...register("yearBudget")}
-              />
-              <TextField
-                error={Boolean(errors.revision)}
-                helperText={errors.revision?.message}
-                label="Revisao"
-                type="number"
-                {...register("revision")}
-              />
-              <TextField
-                error={Boolean(errors.sentAt)}
-                helperText={errors.sentAt?.message}
-                label="Data de envio"
-                slotProps={{ inputLabel: { shrink: true } }}
-                type="datetime-local"
-                {...register("sentAt")}
-              />
-              <TextField
-                error={Boolean(errors.statusId)}
-                helperText={errors.statusId?.message}
-                label="Status"
-                select
-                {...register("statusId")}
-              >
-                <MenuItem value="">Selecione</MenuItem>
-                {(budgetCatalogsQuery.data?.statuses ?? []).map((status) => (
-                  <MenuItem key={status.id} value={String(status.id)}>
-                    {status.name}
-                  </MenuItem>
-                ))}
-              </TextField>
+              <BudgetField label="Número do orçamento">
+                <TextField
+                  error={Boolean(errors.budgetNumber)}
+                  helperText={
+                    errors.budgetNumber?.message ??
+                    (mode === "edit" ? "Campo protegido na edição." : undefined)
+                  }
+                  placeholder="Ex: BGT-2026-004"
+                  slotProps={{
+                    input: {
+                      readOnly: mode === "edit",
+                    },
+                  }}
+                  {...register("budgetNumber")}
+                />
+              </BudgetField>
+              <BudgetField label="Ano">
+                <TextField
+                  error={Boolean(errors.yearBudget)}
+                  helperText={errors.yearBudget?.message}
+                  type="number"
+                  {...register("yearBudget")}
+                />
+              </BudgetField>
+              <BudgetField label="Revisão">
+                <TextField
+                  error={Boolean(errors.revision)}
+                  helperText={errors.revision?.message}
+                  type="number"
+                  {...register("revision")}
+                />
+              </BudgetField>
+              <BudgetField label="Data de envio">
+                <TextField
+                  error={Boolean(errors.sentAt)}
+                  helperText={errors.sentAt?.message}
+                  type="datetime-local"
+                  {...register("sentAt")}
+                />
+              </BudgetField>
+              <BudgetField label="Status">
+                <Controller
+                  control={control}
+                  name="statusId"
+                  render={({ field }) => (
+                    <TextField
+                      error={Boolean(errors.statusId)}
+                      helperText={errors.statusId?.message}
+                      select
+                      {...field}
+                      value={field.value ?? ""}
+                    >
+                      <MenuItem value="">Selecione</MenuItem>
+                      {(budgetCatalogsQuery.data?.statuses ?? []).map(
+                        (status) => (
+                          <MenuItem key={status.id} value={String(status.id)}>
+                            {status.name}
+                          </MenuItem>
+                        ),
+                      )}
+                    </TextField>
+                  )}
+                />
+              </BudgetField>
             </Box>
           </SectionCard>
 
           <SectionCard
-            description="Valores, area e dados comerciais do orcamento."
-            title="Informacoes comerciais"
+            description="Valores, área e dados comerciais do orçamento."
+            sx={budgetFormSectionCardSx}
+            title="Informações comerciais"
           >
             <Box
               sx={{
@@ -523,59 +660,66 @@ export function BudgetForm({
                 },
               }}
             >
-              <TextField
-                error={Boolean(errors.grossValue)}
-                helperText={errors.grossValue?.message}
-                label="Valor bruto"
-                slotProps={{ htmlInput: { inputMode: "decimal" } }}
-                placeholder="0,00"
-                type="text"
-                {...register("grossValue")}
-              />
-              <TextField
-                error={Boolean(errors.commissionValue)}
-                helperText={errors.commissionValue?.message}
-                label="Comissao"
-                slotProps={{ htmlInput: { inputMode: "decimal" } }}
-                placeholder="0,00"
-                type="text"
-                {...register("commissionValue")}
-              />
-              <TextField
-                error={Boolean(errors.areaM2)}
-                helperText={errors.areaM2?.message}
-                label="Area m2"
-                slotProps={{ htmlInput: { inputMode: "decimal" } }}
-                placeholder="0,00"
-                type="text"
-                {...register("areaM2")}
-              />
-              <TextField
-                error={Boolean(errors.projetistaName)}
-                helperText={errors.projetistaName?.message}
-                label="Projetista"
-                {...register("projetistaName")}
-              />
-              <TextField
-                error={Boolean(errors.competitorName)}
-                helperText={errors.competitorName?.message}
-                label="Concorrente"
-                {...register("competitorName")}
-              />
-              <TextField
-                error={Boolean(errors.competitorPrice)}
-                helperText={errors.competitorPrice?.message}
-                label="Preco concorrente"
-                slotProps={{ htmlInput: { inputMode: "decimal" } }}
-                placeholder="0,00"
-                type="text"
-                {...register("competitorPrice")}
-              />
+              <BudgetField label="Valor bruto">
+                <TextField
+                  error={Boolean(errors.grossValue)}
+                  helperText={errors.grossValue?.message}
+                  slotProps={{ htmlInput: { inputMode: "decimal" } }}
+                  placeholder="0,00"
+                  type="text"
+                  {...register("grossValue")}
+                />
+              </BudgetField>
+              <BudgetField label="Comissão">
+                <TextField
+                  error={Boolean(errors.commissionValue)}
+                  helperText={errors.commissionValue?.message}
+                  slotProps={{ htmlInput: { inputMode: "decimal" } }}
+                  placeholder="0,00"
+                  type="text"
+                  {...register("commissionValue")}
+                />
+              </BudgetField>
+              <BudgetField label="Área m2">
+                <TextField
+                  error={Boolean(errors.areaM2)}
+                  helperText={errors.areaM2?.message}
+                  slotProps={{ htmlInput: { inputMode: "decimal" } }}
+                  placeholder="0,00"
+                  type="text"
+                  {...register("areaM2")}
+                />
+              </BudgetField>
+              <BudgetField label="Projetista">
+                <TextField
+                  error={Boolean(errors.projetistaName)}
+                  helperText={errors.projetistaName?.message}
+                  {...register("projetistaName")}
+                />
+              </BudgetField>
+              <BudgetField label="Concorrente">
+                <TextField
+                  error={Boolean(errors.competitorName)}
+                  helperText={errors.competitorName?.message}
+                  {...register("competitorName")}
+                />
+              </BudgetField>
+              <BudgetField label="Preço concorrente">
+                <TextField
+                  error={Boolean(errors.competitorPrice)}
+                  helperText={errors.competitorPrice?.message}
+                  slotProps={{ htmlInput: { inputMode: "decimal" } }}
+                  placeholder="0,00"
+                  type="text"
+                  {...register("competitorPrice")}
+                />
+              </BudgetField>
             </Box>
           </SectionCard>
 
           <SectionCard
-            description="Vincule o orcamento aos cadastros auxiliares disponiveis."
+            description="Vincule o orçamento aos cadastros auxiliares disponíveis."
+            sx={budgetFormSectionCardSx}
             title="Relacionamentos"
           >
             <Box
@@ -589,194 +733,231 @@ export function BudgetForm({
                 },
               }}
             >
-              <TextField
-                error={Boolean(errors.priorityId)}
-                helperText={errors.priorityId?.message}
-                label="Prioridade"
-                select
-                {...register("priorityId")}
-              >
-                <MenuItem value="">Nao informar</MenuItem>
-                {(budgetCatalogsQuery.data?.priorities ?? []).map(
-                  (priority) => (
-                    <MenuItem key={priority.id} value={String(priority.id)}>
-                      {priority.name}
-                    </MenuItem>
-                  ),
-                )}
-              </TextField>
-              <TextField
-                error={Boolean(errors.installerId)}
-                helperText={errors.installerId?.message}
-                label="Instalador"
-                select
-                {...register("installerId")}
-              >
-                <MenuItem value="">Nao informar</MenuItem>
-                {(budgetCatalogsQuery.data?.installers ?? []).map(
-                  (installer) => (
-                    <MenuItem key={installer.id} value={String(installer.id)}>
-                      {installer.name}
-                    </MenuItem>
-                  ),
-                )}
-              </TextField>
-              <TextField
-                error={Boolean(errors.productLineId)}
-                helperText={errors.productLineId?.message}
-                label="Linha de produtos"
-                select
-                {...register("productLineId")}
-              >
-                <MenuItem value="">Nao informar</MenuItem>
-                {(budgetCatalogsQuery.data?.productLines ?? []).map(
-                  (productLine) => (
-                    <MenuItem
-                      key={productLine.id}
-                      value={String(productLine.id)}
-                    >
-                      {productLine.name}
-                    </MenuItem>
-                  ),
-                )}
-              </TextField>
-              <Controller
-                control={control}
-                name="projectId"
-                render={({ field }) => {
-                  const selectedProject =
-                    projectOptions.find(
-                      (project) => String(project.id) === field.value,
-                    ) ?? null;
-
-                  return (
-                    <Autocomplete<ProjectOption, false, false, false>
-                      disabled={lockedProjectId !== null}
-                      getOptionLabel={(option) => option.name}
-                      isOptionEqualToValue={(option, value) =>
-                        option.id === value.id
-                      }
-                      loading={projectsQuery.isLoading}
-                      noOptionsText="Nenhuma obra encontrada"
-                      onChange={(_, selectedOption) => {
-                        field.onChange(
-                          selectedOption === null
-                            ? ""
-                            : String(selectedOption.id),
-                        );
-                      }}
-                      options={projectOptions}
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          error={Boolean(errors.projectId)}
-                          helperText={
-                            errors.projectId?.message ??
-                            (lockedProjectId !== null
-                              ? `Obra predefinida neste fluxo: ${lockedProjectLabel ?? `#${lockedProjectId}`}.`
-                              : "Digite para filtrar as obras.")
-                          }
-                          label="Obra"
-                        />
-                      )}
-                      value={selectedProject}
-                    />
-                  );
-                }}
-              />
-              {canManageBudgetAssignments ? (
+              <BudgetField label="Prioridade">
                 <TextField
-                  error={Boolean(errors.salespersonId)}
-                  helperText={errors.salespersonId?.message}
-                  label="Vendedor"
+                  error={Boolean(errors.priorityId)}
+                  helperText={errors.priorityId?.message}
                   select
-                  {...register("salespersonId")}
+                  {...register("priorityId")}
                 >
-                  <MenuItem value="">Nao informar</MenuItem>
-                  {(budgetCatalogsQuery.data?.salespeople ?? []).map(
-                    (salesperson) => (
+                  <MenuItem value="">Não informar</MenuItem>
+                  {(budgetCatalogsQuery.data?.priorities ?? []).map(
+                    (priority) => (
+                      <MenuItem key={priority.id} value={String(priority.id)}>
+                        {priority.name}
+                      </MenuItem>
+                    ),
+                  )}
+                </TextField>
+              </BudgetField>
+              <BudgetField label="Instalador">
+                <TextField
+                  error={Boolean(errors.installerId)}
+                  helperText={errors.installerId?.message}
+                  select
+                  {...register("installerId")}
+                >
+                  <MenuItem value="">Não informar</MenuItem>
+                  {(budgetCatalogsQuery.data?.installers ?? []).map(
+                    (installer) => (
+                      <MenuItem key={installer.id} value={String(installer.id)}>
+                        {installer.name}
+                      </MenuItem>
+                    ),
+                  )}
+                </TextField>
+              </BudgetField>
+              <BudgetField label="Linha de produtos">
+                <TextField
+                  error={Boolean(errors.productLineId)}
+                  helperText={errors.productLineId?.message}
+                  select
+                  {...register("productLineId")}
+                >
+                  <MenuItem value="">Não informar</MenuItem>
+                  {(budgetCatalogsQuery.data?.productLines ?? []).map(
+                    (productLine) => (
                       <MenuItem
-                        key={salesperson.id}
-                        value={String(salesperson.id)}
+                        key={productLine.id}
+                        value={String(productLine.id)}
                       >
-                        {salesperson.name}
+                        {productLine.name}
                       </MenuItem>
                     ),
                   )}
                 </TextField>
+              </BudgetField>
+              <BudgetField label="Tipo de Sistema">
+                <TextField
+                  error={Boolean(errors.systemTypeId)}
+                  helperText={errors.systemTypeId?.message}
+                  select
+                  {...register("systemTypeId")}
+                >
+                  <MenuItem value="">Não informar</MenuItem>
+                  {(budgetCatalogsQuery.data?.systemTypes ?? []).map(
+                    (systemType) => (
+                      <MenuItem
+                        key={systemType.id}
+                        value={String(systemType.id)}
+                      >
+                        {systemType.name}
+                      </MenuItem>
+                    ),
+                  )}
+                </TextField>
+              </BudgetField>
+              <BudgetField label="Obra">
+                <Controller
+                  control={control}
+                  name="projectId"
+                  render={({ field }) => {
+                    const selectedProject =
+                      projectOptions.find(
+                        (project) => String(project.id) === field.value,
+                      ) ?? null;
+
+                    return (
+                      <Autocomplete<ProjectOption, false, false, false>
+                        disabled={lockedProjectId !== null}
+                        getOptionLabel={(option) => option.name}
+                        isOptionEqualToValue={(option, value) =>
+                          option.id === value.id
+                        }
+                        loading={projectsQuery.isLoading}
+                        noOptionsText="Nenhuma obra encontrada"
+                        onChange={(_, selectedOption) => {
+                          field.onChange(
+                            selectedOption === null
+                              ? ""
+                              : String(selectedOption.id),
+                          );
+                        }}
+                        options={projectOptions}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            error={Boolean(errors.projectId)}
+                            helperText={
+                              errors.projectId?.message ??
+                              (lockedProjectId !== null
+                                ? `Obra predefinida neste fluxo: ${lockedProjectLabel ?? `#${lockedProjectId}`}.`
+                                : "Digite para filtrar as obras.")
+                            }
+                          />
+                        )}
+                        value={selectedProject}
+                      />
+                    );
+                  }}
+                />
+              </BudgetField>
+              {canManageBudgetAssignments ? (
+                <BudgetField label="Vendedor">
+                  <TextField
+                    error={Boolean(errors.salespersonId)}
+                    helperText={errors.salespersonId?.message}
+                    select
+                    {...register("salespersonId")}
+                  >
+                    <MenuItem value="">Não informar</MenuItem>
+                    {(budgetCatalogsQuery.data?.salespeople ?? []).map(
+                      (salesperson) => (
+                        <MenuItem
+                          key={salesperson.id}
+                          value={String(salesperson.id)}
+                        >
+                          {salesperson.name}
+                        </MenuItem>
+                      ),
+                    )}
+                  </TextField>
+                </BudgetField>
               ) : null}
               {canManageBudgetAssignments ? (
+                <BudgetField label="Orçamentista">
+                  <TextField
+                    error={Boolean(errors.estimatorId)}
+                    helperText={errors.estimatorId?.message}
+                    select
+                    {...register("estimatorId")}
+                  >
+                    <MenuItem value="">Não informar</MenuItem>
+                    {(budgetCatalogsQuery.data?.estimators ?? []).map(
+                      (estimator) => (
+                        <MenuItem
+                          key={estimator.id}
+                          value={String(estimator.id)}
+                        >
+                          {estimator.name}
+                        </MenuItem>
+                      ),
+                    )}
+                  </TextField>
+                </BudgetField>
+              ) : null}
+              <BudgetField label="Contato">
                 <TextField
-                  error={Boolean(errors.estimatorId)}
-                  helperText={errors.estimatorId?.message}
-                  label="Orçamentista"
+                  error={Boolean(errors.contactId)}
+                  helperText={errors.contactId?.message}
                   select
-                  {...register("estimatorId")}
+                  {...register("contactId")}
                 >
-                  <MenuItem value="">Nao informar</MenuItem>
-                  {(budgetCatalogsQuery.data?.estimators ?? []).map(
-                    (estimator) => (
-                      <MenuItem key={estimator.id} value={String(estimator.id)}>
-                        {estimator.name}
+                  <MenuItem value="">Não informar</MenuItem>
+                  {(budgetCatalogsQuery.data?.contacts ?? []).map((contact) => (
+                    <MenuItem key={contact.id} value={String(contact.id)}>
+                      {contact.name}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </BudgetField>
+              <BudgetField label="Motivo de perda">
+                <TextField
+                  error={Boolean(errors.lossReasonId)}
+                  helperText={errors.lossReasonId?.message}
+                  select
+                  {...register("lossReasonId")}
+                >
+                  <MenuItem value="">Não informar</MenuItem>
+                  {(budgetCatalogsQuery.data?.lossReasons ?? []).map(
+                    (lossReason) => (
+                      <MenuItem
+                        key={lossReason.id}
+                        value={String(lossReason.id)}
+                      >
+                        {lossReason.name}
                       </MenuItem>
                     ),
                   )}
                 </TextField>
-              ) : null}
-              <TextField
-                error={Boolean(errors.contactId)}
-                helperText={errors.contactId?.message}
-                label="Contato"
-                select
-                {...register("contactId")}
-              >
-                <MenuItem value="">Nao informar</MenuItem>
-                {(budgetCatalogsQuery.data?.contacts ?? []).map((contact) => (
-                  <MenuItem key={contact.id} value={String(contact.id)}>
-                    {contact.name}
-                  </MenuItem>
-                ))}
-              </TextField>
-              <TextField
-                error={Boolean(errors.lossReasonId)}
-                helperText={errors.lossReasonId?.message}
-                label="Motivo de perda"
-                select
-                {...register("lossReasonId")}
-              >
-                <MenuItem value="">Nao informar</MenuItem>
-                {(budgetCatalogsQuery.data?.lossReasons ?? []).map(
-                  (lossReason) => (
-                    <MenuItem key={lossReason.id} value={String(lossReason.id)}>
-                      {lossReason.name}
-                    </MenuItem>
-                  ),
-                )}
-              </TextField>
+              </BudgetField>
             </Box>
           </SectionCard>
 
           <SectionCard
-            description="Descreva detalhes tecnicos e o acompanhamento atual do orcamento."
+            description="Descreva detalhes técnicos e o acompanhamento atual do orçamento."
+            sx={budgetFormSectionCardSx}
             title="Detalhes"
           >
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <TextField
-                error={Boolean(errors.specificationDetails)}
-                helperText={errors.specificationDetails?.message}
-                label="Especificacoes"
-                minRows={4}
-                multiline
-                {...register("specificationDetails")}
-              />
-              <TextField
-                error={Boolean(errors.currentFollowUp)}
-                helperText={errors.currentFollowUp?.message}
-                label="Follow-up atual"
-                minRows={4}
-                multiline
-                {...register("currentFollowUp")}
-              />
+              <BudgetField label="Especificações">
+                <TextField
+                  error={Boolean(errors.specificationDetails)}
+                  helperText={errors.specificationDetails?.message}
+                  minRows={4}
+                  multiline
+                  {...register("specificationDetails")}
+                />
+              </BudgetField>
+              <BudgetField label="Follow-up atual">
+                <TextField
+                  error={Boolean(errors.currentFollowUp)}
+                  helperText={errors.currentFollowUp?.message}
+                  minRows={4}
+                  multiline
+                  {...register("currentFollowUp")}
+                />
+              </BudgetField>
             </Box>
           </SectionCard>
 
@@ -791,6 +972,11 @@ export function BudgetForm({
             <Button
               disabled={isSubmitting}
               onClick={onCancel}
+              sx={{
+                borderColor: (theme) => alpha(theme.palette.primary.main, 0.28),
+                color: budgetGridBlue,
+                fontWeight: 700,
+              }}
               variant="outlined"
             >
               Cancelar
@@ -802,6 +988,11 @@ export function BudgetForm({
                 initialDataError !== null
               }
               startIcon={<SaveRoundedIcon />}
+              sx={{
+                boxShadow: (theme) =>
+                  `0 12px 24px ${alpha(theme.palette.primary.main, 0.22)}`,
+                fontWeight: 700,
+              }}
               type="submit"
               variant="contained"
             >

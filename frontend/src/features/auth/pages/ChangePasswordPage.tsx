@@ -29,7 +29,7 @@ const changePasswordSchema = z
     newPasswordConfirm: z.string().min(8, "Confirme a nova senha"),
   })
   .refine((values) => values.newPassword === values.newPasswordConfirm, {
-    message: "A confirmacao deve ser igual a nova senha",
+    message: "A confirmação deve ser igual à nova senha",
     path: ["newPasswordConfirm"],
   })
   .refine((values) => values.currentPassword !== values.newPassword, {
@@ -42,11 +42,11 @@ type ChangePasswordFormValues = z.infer<typeof changePasswordSchema>;
 function getChangePasswordErrorMessage(error: unknown) {
   if (isAxiosError<{ message?: string }>(error)) {
     return (
-      error.response?.data?.message ?? "Nao foi possivel atualizar a sua senha."
+      error.response?.data?.message ?? "Não foi possível atualizar a sua senha."
     );
   }
 
-  return "Nao foi possivel atualizar a sua senha.";
+  return "Não foi possível atualizar a sua senha.";
 }
 
 export function ChangePasswordPage() {
@@ -138,7 +138,7 @@ export function ChangePasswordPage() {
               variant="outlined"
             >
               {isFirstAccess
-                ? "Este e o seu primeiro acesso. Antes de entrar no painel, voce precisa definir uma nova senha."
+                ? "Este é o seu primeiro acesso. Antes de entrar no painel, você precisa definir uma nova senha."
                 : "Informe a senha atual e escolha uma nova senha para o seu acesso."}
             </Alert>
             <Alert severity="info" variant="outlined">

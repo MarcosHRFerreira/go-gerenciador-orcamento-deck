@@ -31,6 +31,7 @@ type catalogRuntime struct {
 	installers   map[string]int64
 	productLines map[string]int64
 	projects     map[string]int64
+	projectCodes map[string]int64
 	projectTypes map[string]int64
 	salespeople  map[string]int64
 	contacts     map[string]int64
@@ -815,6 +816,7 @@ func (s *service) loadCatalogRuntime(ctx context.Context) (*catalogRuntime, erro
 		installers:   make(map[string]int64, len(installers)),
 		productLines: make(map[string]int64, len(productLines)),
 		projects:     make(map[string]int64, len(projects)),
+		projectCodes: make(map[string]int64, len(projects)),
 		projectTypes: make(map[string]int64, len(projectTypes)),
 		salespeople:  make(map[string]int64, len(salespeople)),
 		contacts:     make(map[string]int64, len(contacts)),
@@ -835,6 +837,10 @@ func (s *service) loadCatalogRuntime(ctx context.Context) (*catalogRuntime, erro
 	}
 	for _, item := range projects {
 		runtime.projects[normalizeLookupKey(item.Name)] = item.ID
+		codeKey := normalizeLookupKey(item.Code)
+		if codeKey != "" {
+			runtime.projectCodes[codeKey] = item.ID
+		}
 	}
 	for _, item := range projectTypes {
 		runtime.projectTypes[normalizeLookupKey(item.Name)] = item.ID
@@ -1038,6 +1044,13 @@ func (s *service) ensureInstallerID(ctx context.Context, catalogs *catalogRuntim
 
 func (s *service) ensureProjectID(ctx context.Context, catalogs *catalogRuntime, name string, projectTypeID int64, options dto.PreviewBudgetImportOptions) (int64, int, error) {
 	name = normalizeDisplayText(name)
+	projectCodeKey := normalizeLookupKey(extractProjectCodeFromImportField(name))
+	if projectCodeKey != "" {
+		if id, ok := catalogs.projectCodes[projectCodeKey]; ok {
+			return id, 0, nil
+		}
+	}
+
 	key := normalizeLookupKey(name)
 	if id, ok := catalogs.projects[key]; ok {
 		return id, 0, nil
@@ -1070,6 +1083,7 @@ func (s *service) ensureProjectID(ctx context.Context, catalogs *catalogRuntime,
 	}
 
 	catalogs.projects[key] = id
+	catalogs.projectCodes[normalizeLookupKey(code)] = id
 	return id, 1, nil
 }
 

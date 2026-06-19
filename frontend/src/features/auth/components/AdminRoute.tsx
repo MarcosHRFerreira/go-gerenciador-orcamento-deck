@@ -19,7 +19,7 @@ export function AdminRoute() {
     return (
       <Box sx={{ p: { md: 3, xs: 2 } }}>
         <Alert severity="error">
-          Voce nao possui permissao para acessar esta area administrativa.
+          Você não possui permissão para acessar esta área administrativa.
         </Alert>
       </Box>
     );

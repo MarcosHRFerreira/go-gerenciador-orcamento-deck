@@ -180,6 +180,7 @@ type catalogIndex struct {
 	installers               map[string]struct{}
 	productLines             map[string]struct{}
 	projects                 map[string]struct{}
+	projectCodes             map[string]struct{}
 	projectTypes             map[string]struct{}
 	salespeople              map[string]struct{}
 	contacts                 map[string]struct{}
@@ -556,10 +557,11 @@ func (s *service) buildRowPreview(
 
 	_ = projectTypeName
 
-	projectName, projectHasWarning, projectHasError := resolveCatalogName(
+	projectName, projectHasWarning, projectHasError := resolveProjectCatalogName(
 		normalizedRow.projectName,
 		"Obra",
 		catalogs.projects,
+		catalogs.projectCodes,
 		catalogs.defaultProjectExists,
 		options,
 		missingProjects,
@@ -736,6 +738,7 @@ func (s *service) loadCatalogIndex(ctx context.Context) (*catalogIndex, error) {
 		installers:        make(map[string]struct{}, len(installers)),
 		productLines:      make(map[string]struct{}, len(productLines)),
 		projects:          make(map[string]struct{}, len(projects)),
+		projectCodes:      make(map[string]struct{}, len(projects)),
 		projectTypes:      make(map[string]struct{}, len(projectTypes)),
 		salespeople:       make(map[string]struct{}, len(salespeople)),
 		contacts:          make(map[string]struct{}, len(contacts)),
@@ -772,6 +775,10 @@ func (s *service) loadCatalogIndex(ctx context.Context) (*catalogIndex, error) {
 	for _, item := range projects {
 		key := normalizeLookupKey(item.Name)
 		index.projects[key] = struct{}{}
+		codeKey := normalizeLookupKey(item.Code)
+		if codeKey != "" {
+			index.projectCodes[codeKey] = struct{}{}
+		}
 		if key == normalizeLookupKey(notInformedName) {
 			index.defaultProjectExists = true
 		}
@@ -1081,13 +1088,24 @@ func parseOptionalNumber(raw string, required bool) (float64, error) {
 		return 0, nil
 	}
 
-	normalized := strings.ReplaceAll(strings.TrimSpace(raw), ",", ".")
+	normalized := normalizeImportedNumber(raw)
 	value, err := strconv.ParseFloat(normalized, 64)
 	if err != nil {
 		return 0, err
 	}
 
 	return value, nil
+}
+
+func normalizeImportedNumber(raw string) string {
+	normalized := strings.TrimSpace(raw)
+	if strings.Contains(normalized, ".") && strings.Contains(normalized, ",") {
+		normalized = strings.ReplaceAll(normalized, ".", "")
+		normalized = strings.ReplaceAll(normalized, ",", ".")
+		return normalized
+	}
+
+	return strings.ReplaceAll(normalized, ",", ".")
 }
 
 func extractRevision(raw string) int {
@@ -1249,6 +1267,35 @@ func resolveCatalogName(
 	return "", false, true
 }
 
+func resolveProjectCatalogName(
+	raw string,
+	label string,
+	existingByName map[string]struct{},
+	existingByCode map[string]struct{},
+	defaultExists bool,
+	options dto.PreviewBudgetImportOptions,
+	missing map[string]struct{},
+	messages *[]string,
+) (string, bool, bool) {
+	projectCode := extractProjectCodeFromImportField(raw)
+	if projectCode != "" {
+		projectCodeKey := normalizeLookupKey(projectCode)
+		if _, ok := existingByCode[projectCodeKey]; ok {
+			return projectCodeKey, false, false
+		}
+	}
+
+	return resolveCatalogName(
+		raw,
+		label,
+		existingByName,
+		defaultExists,
+		options,
+		missing,
+		messages,
+	)
+}
+
 func resolveContactName(
 	raw string,
 	installerName string,
@@ -1288,6 +1335,35 @@ func resolveContactName(
 
 	*messages = append(*messages, fmt.Sprintf("Contato nao encontrado: %s.", name))
 	return "", false, true
+}
+
+func extractProjectCodeFromImportField(raw string) string {
+	normalized := strings.ToUpper(normalizeCellText(raw))
+	if len(normalized) < len("OBR-000000") {
+		return ""
+	}
+
+	candidate := normalized[:len("OBR-000000")]
+	if !strings.HasPrefix(candidate, "OBR-") {
+		return ""
+	}
+
+	for _, char := range candidate[len("OBR-"):] {
+		if char < '0' || char > '9' {
+			return ""
+		}
+	}
+
+	if len(normalized) == len(candidate) {
+		return candidate
+	}
+
+	switch normalized[len(candidate)] {
+	case '-', ' ', '/', '(':
+		return candidate
+	default:
+		return ""
+	}
 }
 
 func resolveSalespersonName(

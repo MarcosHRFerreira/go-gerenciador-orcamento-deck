@@ -24,6 +24,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  compactFilterFieldSx,
+  FilterField,
+  filterGroupSx,
+  filterGroupTitleSx,
+  filterSectionCardSx,
+} from "../../../components/common/FilterField";
 import { PageHeader } from "../../../components/common/PageHeader";
 import { SectionCard } from "../../../components/common/SectionCard";
 import {
@@ -39,10 +46,10 @@ const dateTimeFormatter = new Intl.DateTimeFormat("pt-BR", {
 });
 
 const tableHeadCellSx = {
-  backgroundColor: "rgba(37, 99, 235, 0.08)",
-  borderBottomColor: "primary.main",
+  background: "linear-gradient(180deg, #1E3A8A 0%, #1D4ED8 100%)",
+  borderBottomColor: "#1E40AF",
   borderBottomWidth: 2,
-  color: "text.primary",
+  color: "common.white",
   fontSize: "0.75rem",
   fontWeight: 700,
   letterSpacing: "0.04em",
@@ -111,7 +118,7 @@ export default function ProjectListPage() {
     onError: (error) => {
       setFeedbackMessage(null);
       setFeedbackError(
-        getMutationErrorMessage(error, "Nao foi possivel remover a obra."),
+        getMutationErrorMessage(error, "Não foi possível remover a obra."),
       );
     },
   });
@@ -155,26 +162,34 @@ export default function ProjectListPage() {
             Nova obra
           </Button>
         }
-        description="Consulte, cadastre e mantenha o catalogo de obras usado nos orcamentos."
+        description="Consulte, cadastre e mantenha o catálogo de obras usado nos orçamentos."
         title="Obras"
       />
 
       <SectionCard
-        description="Busque pelo codigo ou pela descricao da obra."
+        description="Busque pelo código ou pela descrição da obra."
+        sx={filterSectionCardSx}
         title="Consulta"
       >
-        <TextField
-          fullWidth
-          label="Buscar obra"
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Ex: OBR-000001 ou Centro Empresarial"
-          size="small"
-          value={search}
-        />
+        <Box sx={filterGroupSx}>
+          <Typography sx={filterGroupTitleSx} variant="subtitle2">
+            Identificação
+          </Typography>
+          <FilterField label="Buscar obra">
+            <TextField
+              fullWidth
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Ex: OBR-000001 ou Centro Empresarial"
+              size="small"
+              sx={compactFilterFieldSx}
+              value={search}
+            />
+          </FilterField>
+        </Box>
       </SectionCard>
 
       <SectionCard
-        description="Cadastros disponiveis para associacao e manutencao administrativa."
+        description="Cadastros disponíveis para associação e manutenção administrativa."
         title="Lista de obras"
       >
         {feedbackMessage ? (
@@ -183,7 +198,7 @@ export default function ProjectListPage() {
         {feedbackError ? <Alert severity="error">{feedbackError}</Alert> : null}
         {projectsQuery.isError ? (
           <Alert severity="error">
-            Nao foi possivel carregar as obras cadastradas.
+            Não foi possível carregar as obras cadastradas.
           </Alert>
         ) : null}
 
@@ -198,13 +213,13 @@ export default function ProjectListPage() {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={tableHeadCellSx}>Codigo</TableCell>
-                  <TableCell sx={tableHeadCellSx}>Descricao</TableCell>
+                  <TableCell sx={tableHeadCellSx}>Código</TableCell>
+                  <TableCell sx={tableHeadCellSx}>Descrição</TableCell>
                   <TableCell sx={tableHeadCellSx}>Tipo</TableCell>
                   <TableCell sx={tableHeadCellSx}>Cidade</TableCell>
                   <TableCell sx={tableHeadCellSx}>Estado</TableCell>
                   <TableCell sx={tableHeadCellSx}>Atualizado em</TableCell>
-                  <TableCell sx={tableHeadCellSx}>Acoes</TableCell>
+                  <TableCell sx={tableHeadCellSx}>Ações</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -220,15 +235,15 @@ export default function ProjectListPage() {
                     </TableCell>
                     <TableCell sx={tableDetailCellSx}>
                       {item.projectTypeId === null
-                        ? "Nao informado"
+                        ? "Não informado"
                         : (projectTypeMap.get(item.projectTypeId) ??
                           `#${item.projectTypeId}`)}
                     </TableCell>
                     <TableCell sx={tableDetailCellSx}>
-                      {item.city.trim() ? item.city : "Nao informado"}
+                      {item.city.trim() ? item.city : "Não informado"}
                     </TableCell>
                     <TableCell sx={tableDetailCellSx}>
-                      {item.state.trim() ? item.state : "Nao informado"}
+                      {item.state.trim() ? item.state : "Não informado"}
                     </TableCell>
                     <TableCell sx={tableDetailCellSx}>
                       {formatDateTime(item.updatedAt)}
@@ -278,7 +293,7 @@ export default function ProjectListPage() {
         <DialogTitle>Excluir obra</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Confirma a exclusao da obra{" "}
+            Confirma a exclusão da obra{" "}
             <strong>{pendingDelete?.code ?? ""}</strong>?
           </DialogContentText>
         </DialogContent>

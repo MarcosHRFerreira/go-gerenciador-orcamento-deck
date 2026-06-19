@@ -18,6 +18,7 @@ type BudgetModel struct {
 	PriorityID           sql.NullInt64
 	InstallerID          sql.NullInt64
 	ProductLineID        sql.NullInt64
+	SystemTypeID         sql.NullInt64
 	ProjectID            sql.NullInt64
 	SalespersonID        sql.NullInt64
 	EstimatorID          sql.NullInt64
@@ -39,6 +40,9 @@ type BudgetModel struct {
 	InstallerName        sql.NullString
 	ProductLineCode      sql.NullString
 	ProductLineName      sql.NullString
+	SystemTypeCode       sql.NullString
+	SystemTypeName       sql.NullString
+	ProjectCode          sql.NullString
 	ProjectName          sql.NullString
 	SalespersonName      sql.NullString
 	EstimatorName        sql.NullString

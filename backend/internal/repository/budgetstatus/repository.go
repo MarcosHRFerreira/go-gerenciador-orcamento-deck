@@ -93,7 +93,10 @@ func (r *repository) GetByCodeOrName(ctx context.Context, code string, name stri
 	const query = `
 		SELECT id, code, name, description, is_final, sort_order, created_at, updated_at
 		FROM budget_statuses
-		WHERE code = $1 OR name = $2
+		WHERE UPPER(TRIM(code)) = UPPER(TRIM($1))
+			OR UPPER(TRIM(name)) = UPPER(TRIM($2))
+		ORDER BY id ASC
+		LIMIT 1
 	`
 
 	row := r.db.QueryRowContext(ctx, query, code, name)

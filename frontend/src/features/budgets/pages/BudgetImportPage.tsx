@@ -45,7 +45,7 @@ function getImportErrorMessage(error: unknown, fallbackMessage: string) {
       error.response?.status === 404 &&
       error.response?.data?.message === "Preview nao encontrado"
     ) {
-      return "Este preview ja foi utilizado ou expirou. Gere um novo preview antes de importar novamente.";
+      return "Este preview já foi utilizado ou expirou. Gere um novo preview antes de importar novamente.";
     }
 
     if (!error.response && error.message === "Network Error") {
@@ -275,7 +275,7 @@ export function BudgetImportPage() {
     setExecutionError(
       getImportErrorMessage(
         importStatusQuery.error,
-        "Nao foi possivel consultar o status da importacao.",
+        "Não foi possível consultar o status da importação.",
       ),
     );
   }, [importStatusQuery.error]);
@@ -305,7 +305,7 @@ export function BudgetImportPage() {
       const fallbackMessage =
         error instanceof Error
           ? error.message
-          : "Nao foi possivel gerar o preview da planilha.";
+          : "Não foi possível gerar o preview da planilha.";
       setPreviewError(getImportErrorMessage(error, fallbackMessage));
     }
   };
@@ -337,7 +337,7 @@ export function BudgetImportPage() {
           setExecutionResult(null);
           setPreviewError(null);
           setProcessInfo(
-            "O preview anterior nao estava mais disponivel. O sistema esta regenerando os dados e tentando concluir a importacao automaticamente.",
+            "O preview anterior não estava mais disponível. O sistema está regenerando os dados e tentando concluir a importação automaticamente.",
           );
           const executionResponse = await requestExecuteImport(
             refreshedPreview.previewId,
@@ -346,7 +346,7 @@ export function BudgetImportPage() {
           setExecutionResult(executionResponse);
           setActiveImportId(executionResponse.importId);
           setProcessInfo(
-            "O preview anterior nao estava mais disponivel. A importacao foi reiniciada com um preview atualizado e esta sendo processada em segundo plano.",
+            "O preview anterior não estava mais disponível. A importação foi reiniciada com um preview atualizado e está sendo processada em segundo plano.",
           );
           setExecutionError(null);
           return;
@@ -355,7 +355,7 @@ export function BudgetImportPage() {
           setExecutionError(
             getImportErrorMessage(
               recoveryError,
-              "Nao foi possivel concluir a importacao automaticamente. Gere um novo preview e tente novamente.",
+              "Não foi possível concluir a importação automaticamente. Gere um novo preview e tente novamente.",
             ),
           );
           return;
@@ -364,7 +364,7 @@ export function BudgetImportPage() {
 
       setProcessInfo(null);
       setExecutionError(
-        getImportErrorMessage(error, "Nao foi possivel executar a importacao."),
+        getImportErrorMessage(error, "Não foi possível executar a importação."),
       );
     }
   };
@@ -377,12 +377,12 @@ export function BudgetImportPage() {
             Voltar para orçamentos
           </Button>
         }
-        description="Envie uma planilha .xlsx, revise o layout identificado automaticamente e confirme a carga somente depois da validacao."
+        description="Envie uma planilha .xlsx, revise o layout identificado automaticamente e confirme a carga somente depois da validação."
         title="Importar planilha de orçamentos"
       />
 
       <SectionCard
-        description="A importacao identifica automaticamente o layout compativel e exige um arquivo .xlsx."
+        description="A importação identifica automaticamente o layout compatível e exige um arquivo .xlsx."
         title="Arquivo e opções"
       >
         <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
@@ -425,7 +425,7 @@ export function BudgetImportPage() {
             }}
           >
             <TextField
-              helperText="Configuracao fixa para proteger ajustes manuais ja feitos no sistema."
+              helperText="Configuração fixa para proteger ajustes manuais já feitos no sistema."
               label="Duplicidade"
               size="small"
               slotProps={{ input: { readOnly: true } }}
@@ -457,7 +457,7 @@ export function BudgetImportPage() {
                   }
                 />
               }
-              label="Usar Nao informado"
+              label="Usar Não informado"
             />
           </Box>
 
@@ -469,8 +469,8 @@ export function BudgetImportPage() {
           {previewMutation.isPending ? (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
               <Typography color="text.secondary" variant="body2">
-                Gerando preview da planilha. Aguarde a identificacao do layout e
-                a leitura das linhas importaveis.
+                Gerando preview da planilha. Aguarde a identificação do layout e
+                a leitura das linhas importáveis.
               </Typography>
               <LinearProgress />
             </Box>
@@ -478,7 +478,7 @@ export function BudgetImportPage() {
           {executeMutation.isPending ? (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
               <Typography color="text.secondary" variant="body2">
-                Iniciando a importacao. Aguarde a confirmacao do processamento.
+                Iniciando a importação. Aguarde a confirmação do processamento.
               </Typography>
               <LinearProgress />
             </Box>
@@ -565,7 +565,7 @@ export function BudgetImportPage() {
               }
             >
               {executionResult.status === "failed"
-                ? "A importacao nao foi concluida. Revise a mensagem abaixo e tente novamente."
+                ? "A importação não foi concluída. Revise a mensagem abaixo e tente novamente."
                 : getExecutionSuccessMessage(
                     previewResult?.fileName ?? "selecionado",
                     executionResult,
@@ -687,7 +687,7 @@ export function BudgetImportPage() {
 
       {previewResult ? (
         <SectionCard
-          description={`Arquivo ${previewResult.fileName} | Layout ${previewResult.layout.name} | Aba ${previewResult.sheetName} | Cabecalho na linha ${previewResult.headerRow}`}
+          description={`Arquivo ${previewResult.fileName} | Layout ${previewResult.layout.name} | Aba ${previewResult.sheetName} | Cabeçalho na linha ${previewResult.headerRow}`}
           title="Preview da importação"
         >
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
@@ -738,7 +738,7 @@ export function BudgetImportPage() {
                   {previewResult.layout.sourceCompany}
                 </Typography>
                 <Typography color="text.secondary" variant="body2">
-                  Metadado gravado no lote e nos orcamentos importados
+                  Metadado gravado no lote e nos orçamentos importados
                 </Typography>
               </Box>
               <Box
@@ -755,8 +755,8 @@ export function BudgetImportPage() {
                 <Typography variant="h6">Ignorar duplicados</Typography>
                 <Typography color="text.secondary" variant="body2">
                   {previewResult.options.createMissingCatalogs
-                    ? "Cria catalogos ausentes durante a carga"
-                    : "Nao cria catalogos ausentes durante a carga"}
+                    ? "Cria catálogos ausentes durante a carga"
+                    : "Não cria catálogos ausentes durante a carga"}
                 </Typography>
               </Box>
             </Box>
@@ -790,7 +790,7 @@ export function BudgetImportPage() {
             </Box>
 
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-              <Typography variant="h6">Governanca da importacao</Typography>
+              <Typography variant="h6">Governança da importação</Typography>
               <Box
                 sx={{
                   display: "grid",
@@ -884,7 +884,7 @@ export function BudgetImportPage() {
               <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
                 <Typography variant="h6">Mapeamento do layout</Typography>
                 <Typography color="text.secondary" variant="body2">
-                  Veja quais campos entram no dominio principal e quais ficam
+                  Veja quais campos entram no domínio principal e quais ficam
                   preservados apenas para rastreabilidade do lote.
                 </Typography>
                 <Box
@@ -987,7 +987,7 @@ export function BudgetImportPage() {
                     <TableRow key={`${item.rowNumber}-${item.budgetNumber}`}>
                       <TableCell>{item.rowNumber}</TableCell>
                       <TableCell>
-                        {item.budgetNumber || "Nao informado"}
+                        {item.budgetNumber || "Não informado"}
                       </TableCell>
                       <TableCell>
                         <Chip
@@ -1028,7 +1028,7 @@ export function BudgetImportPage() {
                         >
                           <TableCell>{item.rowNumber}</TableCell>
                           <TableCell>
-                            {item.budgetNumber || "Nao informado"}
+                            {item.budgetNumber || "Não informado"}
                           </TableCell>
                           <TableCell>
                             {item.messages.join(" | ") || "-"}

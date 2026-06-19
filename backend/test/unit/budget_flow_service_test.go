@@ -9,7 +9,6 @@ import (
 
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/dto"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/model"
-	budgetrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budget"
 	budgetfollowupservice "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/service/budgetfollowup"
 	budgetstatushistoryservice "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/service/budgetstatushistory"
 )
@@ -49,14 +48,25 @@ func (s *budgetStatusHistoryRepositoryStub) ListByBudgetID(_ context.Context, _ 
 }
 
 type budgetStatusRepositoryStub struct {
+	createID            int64
+	createCalls         int
 	getByIDItem         *model.BudgetStatusModel
 	getByIDErr          error
 	getByCodeOrNameItem *model.BudgetStatusModel
 	getByCodeOrNameErr  error
 }
 
-func (s *budgetStatusRepositoryStub) Create(_ context.Context, _ *model.BudgetStatusModel) (int64, error) {
-	return 0, errors.New("not implemented")
+func (s *budgetStatusRepositoryStub) Create(_ context.Context, item *model.BudgetStatusModel) (int64, error) {
+	s.createCalls++
+	if s.createID > 0 {
+		return s.createID + int64(s.createCalls) - 1, nil
+	}
+
+	if item == nil {
+		return 0, errors.New("not implemented")
+	}
+
+	return int64(s.createCalls), nil
 }
 
 func (s *budgetStatusRepositoryStub) List(_ context.Context) ([]model.BudgetStatusModel, error) {
@@ -211,8 +221,7 @@ func TestBudgetStatusHistoryServiceChangeStatusShouldCreateHistoryAndSyncBudget(
 	}
 }
 
-func TestBudgetStatusHistoryServiceChangeStatusShouldCancelOtherProjectBudgetsWhenMarkedAsPedido(t *testing.T) {
-	cancelledStatusID := int64(3)
+func TestBudgetStatusHistoryServiceChangeStatusShouldNotApplyWinnerRuleInGenericFlow(t *testing.T) {
 	budgetRepo := &budgetRepositoryStub{
 		changeStatusID: 55,
 		getByIDItem: &model.BudgetModel{
@@ -222,8 +231,7 @@ func TestBudgetStatusHistoryServiceChangeStatusShouldCancelOtherProjectBudgetsWh
 		},
 	}
 	statusRepo := &budgetStatusRepositoryStub{
-		getByIDItem:         &model.BudgetStatusModel{ID: 2, Code: "PEDIDO", Name: "Pedido"},
-		getByCodeOrNameItem: &model.BudgetStatusModel{ID: cancelledStatusID, Code: "CANCELADO", Name: "Cancelado"},
+		getByIDItem: &model.BudgetStatusModel{ID: 2, Code: "PEDIDO", Name: "Pedido"},
 	}
 	service := budgetstatushistoryservice.NewService(&budgetStatusHistoryRepositoryStub{}, budgetRepo, statusRepo, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
 
@@ -241,42 +249,12 @@ func TestBudgetStatusHistoryServiceChangeStatusShouldCancelOtherProjectBudgetsWh
 	if budgetRepo.capturedChangeStatusParams == nil {
 		t.Fatal("expected change status params to be captured")
 	}
-	if !budgetRepo.capturedChangeStatusParams.EnforceProjectWinnerRule {
-		t.Fatal("expected project winner rule to be enabled")
-	}
-	if budgetRepo.capturedChangeStatusParams.CancelledStatusID != cancelledStatusID {
-		t.Fatalf("expected cancelled status id %d, got %d", cancelledStatusID, budgetRepo.capturedChangeStatusParams.CancelledStatusID)
+	if budgetRepo.capturedChangeStatusParams.EnforceProjectWinnerRule {
+		t.Fatal("expected project winner rule to stay disabled in generic status flow")
 	}
 }
 
-func TestBudgetStatusHistoryServiceChangeStatusShouldReturnConflictWhenProjectAlreadyHasPedido(t *testing.T) {
-	service := budgetstatushistoryservice.NewService(
-		&budgetStatusHistoryRepositoryStub{},
-		&budgetRepositoryStub{
-			changeStatusErr: budgetrepository.ErrProjectAlreadyHasPedido,
-			getByIDItem: &model.BudgetModel{
-				ID:        9,
-				StatusID:  1,
-				ProjectID: sql.NullInt64{Int64: 77, Valid: true},
-			},
-		},
-		&budgetStatusRepositoryStub{
-			getByIDItem:         &model.BudgetStatusModel{ID: 2, Code: "PEDIDO", Name: "Pedido"},
-			getByCodeOrNameItem: &model.BudgetStatusModel{ID: 3, Code: "CANCELADO", Name: "Cancelado"},
-		},
-		&userRepositoryStub{},
-		&salespersonRepositoryStub{},
-		&estimatorRepositoryStub{},
-	)
-
-	_, err := service.ChangeStatus(context.Background(), 9, 30, model.RoleAdmin, "", &dto.ChangeBudgetStatusRequest{
-		StatusID: 2,
-	})
-
-	assertAppError(t, err, 409, "Ja existe outro orcamento da obra marcado como PEDIDO")
-}
-
-func TestBudgetStatusHistoryServiceChangeStatusShouldReturnBadRequestWhenCancelledStatusDoesNotExist(t *testing.T) {
+func TestBudgetStatusHistoryServiceChangeStatusShouldAllowPedidoWithoutCancelledStatus(t *testing.T) {
 	service := budgetstatushistoryservice.NewService(
 		&budgetStatusHistoryRepositoryStub{},
 		&budgetRepositoryStub{
@@ -294,11 +272,16 @@ func TestBudgetStatusHistoryServiceChangeStatusShouldReturnBadRequestWhenCancell
 		&estimatorRepositoryStub{},
 	)
 
-	_, err := service.ChangeStatus(context.Background(), 9, 30, model.RoleAdmin, "", &dto.ChangeBudgetStatusRequest{
+	id, err := service.ChangeStatus(context.Background(), 9, 30, model.RoleAdmin, "", &dto.ChangeBudgetStatusRequest{
 		StatusID: 2,
 	})
 
-	assertAppError(t, err, 400, "Status CANCELADO nao encontrado")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if id != 0 {
+		t.Fatalf("expected stub change status id 0, got %d", id)
+	}
 }
 
 func TestBudgetStatusHistoryServiceChangeStatusShouldReturnConflictWhenStatusIsTheSame(t *testing.T) {

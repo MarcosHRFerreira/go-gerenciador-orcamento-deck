@@ -38,9 +38,9 @@ export default function ProjectEditPage() {
 
   const initialDataError =
     projectId === null
-      ? "ID da obra invalido."
+      ? "ID da obra inválido."
       : projectQuery.isError
-        ? "Nao foi possivel carregar os dados da obra."
+        ? "Não foi possível carregar os dados da obra."
         : null;
 
   const initialValues =
@@ -73,7 +73,7 @@ export default function ProjectEditPage() {
       isInitialDataLoading={projectQuery.isLoading}
       onCancel={() => navigate("/projects")}
       onSubmit={handleSubmit}
-      submitLabel="Salvar alteracoes"
+      submitLabel="Salvar alterações"
       subtitle="Atualize os dados da obra e mantenha o cadastro consistente."
       title="Editar obra"
     />

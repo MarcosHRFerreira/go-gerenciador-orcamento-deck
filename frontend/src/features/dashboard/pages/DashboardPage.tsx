@@ -20,6 +20,10 @@ import { AxiosError, isAxiosError } from "axios";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  compactFilterFieldSx,
+  FilterField,
+} from "../../../components/common/FilterField";
 import { PageHeader } from "../../../components/common/PageHeader";
 import { SectionCard } from "../../../components/common/SectionCard";
 import { useAuth } from "../../auth/hooks/useAuth";
@@ -116,7 +120,7 @@ type SpreadsheetSheet = {
 const monthOptions = [
   { value: "1", label: "Janeiro" },
   { value: "2", label: "Fevereiro" },
-  { value: "3", label: "Marco" },
+  { value: "3", label: "Março" },
   { value: "4", label: "Abril" },
   { value: "5", label: "Maio" },
   { value: "6", label: "Junho" },
@@ -127,6 +131,32 @@ const monthOptions = [
   { value: "11", label: "Novembro" },
   { value: "12", label: "Dezembro" },
 ] as const;
+
+const dashboardFeedbackAlertSx = {
+  borderRadius: 3,
+  boxShadow: "0 14px 30px rgba(30, 58, 138, 0.08)",
+  "& .MuiAlert-message": {
+    fontWeight: 600,
+    lineHeight: 1.65,
+  },
+} as const;
+
+const dashboardInfoAlertSx = {
+  borderRadius: 3,
+  boxShadow: "0 14px 28px rgba(30, 58, 138, 0.07)",
+  "& .MuiAlert-message": {
+    lineHeight: 1.65,
+  },
+} as const;
+
+const dashboardLoaderSx = {
+  borderRadius: 999,
+  height: 8,
+  overflow: "hidden",
+  "& .MuiLinearProgress-bar": {
+    borderRadius: 999,
+  },
+} as const;
 
 function formatPercentage(value: number) {
   return `${value.toFixed(1)}%`;
@@ -219,24 +249,24 @@ function getDashboardErrorMessage(error: unknown) {
     const apiMessage = error.response?.data?.message?.trim();
 
     if (statusCode === 401) {
-      return "Sua sessao expirou. Entre novamente para acessar o dashboard.";
+      return "Sua sessão expirou. Entre novamente para acessar o dashboard.";
     }
     if (statusCode === 403) {
       return (
         apiMessage ||
-        "Voce nao possui permissao para acessar este dashboard administrativo."
+        "Você não possui permissão para acessar este dashboard administrativo."
       );
     }
     if (statusCode === 400) {
       return (
-        apiMessage || "Os filtros informados para o dashboard sao invalidos."
+        apiMessage || "Os filtros informados para o dashboard são inválidos."
       );
     }
 
-    return apiMessage || "Nao foi possivel carregar os dados do dashboard.";
+    return apiMessage || "Não foi possível carregar os dados do dashboard.";
   }
 
-  return "Nao foi possivel carregar os dados do dashboard.";
+  return "Não foi possível carregar os dados do dashboard.";
 }
 
 function getMonthDateRange(year: string, month: string) {
@@ -827,7 +857,7 @@ function buildDashboardWorkbookSheets({
         ["Gerado em", new Date()],
         [],
         ["Indicadores principais"],
-        ["Indicador", "Valor", "Descricao"],
+        ["Indicador", "Valor", "Descrição"],
         ...dashboardData.metricCards.map((metric) => [
           metric.label,
           metric.value,
@@ -837,51 +867,51 @@ function buildDashboardWorkbookSheets({
         ["Destaques"],
         [
           "Top vendedor por valor",
-          topSalespersonByValue?.label ?? "Nao informado",
+          topSalespersonByValue?.label ?? "Não informado",
         ],
         ["Maior valor bruto", topSalespersonByValue?.grossValue ?? null],
         [
-          "Melhor conversao por valor",
+          "Melhor conversão por valor",
           `${formatPercentage(dashboardData.valueConversionRate)}`,
         ],
         [
-          "Ultima atividade comercial",
+          "Última atividade comercial",
           topSalespersonByValue
             ? toSpreadsheetDateOrFallback(
                 topSalespersonByValue.lastActivityAt,
-                "Nao informada",
+                "Não informada",
               )
-            : "Nao informada",
+            : "Não informada",
         ],
         [
           "Vendedor com atividade mais recente",
-          mostRecentSalesperson?.label ?? "Nao informado",
+          mostRecentSalesperson?.label ?? "Não informado",
         ],
         [
-          "Orcamento mais parado",
-          mostStalledBudget?.budgetNumber ?? "Nao informado",
+          "Orçamento mais parado",
+          mostStalledBudget?.budgetNumber ?? "Não informado",
         ],
         [
           "Dias parados do caso mais antigo",
           mostStalledBudget?.stalledDays ?? null,
         ],
         [],
-        ["Novos estrategicos"],
-        ["Construtora lider", topConstructionCompany?.label ?? "Nao informado"],
-        ["Obra lider", topProject?.label ?? "Nao informado"],
-        ["Principal motivo de perda", topLossReason?.label ?? "Nao informado"],
+        ["Novos estratégicos"],
+        ["Construtora líder", topConstructionCompany?.label ?? "Não informado"],
+        ["Obra líder", topProject?.label ?? "Não informado"],
+        ["Principal motivo de perda", topLossReason?.label ?? "Não informado"],
         [
-          "Tempo medio de fechamento",
+          "Tempo médio de fechamento",
           averageClosingTime
             ? formatClosingDays(averageClosingTime.averageClosingDays)
-            : "Nao informado",
+            : "Não informado",
         ],
         [],
         ["Resumo da carteira", "Valor"],
         ["Pedidos", dashboardData.wonBudgets],
-        ["Em negociacao", dashboardData.negotiationBudgets],
+        ["Em negociação", dashboardData.negotiationBudgets],
         ["Cancelados", dashboardData.lostBudgets],
-        ["Conversao", formatPercentage(dashboardData.conversionRate)],
+        ["Conversão", formatPercentage(dashboardData.conversionRate)],
       ],
       sectionRowIndexes: [4, 12, 23],
       formatsByColumn: {
@@ -892,114 +922,114 @@ function buildDashboardWorkbookSheets({
     {
       headerStyle: "executive",
       mergeRanges: ["A1:C1", "A5:C5", "A18:C18"],
-      name: "Analise Comercial",
+      name: "Análise Comercial",
       rows: [
-        ["Analise comercial automatica"],
+        ["Análise comercial automática"],
         ["Escopo", scopeLabel],
         ["Gerado em", new Date()],
         [],
         ["Rankings e destaques"],
         [
           "Maior valor bruto",
-          topSalespersonByValue?.label ?? "Nao informado",
+          topSalespersonByValue?.label ?? "Não informado",
           topSalespersonByValue?.grossValue ?? null,
         ],
         [
-          "Maior quantidade de orcamentos",
-          topSalespersonByBudgetCount?.label ?? "Nao informado",
+          "Maior quantidade de orçamentos",
+          topSalespersonByBudgetCount?.label ?? "Não informado",
           topSalespersonByBudgetCount?.budgetCount ?? null,
         ],
         [
-          "Melhor conversao",
-          topSalespersonByConversion?.label ?? "Nao informado",
+          "Melhor conversão",
+          topSalespersonByConversion?.label ?? "Não informado",
           topSalespersonByConversion !== undefined
             ? topSalespersonByConversion.conversionRate / 100
             : null,
         ],
         [
-          "Maior ticket medio",
-          topSalespersonByAverageTicket?.label ?? "Nao informado",
+          "Maior ticket médio",
+          topSalespersonByAverageTicket?.label ?? "Não informado",
           topSalespersonByAverageTicket?.averageTicket ?? null,
         ],
         [
           "Construtora com maior valor",
-          topConstructionCompany?.label ?? "Nao informado",
+          topConstructionCompany?.label ?? "Não informado",
           topConstructionCompany?.grossValue ?? null,
         ],
         [
           "Obra com maior valor",
-          topProject?.label ?? "Nao informado",
+          topProject?.label ?? "Não informado",
           topProject?.grossValue ?? null,
         ],
         [
           "Principal motivo de perda",
-          topLossReason?.label ?? "Nao informado",
+          topLossReason?.label ?? "Não informado",
           topLossReason?.grossValue ?? null,
         ],
         [
-          "Tempo medio de fechamento",
-          averageClosingTime?.label ?? "Nao informado",
+          "Tempo médio de fechamento",
+          averageClosingTime?.label ?? "Não informado",
           averageClosingTime?.averageClosingDays ?? null,
         ],
         [
           "Atividade comercial mais recente",
-          mostRecentSalesperson?.label ?? "Nao informado",
+          mostRecentSalesperson?.label ?? "Não informado",
           mostRecentSalesperson
             ? toSpreadsheetDateOrFallback(
                 mostRecentSalesperson.lastActivityAt,
-                "Nao informada",
+                "Não informada",
               )
-            : "Nao informada",
+            : "Não informada",
         ],
         [
           "Maior carteira parada",
-          mostStalledSalesperson?.label ?? "Nao informado",
+          mostStalledSalesperson?.label ?? "Não informado",
           mostStalledSalesperson?.stalledBudgetCount ?? null,
         ],
         [
-          "Orcamento mais antigo sem atividade",
-          mostStalledBudget?.budgetNumber ?? "Nao informado",
+          "Orçamento mais antigo sem atividade",
+          mostStalledBudget?.budgetNumber ?? "Não informado",
           mostStalledBudget?.stalledDays ?? null,
         ],
         [],
-        ["Comparacao mensal"],
+        ["Comparação mensal"],
         currentMonth && previousMonth
           ? [
-              "Periodo comparado",
+              "Período comparado",
               `${currentMonth.monthLabel} vs ${previousMonth.monthLabel}`,
             ]
-          : ["Periodo comparado", "Base insuficiente"],
+          : ["Período comparado", "Base insuficiente"],
         [
-          "Orcamentos no mes atual",
+          "Orçamentos no mês atual",
           currentMonth?.budgetCount ?? null,
-          currentMonth?.monthLabel ?? "Nao informado",
+          currentMonth?.monthLabel ?? "Não informado",
         ],
         [
-          "Valor bruto no mes atual",
+          "Valor bruto no mês atual",
           currentMonth?.grossValue ?? null,
-          currentMonth?.monthLabel ?? "Nao informado",
+          currentMonth?.monthLabel ?? "Não informado",
         ],
         [
-          "Conversao no mes atual",
+          "Conversão no mes atual",
           currentMonth ? currentConversionRate / 100 : null,
-          currentMonth?.monthLabel ?? "Nao informado",
+          currentMonth?.monthLabel ?? "Não informado",
         ],
         [
-          "Variacao de orcamentos",
+          "Variação de orçamentos",
           budgetDelta,
           budgetDelta === null
             ? "Base insuficiente"
             : formatSignedInteger(budgetDelta),
         ],
         [
-          "Variacao de valor bruto",
+          "Variação de valor bruto",
           grossValueDelta,
           grossValueDelta === null
             ? "Base insuficiente"
             : formatSignedCurrency(grossValueDelta),
         ],
         [
-          "Variacao de conversao",
+          "Variação de conversão",
           conversionDelta === null ? null : conversionDelta / 100,
           conversionDelta === null
             ? "Base insuficiente"
@@ -1022,12 +1052,12 @@ function buildDashboardWorkbookSheets({
       name: "Top por Valor",
       rows: [
         [
-          "Posicao",
+          "Posição",
           "Vendedor",
-          "Orcamentos",
+          "Orçamentos",
           "Valor bruto",
-          "Ticket medio",
-          "Ultima atividade comercial",
+          "Ticket médio",
+          "Última atividade comercial",
         ],
         ...dashboardData.topSalespeopleByValue.map((item, index) => [
           index + 1,
@@ -1035,7 +1065,7 @@ function buildDashboardWorkbookSheets({
           item.budgetCount,
           item.grossValue,
           item.averageTicket,
-          toSpreadsheetDateOrFallback(item.lastActivityAt, "Nao informada"),
+          toSpreadsheetDateOrFallback(item.lastActivityAt, "Não informada"),
         ]),
       ],
     },
@@ -1052,12 +1082,12 @@ function buildDashboardWorkbookSheets({
       name: "Top por Quantidade",
       rows: [
         [
-          "Posicao",
+          "Posição",
           "Vendedor",
-          "Orcamentos",
+          "Orçamentos",
           "Valor bruto",
-          "Conversao",
-          "Ultima atividade comercial",
+          "Conversão",
+          "Última atividade comercial",
         ],
         ...dashboardData.topSalespeopleByBudgetCount.map((item, index) => [
           index + 1,
@@ -1065,7 +1095,7 @@ function buildDashboardWorkbookSheets({
           item.budgetCount,
           item.grossValue,
           item.conversionRate / 100,
-          toSpreadsheetDateOrFallback(item.lastActivityAt, "Nao informada"),
+          toSpreadsheetDateOrFallback(item.lastActivityAt, "Não informada"),
         ]),
       ],
     },
@@ -1078,15 +1108,15 @@ function buildDashboardWorkbookSheets({
       },
       headerRowIndex: 0,
       headerStyle: "table",
-      name: "Top Conversao",
+      name: "Top Conversão",
       rows: [
         [
-          "Posicao",
+          "Posição",
           "Vendedor",
-          "Conversao",
+          "Conversão",
           "Pedidos",
-          "Orcamentos",
-          "Ticket medio",
+          "Orçamentos",
+          "Ticket médio",
         ],
         ...dashboardData.topSalespeopleByConversion.map((item, index) => [
           index + 1,
@@ -1111,12 +1141,12 @@ function buildDashboardWorkbookSheets({
       name: "Top Ticket Medio",
       rows: [
         [
-          "Posicao",
+          "Posição",
           "Vendedor",
-          "Ticket medio",
-          "Orcamentos",
+          "Ticket médio",
+          "Orçamentos",
           "Valor bruto",
-          "Conversao",
+          "Conversão",
         ],
         ...dashboardData.topSalespeopleByAverageTicket.map((item, index) => [
           index + 1,
@@ -1136,21 +1166,21 @@ function buildDashboardWorkbookSheets({
       },
       headerRowIndex: 0,
       headerStyle: "table",
-      name: "Carteira Negociacao",
+      name: "Carteira em Negociação",
       rows: [
         [
           "Vendedor",
           "Em aberto",
-          "Valor em negociacao",
-          "Orcamentos parados",
-          "Ultima atividade comercial",
+          "Valor em negociação",
+          "Orçamentos parados",
+          "Última atividade comercial",
         ],
         ...dashboardData.negotiationPipeline.map((item) => [
           item.label,
           item.negotiationBudgetCount,
           item.negotiationGrossValue,
           item.stalledBudgetCount,
-          toSpreadsheetDateOrFallback(item.lastActivityAt, "Nao informada"),
+          toSpreadsheetDateOrFallback(item.lastActivityAt, "Não informada"),
         ]),
       ],
     },
@@ -1162,14 +1192,14 @@ function buildDashboardWorkbookSheets({
       },
       headerRowIndex: 0,
       headerStyle: "table",
-      name: "Ult Atividade",
+      name: "Última Atividade",
       rows: [
-        ["Vendedor", "Orcamentos", "Valor bruto", "Ultima atividade comercial"],
+        ["Vendedor", "Orçamentos", "Valor bruto", "Última atividade comercial"],
         ...dashboardData.recentSalespeople.map((item) => [
           item.label,
           item.budgetCount,
           item.grossValue,
-          toSpreadsheetDateOrFallback(item.lastActivityAt, "Nao informada"),
+          toSpreadsheetDateOrFallback(item.lastActivityAt, "Não informada"),
         ]),
       ],
     },
@@ -1182,17 +1212,17 @@ function buildDashboardWorkbookSheets({
       },
       headerRowIndex: 0,
       headerStyle: "table",
-      name: "Orcamentos Parados",
+      name: "Orçamentos Parados",
       rows: [
         [
-          "Orcamento",
+          "Orçamento",
           "Vendedor",
           "Obra",
           "Construtora",
           "Status",
           "Valor bruto",
           "Dias parados",
-          "Ultima atividade comercial",
+          "Última atividade comercial",
         ],
         ...dashboardData.staleBudgets.map((item) => [
           item.budgetNumber,
@@ -1202,7 +1232,7 @@ function buildDashboardWorkbookSheets({
           item.statusLabel,
           item.grossValue,
           item.stalledDays,
-          toSpreadsheetDateOrFallback(item.lastActivityAt, "Nao informada"),
+          toSpreadsheetDateOrFallback(item.lastActivityAt, "Não informada"),
         ]),
       ],
     },
@@ -1214,9 +1244,9 @@ function buildDashboardWorkbookSheets({
       },
       headerRowIndex: 0,
       headerStyle: "table",
-      name: "Evolucao Mensal",
+      name: "Evolução Mensal",
       rows: [
-        ["Mes", "Orcamentos", "Valor bruto", "Pedidos", "Valor convertido"],
+        ["Mês", "Orçamentos", "Valor bruto", "Pedidos", "Valor convertido"],
         ...dashboardData.monthlyEvolution.map((item) => [
           item.monthLabel,
           item.budgetCount,
@@ -1240,11 +1270,11 @@ function buildDashboardWorkbookSheets({
       rows: [
         [
           "Construtora",
-          "Orcamentos",
+          "Orçamentos",
           "Valor bruto",
-          "Conversao",
-          "Conversao por valor",
-          "Ultima atividade comercial",
+          "Conversão",
+          "Conversão por valor",
+          "Última atividade comercial",
         ],
         ...dashboardData.topConstructionCompanies.map((item) => [
           item.label,
@@ -1252,7 +1282,7 @@ function buildDashboardWorkbookSheets({
           item.grossValue,
           item.conversionRate / 100,
           item.valueConversionRate / 100,
-          toSpreadsheetDateOrFallback(item.lastActivityAt, "Nao informada"),
+          toSpreadsheetDateOrFallback(item.lastActivityAt, "Não informada"),
         ]),
       ],
     },
@@ -1270,11 +1300,11 @@ function buildDashboardWorkbookSheets({
       rows: [
         [
           "Obra",
-          "Orcamentos",
+          "Orçamentos",
           "Valor bruto",
-          "Conversao",
-          "Conversao por valor",
-          "Ultima atividade comercial",
+          "Conversão",
+          "Conversão por valor",
+          "Última atividade comercial",
         ],
         ...dashboardData.topProjects.map((item) => [
           item.label,
@@ -1282,7 +1312,7 @@ function buildDashboardWorkbookSheets({
           item.grossValue,
           item.conversionRate / 100,
           item.valueConversionRate / 100,
-          toSpreadsheetDateOrFallback(item.lastActivityAt, "Nao informada"),
+          toSpreadsheetDateOrFallback(item.lastActivityAt, "Não informada"),
         ]),
       ],
     },
@@ -1296,7 +1326,7 @@ function buildDashboardWorkbookSheets({
       headerStyle: "table",
       name: "Motivos Perda",
       rows: [
-        ["Motivo de perda", "Cancelados", "Valor perdido", "Ticket medio"],
+        ["Motivo de perda", "Cancelados", "Valor perdido", "Ticket médio"],
         ...dashboardData.topLossReasons.map((item) => [
           item.label,
           item.lostBudgetCount,
@@ -1315,7 +1345,7 @@ function buildDashboardWorkbookSheets({
       headerStyle: "table",
       name: "Tempo Fechamento",
       rows: [
-        ["Recorte", "Tempo medio", "Valor bruto", "Orcamentos fechados"],
+        ["Recorte", "Tempo médio", "Valor bruto", "Orçamentos fechados"],
         ...dashboardData.averageClosingTimes.map((item) => [
           item.label,
           formatClosingDays(item.averageClosingDays),
@@ -1335,11 +1365,11 @@ function buildDashboardWorkbookSheets({
       rows: [
         [
           "Vendedor",
-          "Total de orcamentos",
-          "Em negociacao",
+          "Total de orçamentos",
+          "Em negociação",
           "Pedidos",
           "Cancelados",
-          "Conversao",
+          "Conversão",
         ],
         ...dashboardData.salespersonFunnel.map((item) => [
           item.label,
@@ -1354,61 +1384,61 @@ function buildDashboardWorkbookSheets({
     {
       headerStyle: "executive",
       mergeRanges: ["A1:C1", "A5:C5", "A15:B15"],
-      name: "Resumo Tecnico",
+      name: "Resumo Técnico",
       rows: [
-        ["Visao tecnica por orcamentista"],
+        ["Visão técnica por orçamentista"],
         ["Escopo", scopeLabel],
         ["Gerado em", new Date()],
         [],
-        ["Indicadores tecnicos"],
-        ["Indicador", "Valor", "Descricao"],
+        ["Indicadores técnicos"],
+        ["Indicador", "Valor", "Descrição"],
         [
-          "Orcamentistas ativos",
+          "Orçamentistas ativos",
           dashboardData.technicalOverview.summary.activeEstimators,
-          "Quantidade de orcamentistas com producao no recorte",
+          "Quantidade de orçamentistas com produção no recorte",
         ],
         [
-          "Cobertura tecnica",
+          "Cobertura técnica",
           dashboardData.technicalOverview.summary.coverageRate / 100,
-          "Percentual de orcamentos com orcamentista atribuido",
+          "Percentual de orçamentos com orçamentista atribuído",
         ],
         [
-          "Orcamentos com orcamentista",
+          "Orçamentos com orçamentista",
           dashboardData.technicalOverview.summary.budgetsWithEstimator,
-          "Quantidade com responsabilidade tecnica definida",
+          "Quantidade com responsabilidade técnica definida",
         ],
         [
-          "Orcamentos sem orcamentista",
+          "Orçamentos sem orçamentista",
           dashboardData.technicalOverview.summary.budgetsWithoutEstimator,
-          "Quantidade ainda sem atribuicao tecnica",
+          "Quantidade ainda sem atribuição técnica",
         ],
         [
-          "Valor tecnico monitorado",
+          "Valor técnico monitorado",
           dashboardData.technicalOverview.summary.totalGrossValue,
-          "Valor bruto dos orcamentos com orcamentista atribuido",
+          "Valor bruto dos orçamentos com orçamentista atribuído",
         ],
         [
-          "Conversao tecnica",
+          "Conversão técnica",
           dashboardData.technicalOverview.summary.conversionRate / 100,
-          "Percentual de pedidos dentro da carteira tecnica atribuida",
+          "Percentual de pedidos dentro da carteira técnica atribuída",
         ],
         [],
-        ["Destaques tecnicos", "Valor"],
+        ["Destaques técnicos", "Valor"],
         [
-          "Top orcamentista por valor",
-          topEstimatorByValue?.label ?? "Nao informado",
+          "Top orçamentista por valor",
+          topEstimatorByValue?.label ?? "Não informado",
         ],
         [
-          "Top orcamentista por quantidade",
-          topEstimatorByBudgetCount?.label ?? "Nao informado",
+          "Top orçamentista por quantidade",
+          topEstimatorByBudgetCount?.label ?? "Não informado",
         ],
         [
-          "Top ticket medio tecnico",
-          topEstimatorByAverageTicket?.label ?? "Nao informado",
+          "Top ticket médio técnico",
+          topEstimatorByAverageTicket?.label ?? "Não informado",
         ],
         [
-          "Ultima atividade tecnica",
-          mostRecentEstimator?.label ?? "Nao informado",
+          "Última atividade técnica",
+          mostRecentEstimator?.label ?? "Não informado",
         ],
       ],
       sectionRowIndexes: [4, 14],
@@ -1428,15 +1458,15 @@ function buildDashboardWorkbookSheets({
       },
       headerRowIndex: 0,
       headerStyle: "table",
-      name: "Top Orcam Valor",
+      name: "Top Orçamentistas Valor",
       rows: [
         [
-          "Posicao",
-          "Orcamentista",
-          "Orcamentos",
+          "Posição",
+          "Orçamentista",
+          "Orçamentos",
           "Valor bruto",
-          "Ticket medio",
-          "Ultima atividade",
+          "Ticket médio",
+          "Última atividade",
         ],
         ...dashboardData.technicalOverview.topEstimatorsByValue.map(
           (item, index) => [
@@ -1445,7 +1475,7 @@ function buildDashboardWorkbookSheets({
             item.budgetCount,
             item.grossValue,
             item.averageTicket,
-            toSpreadsheetDateOrFallback(item.lastActivityAt, "Nao informada"),
+            toSpreadsheetDateOrFallback(item.lastActivityAt, "Não informada"),
           ],
         ),
       ],
@@ -1460,15 +1490,15 @@ function buildDashboardWorkbookSheets({
       },
       headerRowIndex: 0,
       headerStyle: "table",
-      name: "Top Orcam Quant",
+      name: "Top Orçamentistas Quantidade",
       rows: [
         [
-          "Posicao",
-          "Orcamentista",
-          "Orcamentos",
+          "Posição",
+          "Orçamentista",
+          "Orçamentos",
           "Valor bruto",
-          "Conversao",
-          "Ultima atividade",
+          "Conversão",
+          "Última atividade",
         ],
         ...dashboardData.technicalOverview.topEstimatorsByBudgetCount.map(
           (item, index) => [
@@ -1477,7 +1507,7 @@ function buildDashboardWorkbookSheets({
             item.budgetCount,
             item.grossValue,
             item.conversionRate / 100,
-            toSpreadsheetDateOrFallback(item.lastActivityAt, "Nao informada"),
+            toSpreadsheetDateOrFallback(item.lastActivityAt, "Não informada"),
           ],
         ),
       ],
@@ -1491,21 +1521,21 @@ function buildDashboardWorkbookSheets({
       },
       headerRowIndex: 0,
       headerStyle: "table",
-      name: "Ult Ativ Tecnica",
+      name: "Última Atividade Técnica",
       rows: [
         [
-          "Orcamentista",
-          "Orcamentos",
+          "Orçamentista",
+          "Orçamentos",
           "Valor bruto",
-          "Valor em negociacao",
-          "Ultima atividade",
+          "Valor em negociação",
+          "Última atividade",
         ],
         ...dashboardData.technicalOverview.recentEstimators.map((item) => [
           item.label,
           item.budgetCount,
           item.grossValue,
           item.negotiationGrossValue,
-          toSpreadsheetDateOrFallback(item.lastActivityAt, "Nao informada"),
+          toSpreadsheetDateOrFallback(item.lastActivityAt, "Não informada"),
         ]),
       ],
     },
@@ -1565,12 +1595,12 @@ export function DashboardPage() {
     return (
       <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
         <PageHeader
-          description="O dashboard comercial fica disponivel apenas para administradores e perfis comerciais."
+          description="O dashboard comercial fica disponível apenas para administradores e perfis comerciais."
           title="Dashboard"
         />
-        <Alert severity="info">
-          O perfil orcamentista nao participa do dashboard comercial. Utilize a
-          tela de orcamentos para operar no seu escopo tecnico.
+        <Alert severity="info" sx={dashboardInfoAlertSx}>
+          O perfil orçamentista não participa do dashboard comercial. Utilize a
+          tela de orçamentos para operar no seu escopo técnico.
         </Alert>
       </Box>
     );
@@ -1600,6 +1630,12 @@ export function DashboardPage() {
       )?.name ?? ""
     );
   }, [selectedSalespersonId, salespersonOptions]);
+
+  const selectedMonthLabel = useMemo(() => {
+    return (
+      monthOptions.find((item) => item.value === selectedMonth)?.label ?? ""
+    );
+  }, [selectedMonth]);
 
   const salespersonIdByName = useMemo(() => {
     return salespersonOptions.reduce<Map<string, string>>(
@@ -1638,14 +1674,14 @@ export function DashboardPage() {
         key: "active-salespeople",
         label: "Vendedores ativos",
         value: String(summary?.activeSalespeople ?? 0),
-        helper: "Quantidade de vendedores com orcamentos no recorte atual",
+        helper: "Quantidade de vendedores com orçamentos no recorte atual",
         icon: InsightsRoundedIcon,
       },
       {
         key: "total-budgets",
-        label: "Orcamentos monitorados",
+        label: "Orçamentos monitorados",
         value: String(summary?.totalBudgets ?? 0),
-        helper: "Volume total de orcamentos no recorte atual",
+        helper: "Volume total de orçamentos no recorte atual",
         icon: DescriptionRoundedIcon,
       },
       {
@@ -1657,71 +1693,71 @@ export function DashboardPage() {
       },
       {
         key: "ticket-medio",
-        label: "Ticket medio",
+        label: "Ticket médio",
         value: formatCompactCurrency(summary?.averageTicket ?? 0),
-        helper: "Media de valor por orcamento do periodo",
+        helper: "Média de valor por orçamento do período",
         icon: TrendingUpRoundedIcon,
       },
       {
         key: "negotiation-gross-value",
-        label: "Valor em negociacao",
+        label: "Valor em negociação",
         value: formatCompactCurrency(summary?.totalNegotiationGrossValue ?? 0),
-        helper: `${summary?.negotiationBudgets ?? 0} orcamento(s) ainda em carteira`,
+        helper: `${summary?.negotiationBudgets ?? 0} orçamento(s) ainda em carteira`,
         icon: AttachMoneyRoundedIcon,
       },
       {
         key: "pedido-conversion",
-        label: "Conversao em pedido",
+        label: "Conversão em pedido",
         value: formatPercentage(summary?.conversionRate ?? 0),
-        helper: `${summary?.wonBudgets ?? 0} pedido(s) em ${summary?.totalBudgets ?? 0} orcamento(s)`,
+        helper: `${summary?.wonBudgets ?? 0} pedido(s) em ${summary?.totalBudgets ?? 0} orçamento(s)`,
         icon: AssignmentTurnedInRoundedIcon,
       },
       {
         key: "value-conversion",
-        label: "Conversao por valor",
+        label: "Conversão por valor",
         value: formatPercentage(summary?.valueConversionRate ?? 0),
-        helper: `${formatCompactCurrency(summary?.totalGrossValue ?? 0)} em valor bruto no periodo`,
+        helper: `${formatCompactCurrency(summary?.totalGrossValue ?? 0)} em valor bruto no período`,
         icon: AttachMoneyRoundedIcon,
       },
       {
         key: "stalled-budgets",
-        label: "Orcamentos parados",
+        label: "Orçamentos parados",
         value: String(summary?.stalledBudgetsCount ?? 0),
-        helper: "Oportunidades em negociacao sem atividade ha 7 dias ou mais",
+        helper: "Oportunidades em negociação sem atividade há 7 dias ou mais",
         icon: DescriptionRoundedIcon,
       },
     ];
     const technicalMetricCards: DashboardMetricCard[] = [
       {
         key: "active-estimators",
-        label: "Orcamentistas ativos",
+        label: "Orçamentistas ativos",
         value: String(technicalOverview?.summary.activeEstimators ?? 0),
-        helper: "Quantidade de orcamentistas com producao no recorte atual",
+        helper: "Quantidade de orçamentistas com produção no recorte atual",
         icon: InsightsRoundedIcon,
       },
       {
         key: "coverage-rate",
-        label: "Cobertura tecnica",
+        label: "Cobertura técnica",
         value: formatPercentage(technicalOverview?.summary.coverageRate ?? 0),
-        helper: `${technicalOverview?.summary.budgetsWithEstimator ?? 0} orcamento(s) com orcamentista definido`,
+        helper: `${technicalOverview?.summary.budgetsWithEstimator ?? 0} orçamento(s) com orçamentista definido`,
         icon: AssignmentTurnedInRoundedIcon,
       },
       {
         key: "technical-gross-value",
-        label: "Valor tecnico monitorado",
+        label: "Valor técnico monitorado",
         value: formatCompactCurrency(
           technicalOverview?.summary.totalGrossValue ?? 0,
         ),
         helper:
-          "Valor bruto dos orcamentos com responsabilidade tecnica atribuida",
+          "Valor bruto dos orçamentos com responsabilidade técnica atribuída",
         icon: AttachMoneyRoundedIcon,
       },
       {
         key: "technical-stalled-budgets",
-        label: "Orcamentos tecnicos parados",
+        label: "Orçamentos técnicos parados",
         value: String(technicalOverview?.summary.stalledBudgetsCount ?? 0),
         helper:
-          "Orcamentos em negociacao com orcamentista e sem atividade ha 7 dias ou mais",
+          "Orçamentos em negociação com orçamentista e sem atividade há 7 dias ou mais",
         icon: DescriptionRoundedIcon,
       },
     ];
@@ -1844,13 +1880,13 @@ export function DashboardPage() {
       createCsvLine([
         "Resumo",
         "Vendedores ativos",
-        "Orcamentos monitorados",
+        "Orçamentos monitorados",
         "Valor bruto total",
-        "Ticket medio",
-        "Valor em negociacao",
-        "Conversao",
-        "Conversao por valor",
-        "Orcamentos parados",
+        "Ticket médio",
+        "Valor em negociação",
+        "Conversão",
+        "Conversão por valor",
+        "Orçamentos parados",
       ]),
       createCsvLine([
         "Resumo",
@@ -1867,10 +1903,10 @@ export function DashboardPage() {
       createCsvLine([
         "Top por valor",
         "Vendedor",
-        "Orcamentos",
+        "Orçamentos",
         "Valor bruto",
-        "Ticket medio",
-        "Ultima atividade comercial",
+        "Ticket médio",
+        "Última atividade comercial",
       ]),
       ...dashboardData.topSalespeopleByValue.map((item) =>
         createCsvLine([
@@ -1879,32 +1915,32 @@ export function DashboardPage() {
           item.budgetCount,
           currencyFormatter.format(item.grossValue),
           currencyFormatter.format(item.averageTicket),
-          formatDateOrFallback(item.lastActivityAt, "Nao informada"),
+          formatDateOrFallback(item.lastActivityAt, "Não informada"),
         ]),
       ),
       "",
       createCsvLine([
-        "Carteira em negociacao",
+        "Carteira em negociação",
         "Vendedor",
         "Em aberto",
         "Valor",
         "Parados",
-        "Ultima atividade comercial",
+        "Última atividade comercial",
       ]),
       ...dashboardData.negotiationPipeline.map((item) =>
         createCsvLine([
-          "Carteira em negociacao",
+          "Carteira em negociação",
           item.label,
           item.negotiationBudgetCount,
           currencyFormatter.format(item.negotiationGrossValue),
           item.stalledBudgetCount,
-          formatDateOrFallback(item.lastActivityAt, "Nao informada"),
+          formatDateOrFallback(item.lastActivityAt, "Não informada"),
         ]),
       ),
       "",
       createCsvLine([
-        "Orcamentos parados",
-        "Orcamento",
+        "Orçamentos parados",
+        "Orçamento",
         "Vendedor",
         "Obra",
         "Construtora",
@@ -1913,7 +1949,7 @@ export function DashboardPage() {
       ]),
       ...dashboardData.staleBudgets.map((item) =>
         createCsvLine([
-          "Orcamentos parados",
+          "Orçamentos parados",
           item.budgetNumber,
           item.salespersonLabel,
           item.projectLabel,
@@ -1924,16 +1960,16 @@ export function DashboardPage() {
       ),
       "",
       createCsvLine([
-        "Evolucao mensal",
-        "Mes",
-        "Orcamentos",
+        "Evolução mensal",
+        "Mês",
+        "Orçamentos",
         "Valor bruto",
         "Pedidos",
         "Valor convertido",
       ]),
       ...dashboardData.monthlyEvolution.map((item) =>
         createCsvLine([
-          "Evolucao mensal",
+          "Evolução mensal",
           item.monthLabel,
           item.budgetCount,
           currencyFormatter.format(item.grossValue),
@@ -1945,10 +1981,10 @@ export function DashboardPage() {
       createCsvLine([
         "Top construtoras",
         "Construtora",
-        "Orcamentos",
+        "Orçamentos",
         "Valor bruto",
-        "Conversao",
-        "Conversao por valor",
+        "Conversão",
+        "Conversão por valor",
       ]),
       ...dashboardData.topConstructionCompanies.map((item) =>
         createCsvLine([
@@ -1964,10 +2000,10 @@ export function DashboardPage() {
       createCsvLine([
         "Top obras",
         "Obra",
-        "Orcamentos",
+        "Orçamentos",
         "Valor bruto",
-        "Conversao",
-        "Conversao por valor",
+        "Conversão",
+        "Conversão por valor",
       ]),
       ...dashboardData.topProjects.map((item) =>
         createCsvLine([
@@ -1985,7 +2021,7 @@ export function DashboardPage() {
         "Motivo",
         "Cancelados",
         "Valor perdido",
-        "Ticket medio",
+        "Ticket médio",
       ]),
       ...dashboardData.topLossReasons.map((item) =>
         createCsvLine([
@@ -1998,15 +2034,15 @@ export function DashboardPage() {
       ),
       "",
       createCsvLine([
-        "Tempo medio de fechamento",
+        "Tempo médio de fechamento",
         "Recorte",
-        "Tempo medio",
+        "Tempo médio",
         "Valor bruto",
-        "Orcamentos fechados",
+        "Orçamentos fechados",
       ]),
       ...dashboardData.averageClosingTimes.map((item) =>
         createCsvLine([
-          "Tempo medio de fechamento",
+          "Tempo médio de fechamento",
           item.label,
           formatClosingDays(item.averageClosingDays),
           currencyFormatter.format(item.grossValue),
@@ -2015,19 +2051,19 @@ export function DashboardPage() {
       ),
       "",
       createCsvLine([
-        "Resumo tecnico",
-        "Orcamentistas ativos",
-        "Cobertura tecnica",
-        "Com orcamentista",
-        "Sem orcamentista",
-        "Valor tecnico",
-        "Ticket medio",
-        "Valor em negociacao",
-        "Conversao tecnica",
+        "Resumo técnico",
+        "Orçamentistas ativos",
+        "Cobertura técnica",
+        "Com orçamentista",
+        "Sem orçamentista",
+        "Valor técnico",
+        "Ticket médio",
+        "Valor em negociação",
+        "Conversão técnica",
         "Parados",
       ]),
       createCsvLine([
-        "Resumo tecnico",
+        "Resumo técnico",
         dashboardData.technicalOverview.summary.activeEstimators,
         formatPercentage(dashboardData.technicalOverview.summary.coverageRate),
         dashboardData.technicalOverview.summary.budgetsWithEstimator,
@@ -2048,60 +2084,60 @@ export function DashboardPage() {
       ]),
       "",
       createCsvLine([
-        "Top orcamentistas por valor",
-        "Orcamentista",
-        "Orcamentos",
+        "Top orçamentistas por valor",
+        "Orçamentista",
+        "Orçamentos",
         "Valor bruto",
-        "Ticket medio",
-        "Ultima atividade",
+        "Ticket médio",
+        "Última atividade",
       ]),
       ...dashboardData.technicalOverview.topEstimatorsByValue.map((item) =>
         createCsvLine([
-          "Top orcamentistas por valor",
+          "Top orçamentistas por valor",
           item.label,
           item.budgetCount,
           currencyFormatter.format(item.grossValue),
           currencyFormatter.format(item.averageTicket),
-          formatDateOrFallback(item.lastActivityAt, "Nao informada"),
+          formatDateOrFallback(item.lastActivityAt, "Não informada"),
         ]),
       ),
       "",
       createCsvLine([
-        "Top orcamentistas por quantidade",
-        "Orcamentista",
-        "Orcamentos",
+        "Top orçamentistas por quantidade",
+        "Orçamentista",
+        "Orçamentos",
         "Valor bruto",
-        "Conversao",
-        "Ultima atividade",
+        "Conversão",
+        "Última atividade",
       ]),
       ...dashboardData.technicalOverview.topEstimatorsByBudgetCount.map(
         (item) =>
           createCsvLine([
-            "Top orcamentistas por quantidade",
+            "Top orçamentistas por quantidade",
             item.label,
             item.budgetCount,
             currencyFormatter.format(item.grossValue),
             formatPercentage(item.conversionRate),
-            formatDateOrFallback(item.lastActivityAt, "Nao informada"),
+            formatDateOrFallback(item.lastActivityAt, "Não informada"),
           ]),
       ),
       "",
       createCsvLine([
-        "Ultima atividade tecnica",
-        "Orcamentista",
-        "Orcamentos",
+        "Última atividade técnica",
+        "Orçamentista",
+        "Orçamentos",
         "Valor bruto",
-        "Valor em negociacao",
-        "Ultima atividade",
+        "Valor em negociação",
+        "Última atividade",
       ]),
       ...dashboardData.technicalOverview.recentEstimators.map((item) =>
         createCsvLine([
-          "Ultima atividade tecnica",
+          "Última atividade técnica",
           item.label,
           item.budgetCount,
           currencyFormatter.format(item.grossValue),
           currencyFormatter.format(item.negotiationGrossValue),
-          formatDateOrFallback(item.lastActivityAt, "Nao informada"),
+          formatDateOrFallback(item.lastActivityAt, "Não informada"),
         ]),
       ),
     ].join("\n");
@@ -2200,69 +2236,79 @@ export function DashboardPage() {
               width: { md: "auto", xs: "100%" },
             }}
           >
-            <TextField
-              label="Empresa"
-              onChange={(event) =>
-                setSourceCompany(event.target.value as DashboardCompanyFilter)
-              }
-              select
-              size="small"
-              value={sourceCompany}
-            >
-              <MenuItem value="">Todas as empresas</MenuItem>
-              <MenuItem value="Rocktec">ROCKTEC</MenuItem>
-              <MenuItem value="Trox">TROX</MenuItem>
-            </TextField>
-            <TextField
-              label="Ano"
-              onChange={(event) => setSelectedYear(event.target.value)}
-              select
-              size="small"
-              value={selectedYear}
-            >
-              <MenuItem value="">Todos os anos</MenuItem>
-              {availableYears.map((year) => (
-                <MenuItem key={year} value={year}>
-                  {year}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              label="Mes"
-              onChange={(event) => setSelectedMonth(event.target.value)}
-              select
-              size="small"
-              value={selectedMonth}
-            >
-              <MenuItem value="">Todos os meses</MenuItem>
-              {monthOptions.map((month) => (
-                <MenuItem key={month.value} value={month.value}>
-                  {month.label}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              label="Vendedor"
-              onChange={(event) => setSelectedSalespersonId(event.target.value)}
-              select
-              size="small"
-              value={selectedSalespersonId}
-            >
-              <MenuItem value="">Todos os vendedores</MenuItem>
-              {salespersonOptions.map((salesperson) => (
-                <MenuItem key={salesperson.id} value={String(salesperson.id)}>
-                  {salesperson.name}
-                </MenuItem>
-              ))}
-            </TextField>
+            <FilterField label="Empresa">
+              <TextField
+                onChange={(event) =>
+                  setSourceCompany(event.target.value as DashboardCompanyFilter)
+                }
+                select
+                size="small"
+                sx={compactFilterFieldSx}
+                value={sourceCompany}
+              >
+                <MenuItem value="">Todas as empresas</MenuItem>
+                <MenuItem value="Rocktec">ROCKTEC</MenuItem>
+                <MenuItem value="Trox">TROX</MenuItem>
+              </TextField>
+            </FilterField>
+            <FilterField label="Ano">
+              <TextField
+                onChange={(event) => setSelectedYear(event.target.value)}
+                select
+                size="small"
+                sx={compactFilterFieldSx}
+                value={selectedYear}
+              >
+                <MenuItem value="">Todos os anos</MenuItem>
+                {availableYears.map((year) => (
+                  <MenuItem key={year} value={year}>
+                    {year}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </FilterField>
+            <FilterField label="Mês">
+              <TextField
+                onChange={(event) => setSelectedMonth(event.target.value)}
+                select
+                size="small"
+                sx={compactFilterFieldSx}
+                value={selectedMonth}
+              >
+                <MenuItem value="">Todos os meses</MenuItem>
+                {monthOptions.map((month) => (
+                  <MenuItem key={month.value} value={month.value}>
+                    {month.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </FilterField>
+            <FilterField label="Vendedor">
+              <TextField
+                onChange={(event) =>
+                  setSelectedSalespersonId(event.target.value)
+                }
+                select
+                size="small"
+                sx={compactFilterFieldSx}
+                value={selectedSalespersonId}
+              >
+                <MenuItem value="">Todos os vendedores</MenuItem>
+                {salespersonOptions.map((salesperson) => (
+                  <MenuItem key={salesperson.id} value={String(salesperson.id)}>
+                    {salesperson.name}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </FilterField>
           </Box>
         }
-        description="Painel administrativo com leitura comercial por vendedor e visao tecnica separada por orcamentista."
+        description="Painel administrativo com leitura comercial por vendedor e visão técnica separada por orçamentista."
         title="Dashboard administrativo"
       />
 
       {dashboardQuery.isLoading || isDashboardRefreshing ? (
-        <LinearProgress />
+        <LinearProgress sx={dashboardLoaderSx} />
       ) : null}
 
       {dashboardQuery.isError ? (
@@ -2277,6 +2323,7 @@ export function DashboardPage() {
             </Button>
           }
           severity="error"
+          sx={dashboardFeedbackAlertSx}
           variant="outlined"
         >
           {dashboardErrorMessage}
@@ -2284,7 +2331,7 @@ export function DashboardPage() {
       ) : null}
 
       {!dashboardQuery.isLoading && !dashboardQuery.isError ? (
-        <Alert severity="info" variant="outlined">
+        <Alert severity="info" sx={dashboardInfoAlertSx} variant="outlined">
           {`Os indicadores abaixo refletem o recorte de ${buildDashboardScopeLabel(
             sourceCompany,
             selectedYear,
@@ -2297,79 +2344,104 @@ export function DashboardPage() {
 
       {!dashboardQuery.isLoading && !dashboardQuery.isError ? (
         <SectionCard
-          description="Atalhos para aprofundar a analise do dashboard e exportar o recorte atual."
-          title="Acoes rapidas"
+          description="Atalhos para aprofundar a análise do dashboard e exportar o recorte atual com leitura mais executiva."
+          title="Ações rápidas"
         >
-          <Box
-            sx={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 1.5,
-            }}
-          >
-            <Button
-              onClick={() => handleOpenBudgetList()}
-              startIcon={<OpenInNewRoundedIcon />}
-              variant="contained"
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+              <Chip
+                color="primary"
+                label={`Empresa ${sourceCompany || "todas"}`}
+                size="small"
+                variant="outlined"
+              />
+              <Chip
+                label={`Ano ${selectedYear || "todos"}`}
+                size="small"
+                variant="outlined"
+              />
+              <Chip
+                label={`Mês ${selectedMonthLabel || "todos"}`}
+                size="small"
+                variant="outlined"
+              />
+              <Chip
+                label={`Vendedor ${selectedSalespersonLabel || "todos"}`}
+                size="small"
+                variant="outlined"
+              />
+            </Box>
+            <Box
+              sx={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 1.5,
+              }}
             >
-              Abrir lista filtrada
-            </Button>
-            <Button
-              onClick={() =>
-                handleOpenBudgetList({
-                  statusId:
-                    statusIdByNormalizedName.get(
-                      normalizeLookupKey("Em Negociacao"),
-                    ) ?? "",
-                })
-              }
-              startIcon={<OpenInNewRoundedIcon />}
-              variant="outlined"
-            >
-              Ver em negociacao
-            </Button>
-            <Button
-              onClick={() =>
-                handleOpenBudgetList({
-                  statusId:
-                    statusIdByNormalizedName.get(
-                      normalizeLookupKey("Pedido"),
-                    ) ?? "",
-                })
-              }
-              startIcon={<OpenInNewRoundedIcon />}
-              variant="outlined"
-            >
-              Ver pedidos
-            </Button>
-            <Button
-              onClick={() =>
-                handleOpenBudgetList({
-                  statusId:
-                    statusIdByNormalizedName.get(
-                      normalizeLookupKey("Cancelado"),
-                    ) ?? "",
-                })
-              }
-              startIcon={<OpenInNewRoundedIcon />}
-              variant="outlined"
-            >
-              Ver cancelados
-            </Button>
-            <Button
-              onClick={() => void handleExportDashboardCsv()}
-              startIcon={<DownloadRoundedIcon />}
-              variant="outlined"
-            >
-              Exportar CSV
-            </Button>
-            <Button
-              onClick={() => void handleExportDashboardXlsx()}
-              startIcon={<DownloadRoundedIcon />}
-              variant="outlined"
-            >
-              Exportar XLSX
-            </Button>
+              <Button
+                onClick={() => handleOpenBudgetList()}
+                startIcon={<OpenInNewRoundedIcon />}
+                variant="contained"
+              >
+                Abrir lista filtrada
+              </Button>
+              <Button
+                onClick={() =>
+                  handleOpenBudgetList({
+                    statusId:
+                      statusIdByNormalizedName.get(
+                        normalizeLookupKey("Em Negociação"),
+                      ) ?? "",
+                  })
+                }
+                startIcon={<OpenInNewRoundedIcon />}
+                variant="outlined"
+              >
+                Ver em negociação
+              </Button>
+              <Button
+                onClick={() =>
+                  handleOpenBudgetList({
+                    statusId:
+                      statusIdByNormalizedName.get(
+                        normalizeLookupKey("Pedido"),
+                      ) ?? "",
+                  })
+                }
+                startIcon={<OpenInNewRoundedIcon />}
+                variant="outlined"
+              >
+                Ver pedidos
+              </Button>
+              <Button
+                onClick={() =>
+                  handleOpenBudgetList({
+                    statusId:
+                      statusIdByNormalizedName.get(
+                        normalizeLookupKey("Cancelado"),
+                      ) ?? "",
+                  })
+                }
+                startIcon={<OpenInNewRoundedIcon />}
+                variant="outlined"
+              >
+                Ver cancelados
+              </Button>
+              <Button
+                onClick={() => void handleExportDashboardCsv()}
+                startIcon={<DownloadRoundedIcon />}
+                variant="outlined"
+              >
+                Exportar CSV
+              </Button>
+              <Button
+                onClick={() => void handleExportDashboardXlsx()}
+                startIcon={<DownloadRoundedIcon />}
+                variant="outlined"
+              >
+                Exportar XLSX
+              </Button>
+            </Box>
           </Box>
         </SectionCard>
       ) : null}
@@ -2387,20 +2459,67 @@ export function DashboardPage() {
       >
         {(dashboardData?.metricCards ?? []).map((metric) => (
           <Box key={metric.label}>
-            <SectionCard>
-              <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-                <Chip
-                  color="primary"
-                  icon={<metric.icon />}
-                  label="Resumo"
-                  sx={{ alignSelf: "flex-start" }}
-                  variant="outlined"
-                />
-                <Typography color="text.secondary" variant="body2">
+            <SectionCard
+              sx={{
+                background:
+                  "radial-gradient(circle at top right, rgba(59,130,246,0.1) 0%, transparent 30%), linear-gradient(135deg, rgba(30,58,138,0.06) 0%, rgba(14,165,233,0.03) 100%)",
+              }}
+            >
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1.75 }}>
+                <Box
+                  sx={{
+                    alignItems: "center",
+                    display: "flex",
+                    gap: 1.25,
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <Chip
+                    color="primary"
+                    icon={<metric.icon />}
+                    label="Resumo executivo"
+                    sx={{ alignSelf: "flex-start" }}
+                    variant="outlined"
+                  />
+                  <Box
+                    sx={{
+                      alignItems: "center",
+                      background:
+                        "linear-gradient(135deg, rgba(30,58,138,0.12) 0%, rgba(14,165,233,0.12) 100%)",
+                      border: "1px solid rgba(30,58,138,0.14)",
+                      borderRadius: 3,
+                      color: "primary.main",
+                      display: "inline-flex",
+                      height: 44,
+                      justifyContent: "center",
+                      width: 44,
+                    }}
+                  >
+                    <metric.icon />
+                  </Box>
+                </Box>
+                <Typography
+                  color="text.secondary"
+                  sx={{ fontWeight: 700 }}
+                  variant="body2"
+                >
                   {metric.label}
                 </Typography>
-                <Typography variant="h3">{metric.value}</Typography>
-                <Typography color="text.secondary" variant="body2">
+                <Typography
+                  sx={{
+                    color: "#1E3A8A",
+                    fontWeight: 850,
+                    letterSpacing: "-0.03em",
+                  }}
+                  variant="h3"
+                >
+                  {metric.value}
+                </Typography>
+                <Typography
+                  color="text.secondary"
+                  sx={{ lineHeight: 1.65 }}
+                  variant="body2"
+                >
                   {metric.helper}
                 </Typography>
               </Box>
@@ -2410,9 +2529,9 @@ export function DashboardPage() {
       </Box>
 
       {!dashboardQuery.isLoading && !dashboardQuery.isError ? (
-        <Alert severity="info" variant="outlined">
-          A leitura comercial e a leitura tecnica aparecem separadas para evitar
-          mistura entre vendedor e orcamentista nos indicadores gerenciais e nos
+        <Alert severity="info" sx={dashboardInfoAlertSx} variant="outlined">
+          A leitura comercial e a leitura técnica aparecem separadas para evitar
+          mistura entre vendedor e orçamentista nos indicadores gerenciais e nos
           arquivos exportados.
         </Alert>
       ) : null}
@@ -2430,20 +2549,67 @@ export function DashboardPage() {
       >
         {(dashboardData?.technicalMetricCards ?? []).map((metric) => (
           <Box key={metric.label}>
-            <SectionCard>
-              <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-                <Chip
-                  color="secondary"
-                  icon={<metric.icon />}
-                  label="Tecnico"
-                  sx={{ alignSelf: "flex-start" }}
-                  variant="outlined"
-                />
-                <Typography color="text.secondary" variant="body2">
+            <SectionCard
+              sx={{
+                background:
+                  "radial-gradient(circle at top right, rgba(168,85,247,0.08) 0%, transparent 28%), linear-gradient(135deg, rgba(30,58,138,0.05) 0%, rgba(168,85,247,0.03) 100%)",
+              }}
+            >
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1.75 }}>
+                <Box
+                  sx={{
+                    alignItems: "center",
+                    display: "flex",
+                    gap: 1.25,
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <Chip
+                    color="secondary"
+                    icon={<metric.icon />}
+                    label="Leitura técnica"
+                    sx={{ alignSelf: "flex-start" }}
+                    variant="outlined"
+                  />
+                  <Box
+                    sx={{
+                      alignItems: "center",
+                      background:
+                        "linear-gradient(135deg, rgba(126,34,206,0.12) 0%, rgba(30,58,138,0.08) 100%)",
+                      border: "1px solid rgba(126,34,206,0.14)",
+                      borderRadius: 3,
+                      color: "secondary.main",
+                      display: "inline-flex",
+                      height: 44,
+                      justifyContent: "center",
+                      width: 44,
+                    }}
+                  >
+                    <metric.icon />
+                  </Box>
+                </Box>
+                <Typography
+                  color="text.secondary"
+                  sx={{ fontWeight: 700 }}
+                  variant="body2"
+                >
                   {metric.label}
                 </Typography>
-                <Typography variant="h3">{metric.value}</Typography>
-                <Typography color="text.secondary" variant="body2">
+                <Typography
+                  sx={{
+                    color: "#1E3A8A",
+                    fontWeight: 850,
+                    letterSpacing: "-0.03em",
+                  }}
+                  variant="h3"
+                >
+                  {metric.value}
+                </Typography>
+                <Typography
+                  color="text.secondary"
+                  sx={{ lineHeight: 1.65 }}
+                  variant="body2"
+                >
                   {metric.helper}
                 </Typography>
               </Box>
@@ -2463,8 +2629,8 @@ export function DashboardPage() {
         }}
       >
         <SectionCard
-          description="Ranking tecnico por valor bruto dos orcamentos atribuidos a cada orcamentista."
-          title="Top orcamentistas por valor"
+          description="Ranking técnico por valor bruto dos orçamentos atribuídos a cada orçamentista."
+          title="Top orçamentistas por valor"
         >
           {(dashboardData.technicalOverview.topEstimatorsByValue ?? [])
             .length ? (
@@ -2508,7 +2674,7 @@ export function DashboardPage() {
                         variant="outlined"
                       />
                       <Chip
-                        label={`Ultima atividade ${formatDateOrFallback(item.lastActivityAt, "Nao informada")}`}
+                        label={`Última atividade ${formatDateOrFallback(item.lastActivityAt, "Não informada")}`}
                         size="small"
                         variant="outlined"
                       />
@@ -2518,15 +2684,15 @@ export function DashboardPage() {
               )}
             </Box>
           ) : (
-            <Alert severity="info" variant="outlined">
-              Nenhum orcamentista encontrado no recorte atual.
+            <Alert severity="info" sx={dashboardInfoAlertSx} variant="outlined">
+              Nenhum orçamentista encontrado no recorte atual.
             </Alert>
           )}
         </SectionCard>
 
         <SectionCard
-          description="Orcamentistas com maior volume de orcamentos atribuidos no periodo."
-          title="Top orcamentistas por quantidade"
+          description="Orçamentistas com maior volume de orçamentos atribuídos no período."
+          title="Top orçamentistas por quantidade"
         >
           {(dashboardData.technicalOverview.topEstimatorsByBudgetCount ?? [])
             .length ? (
@@ -2566,12 +2732,12 @@ export function DashboardPage() {
                       />
                       <Chip
                         color="success"
-                        label={`Conversao ${formatPercentage(item.conversionRate)}`}
+                        label={`Conversão ${formatPercentage(item.conversionRate)}`}
                         size="small"
                         variant="outlined"
                       />
                       <Chip
-                        label={`Negociacao ${currencyFormatter.format(item.negotiationGrossValue)}`}
+                        label={`Negociação ${currencyFormatter.format(item.negotiationGrossValue)}`}
                         size="small"
                         variant="outlined"
                       />
@@ -2581,15 +2747,15 @@ export function DashboardPage() {
               )}
             </Box>
           ) : (
-            <Alert severity="info" variant="outlined">
-              Nenhum orcamentista encontrado no recorte atual.
+            <Alert severity="info" sx={dashboardInfoAlertSx} variant="outlined">
+              Nenhum orçamentista encontrado no recorte atual.
             </Alert>
           )}
         </SectionCard>
 
         <SectionCard
-          description="Ultima atividade registrada para cada orcamentista dentro do recorte selecionado."
-          title="Ultima atividade tecnica"
+          description="Última atividade registrada para cada orçamentista dentro do recorte selecionado."
+          title="Última atividade técnica"
         >
           {(dashboardData.technicalOverview.recentEstimators ?? []).length ? (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -2607,14 +2773,14 @@ export function DashboardPage() {
                       {item.label}
                     </Typography>
                     <Typography color="text.secondary" variant="caption">
-                      {`${item.budgetCount} orcamento(s) · ${currencyFormatter.format(item.grossValue)}`}
+                      {`${item.budgetCount} orçamento(s) · ${currencyFormatter.format(item.grossValue)}`}
                     </Typography>
                   </Box>
                   <Chip
                     icon={<InsightsRoundedIcon />}
                     label={formatDateOrFallback(
                       item.lastActivityAt,
-                      "Nao informada",
+                      "Não informada",
                     )}
                     size="small"
                     variant="outlined"
@@ -2623,8 +2789,8 @@ export function DashboardPage() {
               ))}
             </Box>
           ) : (
-            <Alert severity="info" variant="outlined">
-              Nenhuma atividade tecnica encontrada para o filtro atual.
+            <Alert severity="info" sx={dashboardInfoAlertSx} variant="outlined">
+              Nenhuma atividade técnica encontrada para o filtro atual.
             </Alert>
           )}
         </SectionCard>
@@ -2705,7 +2871,7 @@ export function DashboardPage() {
                       variant="outlined"
                     />
                     <Chip
-                      label={`Ultima atividade comercial ${formatDateOrFallback(item.lastActivityAt, "Nao informada")}`}
+                      label={`Última atividade comercial ${formatDateOrFallback(item.lastActivityAt, "Não informada")}`}
                       size="small"
                       variant="outlined"
                     />
@@ -2714,14 +2880,14 @@ export function DashboardPage() {
               ))}
             </Box>
           ) : (
-            <Alert severity="info" variant="outlined">
-              Nenhum orcamento encontrado para o filtro atual.
+            <Alert severity="info" sx={dashboardInfoAlertSx} variant="outlined">
+              Nenhum orçamento encontrado para o filtro atual.
             </Alert>
           )}
         </SectionCard>
 
         <SectionCard
-          description="Top 10 vendedores ordenados pelo volume de orcamentos."
+          description="Top 10 vendedores ordenados pelo volume de orçamentos."
           title="Top 10 por quantidade"
         >
           {(dashboardData?.topSalespeopleByBudgetCount ?? []).length ? (
@@ -2760,12 +2926,12 @@ export function DashboardPage() {
                     />
                     <Chip
                       color="success"
-                      label={`Conversao ${formatPercentage(item.conversionRate)}`}
+                      label={`Conversão ${formatPercentage(item.conversionRate)}`}
                       size="small"
                       variant="outlined"
                     />
                     <Chip
-                      label={`Ultima atividade comercial ${formatDateOrFallback(item.lastActivityAt, "Nao informada")}`}
+                      label={`Última atividade comercial ${formatDateOrFallback(item.lastActivityAt, "Não informada")}`}
                       size="small"
                       variant="outlined"
                     />
@@ -2774,8 +2940,8 @@ export function DashboardPage() {
               ))}
             </Box>
           ) : (
-            <Alert severity="info" variant="outlined">
-              Nenhum orcamento encontrado para o filtro atual.
+            <Alert severity="info" sx={dashboardInfoAlertSx} variant="outlined">
+              Nenhum orçamento encontrado para o filtro atual.
             </Alert>
           )}
         </SectionCard>
@@ -2792,7 +2958,7 @@ export function DashboardPage() {
         }}
       >
         <SectionCard
-          description="Construtoras com maior volume financeiro no recorte atual, destacando conversao por quantidade e por valor."
+          description="Construtoras com maior volume financeiro no recorte atual, destacando conversão por quantidade e por valor."
           title="Top construtoras"
         >
           {(dashboardData?.topConstructionCompanies ?? []).length ? (
@@ -2842,7 +3008,7 @@ export function DashboardPage() {
                       variant="outlined"
                     />
                     <Chip
-                      label={`Ultima atividade comercial ${formatDateOrFallback(item.lastActivityAt, "Nao informada")}`}
+                      label={`Última atividade comercial ${formatDateOrFallback(item.lastActivityAt, "Não informada")}`}
                       size="small"
                       variant="outlined"
                     />
@@ -2851,14 +3017,14 @@ export function DashboardPage() {
               ))}
             </Box>
           ) : (
-            <Alert severity="info" variant="outlined">
+            <Alert severity="info" sx={dashboardInfoAlertSx} variant="outlined">
               Nenhuma construtora encontrada para o filtro atual.
             </Alert>
           )}
         </SectionCard>
 
         <SectionCard
-          description="Obras com maior valor bruto no periodo, ajudando a identificar onde esta a melhor concentracao comercial."
+          description="Obras com maior valor bruto no período, ajudando a identificar onde está a melhor concentração comercial."
           title="Top obras"
         >
           {(dashboardData?.topProjects ?? []).length ? (
@@ -2908,7 +3074,7 @@ export function DashboardPage() {
                       variant="outlined"
                     />
                     <Chip
-                      label={`Ultima atividade comercial ${formatDateOrFallback(item.lastActivityAt, "Nao informada")}`}
+                      label={`Última atividade comercial ${formatDateOrFallback(item.lastActivityAt, "Não informada")}`}
                       size="small"
                       variant="outlined"
                     />
@@ -2917,14 +3083,14 @@ export function DashboardPage() {
               ))}
             </Box>
           ) : (
-            <Alert severity="info" variant="outlined">
+            <Alert severity="info" sx={dashboardInfoAlertSx} variant="outlined">
               Nenhuma obra encontrada para o filtro atual.
             </Alert>
           )}
         </SectionCard>
 
         <SectionCard
-          description="Principais motivos de perda por impacto financeiro para orientar as acoes corretivas do time comercial."
+          description="Principais motivos de perda por impacto financeiro para orientar as ações corretivas do time comercial."
           title="Motivos de perda"
         >
           {(dashboardData?.topLossReasons ?? []).length ? (
@@ -2971,15 +3137,15 @@ export function DashboardPage() {
               ))}
             </Box>
           ) : (
-            <Alert severity="info" variant="outlined">
+            <Alert severity="info" sx={dashboardInfoAlertSx} variant="outlined">
               Nenhum motivo de perda encontrado para o filtro atual.
             </Alert>
           )}
         </SectionCard>
 
         <SectionCard
-          description="Tempo medio entre o envio e o fechamento dos orcamentos finalizados no recorte atual."
-          title="Tempo medio de fechamento"
+          description="Tempo médio entre o envio e o fechamento dos orçamentos finalizados no recorte atual."
+          title="Tempo médio de fechamento"
         >
           {(dashboardData?.averageClosingTimes ?? []).length ? (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -3018,8 +3184,8 @@ export function DashboardPage() {
               ))}
             </Box>
           ) : (
-            <Alert severity="info" variant="outlined">
-              Nenhum fechamento encontrado para calcular o tempo medio no filtro
+            <Alert severity="info" sx={dashboardInfoAlertSx} variant="outlined">
+              Nenhum fechamento encontrado para calcular o tempo médio no filtro
               atual.
             </Alert>
           )}
@@ -3037,12 +3203,16 @@ export function DashboardPage() {
         }}
       >
         <SectionCard
-          description="Comparativo entre os dois meses mais recentes do recorte atual para identificar aceleracao ou perda de ritmo."
-          title="Tendencia mensal"
+          description="Comparativo entre os dois meses mais recentes do recorte atual para identificar aceleração ou perda de ritmo."
+          title="Tendência mensal"
         >
           {dashboardInsights.monthComparison !== null ? (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <Alert severity="info" variant="outlined">
+              <Alert
+                severity="info"
+                sx={dashboardInfoAlertSx}
+                variant="outlined"
+              >
                 {`Comparando ${dashboardInsights.monthComparison.currentMonthLabel} com ${dashboardInsights.monthComparison.previousMonthLabel}.`}
               </Alert>
               <Box
@@ -3063,7 +3233,7 @@ export function DashboardPage() {
                   }}
                 >
                   <Typography color="text.secondary" variant="body2">
-                    Orcamentos
+                    Orçamentos
                   </Typography>
                   <Typography sx={{ mt: 0.5 }} variant="h5">
                     {dashboardInsights.monthComparison.currentMonth.budgetCount}
@@ -3115,7 +3285,7 @@ export function DashboardPage() {
                   }}
                 >
                   <Typography color="text.secondary" variant="body2">
-                    Conversao
+                    Conversão
                   </Typography>
                   <Typography sx={{ mt: 0.5 }} variant="h5">
                     {formatPercentage(
@@ -3144,16 +3314,16 @@ export function DashboardPage() {
               </Box>
             </Box>
           ) : (
-            <Alert severity="info" variant="outlined">
-              Sao necessarios pelo menos dois meses no recorte atual para montar
-              o comparativo de tendencia.
+            <Alert severity="info" sx={dashboardInfoAlertSx} variant="outlined">
+              São necessários pelo menos dois meses no recorte atual para montar
+              o comparativo de tendência.
             </Alert>
           )}
         </SectionCard>
 
         <SectionCard
-          description="Vendedores com melhor conversao no periodo, priorizando quem tem pelo menos dois orcamentos no recorte."
-          title="Top conversao"
+          description="Vendedores com melhor conversão no período, priorizando quem tem pelo menos dois orçamentos no recorte."
+          title="Top conversão"
         >
           {(dashboardData?.topSalespeopleByConversion ?? []).length ? (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -3205,16 +3375,16 @@ export function DashboardPage() {
               ))}
             </Box>
           ) : (
-            <Alert severity="info" variant="outlined">
-              Nenhum vendedor elegivel para o ranking de conversao no filtro
+            <Alert severity="info" sx={dashboardInfoAlertSx} variant="outlined">
+              Nenhum vendedor elegível para o ranking de conversão no filtro
               atual.
             </Alert>
           )}
         </SectionCard>
 
         <SectionCard
-          description="Vendedores com maior ticket medio no periodo, considerando base minima para reduzir distorcao."
-          title="Top ticket medio"
+          description="Vendedores com maior ticket médio no período, considerando base mínima para reduzir distorção."
+          title="Top ticket médio"
         >
           {(dashboardData?.topSalespeopleByAverageTicket ?? []).length ? (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -3258,7 +3428,7 @@ export function DashboardPage() {
                         variant="outlined"
                       />
                       <Chip
-                        label={`Conversao ${formatPercentage(item.conversionRate)}`}
+                        label={`Conversão ${formatPercentage(item.conversionRate)}`}
                         size="small"
                         variant="outlined"
                       />
@@ -3268,8 +3438,8 @@ export function DashboardPage() {
               )}
             </Box>
           ) : (
-            <Alert severity="info" variant="outlined">
-              Nenhum vendedor elegivel para o ranking de ticket medio no filtro
+            <Alert severity="info" sx={dashboardInfoAlertSx} variant="outlined">
+              Nenhum vendedor elegível para o ranking de conversão no filtro
               atual.
             </Alert>
           )}
@@ -3287,8 +3457,8 @@ export function DashboardPage() {
         }}
       >
         <SectionCard
-          description="Carteira ainda em negociacao, com foco no valor e no volume por vendedor."
-          title="Carteira em negociacao"
+          description="Carteira ainda em negociação, com foco no valor e no volume por vendedor."
+          title="Carteira em negociação"
         >
           {(dashboardData?.negotiationPipeline ?? []).length ? (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -3318,7 +3488,7 @@ export function DashboardPage() {
                               salespersonIdByName.get(item.label) ?? undefined,
                             statusId:
                               statusIdByNormalizedName.get(
-                                normalizeLookupKey("Em Negociacao"),
+                                normalizeLookupKey("Em Negociação"),
                               ) ?? undefined,
                           })
                         }
@@ -3352,7 +3522,7 @@ export function DashboardPage() {
                       variant="outlined"
                     />
                     <Chip
-                      label={`Ultima atividade comercial ${formatDateOrFallback(item.lastActivityAt, "Nao informada")}`}
+                      label={`Última atividade comercial ${formatDateOrFallback(item.lastActivityAt, "Não informada")}`}
                       size="small"
                       variant="outlined"
                     />
@@ -3361,14 +3531,14 @@ export function DashboardPage() {
               ))}
             </Box>
           ) : (
-            <Alert severity="info" variant="outlined">
-              Nenhuma carteira em negociacao encontrada para o filtro atual.
+            <Alert severity="info" sx={dashboardInfoAlertSx} variant="outlined">
+              Nenhuma carteira em negociação encontrada para o filtro atual.
             </Alert>
           )}
         </SectionCard>
 
         <SectionCard
-          description="Comparativo do funil principal por vendedor com foco em negociacao, pedidos e perdas."
+          description="Comparativo do funil principal por vendedor com foco em negociação, pedidos e perdas."
           title="Funil por vendedor"
         >
           {(dashboardData?.salespersonFunnel ?? []).length ? (
@@ -3451,7 +3621,7 @@ export function DashboardPage() {
                       />
                       <Chip
                         color="warning"
-                        label={`Negociacao ${item.negotiationBudgets}`}
+                        label={`Negociação ${item.negotiationBudgets}`}
                         size="small"
                         variant="outlined"
                       />
@@ -3461,7 +3631,7 @@ export function DashboardPage() {
                         variant="outlined"
                       />
                       <Chip
-                        label={`Conversao ${formatPercentage(item.conversionRate)}`}
+                        label={`Conversão ${formatPercentage(item.conversionRate)}`}
                         size="small"
                         variant="outlined"
                       />
@@ -3471,15 +3641,15 @@ export function DashboardPage() {
               })}
             </Box>
           ) : (
-            <Alert severity="info" variant="outlined">
+            <Alert severity="info" sx={dashboardInfoAlertSx} variant="outlined">
               Nenhum dado de funil encontrado para o filtro atual.
             </Alert>
           )}
         </SectionCard>
 
         <SectionCard
-          description="Leitura rapida da ultima atividade comercial registrada por vendedor dentro do recorte."
-          title="Ultima atividade comercial"
+          description="Leitura rápida da última atividade comercial registrada por vendedor dentro do recorte."
+          title="Última atividade comercial"
         >
           {(dashboardData?.recentSalespeople ?? []).length ? (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -3497,14 +3667,14 @@ export function DashboardPage() {
                       {item.label}
                     </Typography>
                     <Typography color="text.secondary" variant="caption">
-                      {`${item.budgetCount} orcamento(s) · ${currencyFormatter.format(item.grossValue)}`}
+                      {`${item.budgetCount} orçamento(s) · ${currencyFormatter.format(item.grossValue)}`}
                     </Typography>
                   </Box>
                   <Chip
                     icon={<InsightsRoundedIcon />}
                     label={formatDateOrFallback(
                       item.lastActivityAt,
-                      "Nao informada",
+                      "Não informada",
                     )}
                     size="small"
                     variant="outlined"
@@ -3513,15 +3683,15 @@ export function DashboardPage() {
               ))}
             </Box>
           ) : (
-            <Alert severity="info" variant="outlined">
+            <Alert severity="info" sx={dashboardInfoAlertSx} variant="outlined">
               Nenhuma atividade comercial encontrada para o filtro atual.
             </Alert>
           )}
         </SectionCard>
 
         <SectionCard
-          description="Oportunidades em negociacao sem atividade comercial recente, priorizadas pelos casos mais antigos."
-          title="Orcamentos parados"
+          description="Oportunidades em negociação sem atividade comercial recente, priorizadas pelos casos mais antigos."
+          title="Orçamentos parados"
         >
           {(dashboardData?.staleBudgets ?? []).length ? (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
@@ -3586,7 +3756,7 @@ export function DashboardPage() {
                         variant="outlined"
                       />
                       <Chip
-                        label={`Ultima atividade comercial ${formatDateOrFallback(item.lastActivityAt, "Nao informada")}`}
+                        label={`Última atividade comercial ${formatDateOrFallback(item.lastActivityAt, "Não informada")}`}
                         size="small"
                         variant="outlined"
                       />
@@ -3596,8 +3766,12 @@ export function DashboardPage() {
               ))}
             </Box>
           ) : (
-            <Alert severity="success" variant="outlined">
-              Nenhum orcamento parado encontrado para o filtro atual.
+            <Alert
+              severity="success"
+              sx={dashboardFeedbackAlertSx}
+              variant="outlined"
+            >
+              Nenhum orçamento parado encontrado para o filtro atual.
             </Alert>
           )}
         </SectionCard>
@@ -3614,8 +3788,8 @@ export function DashboardPage() {
         }}
       >
         <SectionCard
-          description="Evolucao do volume orcado e do valor convertido ao longo do tempo dentro do recorte atual."
-          title="Evolucao mensal"
+          description="Evolução do volume orçado e do valor convertido ao longo do tempo dentro do recorte atual."
+          title="Evolução mensal"
         >
           {(dashboardData?.monthlyEvolution ?? []).length ? (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -3645,7 +3819,7 @@ export function DashboardPage() {
                       />
                     </Box>
                     <LinearProgress
-                      sx={{ borderRadius: 999, height: 8, mt: 1 }}
+                      sx={{ ...dashboardLoaderSx, mt: 1 }}
                       value={progressValue}
                       variant="determinate"
                     />
@@ -3680,14 +3854,14 @@ export function DashboardPage() {
               })}
             </Box>
           ) : (
-            <Alert severity="info" variant="outlined">
-              Nenhuma evolucao mensal encontrada para o filtro atual.
+            <Alert severity="info" sx={dashboardInfoAlertSx} variant="outlined">
+              Nenhuma evolução mensal encontrada para o filtro atual.
             </Alert>
           )}
         </SectionCard>
 
         <SectionCard
-          description="Leitura consolidada do funil principal dentro do periodo selecionado."
+          description="Leitura consolidada do funil principal dentro do período selecionado."
           title="Resumo da carteira"
         >
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -3699,7 +3873,7 @@ export function DashboardPage() {
               },
               {
                 color: "warning.main",
-                label: "Em negociacao",
+                label: "Em negociação",
                 value: dashboardData?.negotiationBudgets ?? 0,
               },
               {
@@ -3709,7 +3883,7 @@ export function DashboardPage() {
               },
               {
                 color: "primary.main",
-                label: "Conversao",
+                label: "Conversão",
                 value: formatPercentage(dashboardData?.conversionRate ?? 0),
               },
             ].map((item) => (

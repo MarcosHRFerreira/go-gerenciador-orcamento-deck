@@ -1,7 +1,9 @@
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import EmojiEventsRoundedIcon from "@mui/icons-material/EmojiEventsRounded";
 import FolderOpenRoundedIcon from "@mui/icons-material/FolderOpenRounded";
+import ForumRoundedIcon from "@mui/icons-material/ForumRounded";
 import LinkRoundedIcon from "@mui/icons-material/LinkRounded";
 import LinkOffRoundedIcon from "@mui/icons-material/LinkOffRounded";
 import NoteAddRoundedIcon from "@mui/icons-material/NoteAddRounded";
@@ -36,10 +38,18 @@ import {
 import { isAxiosError } from "axios";
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { alpha } from "@mui/material/styles";
+import {
+  compactFilterFieldSx,
+  FilterField,
+  filterGroupSx,
+  filterGroupTitleSx,
+} from "../../../components/common/FilterField";
 import { PageHeader } from "../../../components/common/PageHeader";
 import { SectionCard } from "../../../components/common/SectionCard";
 import { useAuth } from "../../auth/hooks/useAuth";
 import {
+  electBudgetWinnerRequest,
   getBudgetByIdRequest,
   getBudgetListCatalogsRequest,
   getBudgetListRequest,
@@ -79,7 +89,7 @@ type BudgetStatusCategory = "pedido" | "cancelado" | "orcamento" | "other";
 function formatOptionalText(value: string | null | undefined) {
   const trimmedValue = value?.trim();
 
-  return trimmedValue ? trimmedValue : "Nao informado";
+  return trimmedValue ? trimmedValue : "Não informado";
 }
 
 function normalizeValue(value: string | null | undefined) {
@@ -115,7 +125,7 @@ function createNameMap<T extends { id: number; name: string }>(items: T[]) {
 function formatCatalogName(
   value: number | null,
   catalogMap: Map<number, string>,
-  fallbackWhenMissing = "Nao informado",
+  fallbackWhenMissing = "Não informado",
 ) {
   if (value === null) {
     return fallbackWhenMissing;
@@ -151,11 +161,12 @@ const projectBudgetsFilters = (projectId: number): BudgetListFilters => ({
   page: 1,
   pageSize: 100,
   projectId: String(projectId),
-  projectName: "",
+  projectCode: "",
   salespersonId: "",
   estimatorId: "",
   sentAtFrom: "",
   sentAtTo: "",
+  systemTypeId: "",
   sourceCompany: "",
   sortBy: "sent_at",
   sortOrder: "desc",
@@ -168,17 +179,55 @@ const associationCandidateFilters: BudgetListFilters = {
   installerId: "",
   page: 1,
   pageSize: 100,
-  projectName: "",
+  projectCode: "",
   salespersonId: "",
   estimatorId: "",
   sentAtFrom: "",
   sentAtTo: "",
+  systemTypeId: "",
   sourceCompany: "",
   sortBy: "updated_at",
   sortOrder: "desc",
   statusId: "",
   yearBudget: "",
 };
+
+const premiumFeedbackAlertSx = {
+  borderRadius: 3,
+  boxShadow: "0 14px 30px rgba(30, 58, 138, 0.08)",
+  "& .MuiAlert-message": {
+    fontWeight: 600,
+  },
+} as const;
+
+const premiumDialogSx = {
+  "& .MuiDialog-paper": {
+    backdropFilter: "blur(12px)",
+    background:
+      "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.98) 100%)",
+    border: "1px solid rgba(30, 58, 138, 0.12)",
+    borderRadius: 4,
+    boxShadow: "0 28px 60px rgba(15, 23, 42, 0.18)",
+    overflow: "hidden",
+  },
+} as const;
+
+const premiumDialogTitleSx = {
+  background:
+    "linear-gradient(135deg, rgba(30,58,138,0.09) 0%, rgba(14,165,233,0.045) 100%)",
+  borderBottom: "1px solid rgba(30, 58, 138, 0.1)",
+  color: "#1E3A8A",
+  fontWeight: 800,
+  px: 3,
+  py: 2.25,
+} as const;
+
+const premiumDialogActionsSx = {
+  borderTop: "1px solid rgba(30, 58, 138, 0.08)",
+  px: 3,
+  pb: 3,
+  pt: 2,
+} as const;
 
 function mapBudgetDetailToPayload(
   budget: BudgetDetailItem,
@@ -198,6 +247,7 @@ function mapBudgetDetailToPayload(
     lossReasonId: budget.lossReasonId,
     priorityId: budget.priorityId,
     productLineId: budget.productLineId,
+    systemTypeId: budget.systemTypeId,
     projectId,
     revision: budget.revision,
     salespersonId: budget.salespersonId,
@@ -230,6 +280,9 @@ export default function ProjectDetailPage() {
   const [candidateSearch, setCandidateSearch] = useState("");
   const [pendingDisassociationBudget, setPendingDisassociationBudget] =
     useState<BudgetListItem | null>(null);
+  const [pendingWinnerBudget, setPendingWinnerBudget] =
+    useState<BudgetListItem | null>(null);
+  const [winnerNotes, setWinnerNotes] = useState("");
 
   const projectQuery = useQuery({
     enabled: hasValidProjectId,
@@ -293,6 +346,13 @@ export default function ProjectDetailPage() {
       ),
     [budgetCatalogsQuery.data?.installers],
   );
+  const systemTypeMap = useMemo(
+    () =>
+      createNameMap<BudgetCatalogItem>(
+        budgetCatalogsQuery.data?.systemTypes ?? [],
+      ),
+    [budgetCatalogsQuery.data?.systemTypes],
+  );
 
   const winnerBudget = useMemo(
     () =>
@@ -350,11 +410,17 @@ export default function ProjectDetailPage() {
     [associationCandidatesQuery.data?.items, candidateSearch],
   );
 
-  const invalidateProjectQueries = async (budgetId: number) => {
+  const invalidateProjectQueries = async (budgetId?: number) => {
     await queryClient.invalidateQueries({ queryKey: ["budgets"] });
-    await queryClient.invalidateQueries({ queryKey: ["budget", budgetId] });
+    if (budgetId !== undefined) {
+      await queryClient.invalidateQueries({ queryKey: ["budget", budgetId] });
+    }
     await queryClient.invalidateQueries({
       queryKey: ["project-budgets", projectId],
+    });
+    await queryClient.invalidateQueries({ queryKey: ["project", projectId] });
+    await queryClient.invalidateQueries({
+      queryKey: ["budget-status-history"],
     });
     await queryClient.invalidateQueries({
       queryKey: ["budget-association-candidates"],
@@ -374,7 +440,7 @@ export default function ProjectDetailPage() {
       await invalidateProjectQueries(budget.id);
       setAssociationError(null);
       setAssociationFeedback(
-        `Orcamento ${budget.budgetNumber} associado a obra com sucesso.`,
+        `Orçamento ${budget.budgetNumber} associado à obra com sucesso.`,
       );
       setAssociationCandidateId("");
       setCandidateSearch("");
@@ -383,7 +449,7 @@ export default function ProjectDetailPage() {
     onError: (error) => {
       setAssociationFeedback(null);
       setAssociationError(
-        getErrorMessage(error, "Nao foi possivel associar o orcamento a obra."),
+        getErrorMessage(error, "Não foi possível associar o orçamento à obra."),
       );
     },
   });
@@ -401,16 +467,42 @@ export default function ProjectDetailPage() {
       await invalidateProjectQueries(budget.id);
       setAssociationError(null);
       setAssociationFeedback(
-        `Orcamento ${budget.budgetNumber} removido da obra com sucesso.`,
+        `Orçamento ${budget.budgetNumber} removido da obra com sucesso.`,
       );
       setPendingDisassociationBudget(null);
     },
     onError: (error) => {
       setAssociationFeedback(null);
       setAssociationError(
-        getErrorMessage(error, "Nao foi possivel remover o orcamento da obra."),
+        getErrorMessage(error, "Não foi possível remover o orçamento da obra."),
       );
       setPendingDisassociationBudget(null);
+    },
+  });
+
+  const electWinnerMutation = useMutation({
+    mutationFn: async (budget: BudgetListItem) => {
+      await electBudgetWinnerRequest(budget.id, {
+        notes: winnerNotes.trim(),
+      });
+      return budget;
+    },
+    onSuccess: async (budget) => {
+      await invalidateProjectQueries(budget.id);
+      setAssociationError(null);
+      setAssociationFeedback(
+        winnerBudget && winnerBudget.id !== budget.id
+          ? `Vencedor da obra atualizado para o orçamento ${budget.budgetNumber} com sucesso.`
+          : `Orçamento ${budget.budgetNumber} definido como vencedor da obra com sucesso.`,
+      );
+      setPendingWinnerBudget(null);
+      setWinnerNotes("");
+    },
+    onError: (error) => {
+      setAssociationFeedback(null);
+      setAssociationError(
+        getErrorMessage(error, "Não foi possível definir o vencedor da obra."),
+      );
     },
   });
 
@@ -419,7 +511,7 @@ export default function ProjectDetailPage() {
 
     if (!Number.isInteger(selectedBudgetId) || selectedBudgetId <= 0) {
       setAssociationFeedback(null);
-      setAssociationError("Selecione um orcamento valido para associar.");
+      setAssociationError("Selecione um orçamento válido para associar.");
       return;
     }
 
@@ -429,7 +521,7 @@ export default function ProjectDetailPage() {
   if (!hasValidProjectId) {
     return (
       <Box sx={{ p: { md: 3, xs: 2 } }}>
-        <Alert severity="error">Obra invalida.</Alert>
+        <Alert severity="error">Obra inválida.</Alert>
       </Box>
     );
   }
@@ -454,10 +546,10 @@ export default function ProjectDetailPage() {
     try {
       await navigator.clipboard.writeText(project.code);
       setCopyError(null);
-      setCopyFeedback("Codigo da obra copiado.");
+      setCopyFeedback("Código da obra copiado.");
     } catch {
       setCopyFeedback(null);
-      setCopyError("Nao foi possivel copiar o codigo da obra.");
+      setCopyError("Não foi possível copiar o código da obra.");
     }
   };
 
@@ -471,14 +563,27 @@ export default function ProjectDetailPage() {
             {canCreateBudget ? (
               <Button
                 onClick={() =>
-                  navigate(`/budgets/new?projectId=${projectId}&returnTo=project`)
+                  navigate(
+                    `/budgets/new?projectId=${projectId}&returnTo=project`,
+                  )
                 }
                 startIcon={<NoteAddRoundedIcon />}
                 variant="contained"
               >
-                Novo orcamento
+                Novo orçamento
               </Button>
             ) : null}
+            <Button
+              onClick={() =>
+                navigate(
+                  `/communication?tab=conversations&projectId=${projectId}`,
+                )
+              }
+              startIcon={<ForumRoundedIcon />}
+              variant="outlined"
+            >
+              Conversar sobre a obra
+            </Button>
             <Button
               onClick={() => {
                 setAssociationFeedback(null);
@@ -488,55 +593,63 @@ export default function ProjectDetailPage() {
               startIcon={<LinkRoundedIcon />}
               variant="outlined"
             >
-              Associar orcamento
+              Associar orçamento
             </Button>
             <Button
               onClick={() => navigate("/budgets")}
               startIcon={<ArrowBackRoundedIcon />}
               variant="outlined"
             >
-              Voltar para orcamentos
+              Voltar para orçamentos
             </Button>
           </Box>
         }
-        description="Acompanhe os orcamentos vinculados a obra, o vencedor definido e os itens que ja foram encerrados."
+        description="Acompanhe os orçamentos vinculados à obra, o vencedor definido e os itens que já foram encerrados."
         title={project?.name ?? "Obra"}
       />
 
       {isLoading ? <LinearProgress /> : null}
 
       {associationFeedback ? (
-        <Alert severity="success" variant="outlined">
+        <Alert
+          severity="success"
+          sx={premiumFeedbackAlertSx}
+          variant="outlined"
+        >
           {associationFeedback}
         </Alert>
       ) : null}
 
       {copyFeedback ? (
-        <Alert severity="success" variant="outlined">
+        <Alert
+          severity="success"
+          sx={premiumFeedbackAlertSx}
+          variant="outlined"
+        >
           {copyFeedback}
         </Alert>
       ) : null}
 
       {associationError ? (
-        <Alert severity="error" variant="outlined">
+        <Alert severity="error" sx={premiumFeedbackAlertSx} variant="outlined">
           {associationError}
         </Alert>
       ) : null}
 
       {copyError ? (
-        <Alert severity="error" variant="outlined">
+        <Alert severity="error" sx={premiumFeedbackAlertSx} variant="outlined">
           {copyError}
         </Alert>
       ) : null}
 
       {hasError ? (
-        <Alert severity="error" variant="outlined">
+        <Alert severity="error" sx={premiumFeedbackAlertSx} variant="outlined">
           {getErrorMessage(
             projectQuery.error ??
               projectTypesQuery.error ??
               budgetCatalogsQuery.error ??
               projectBudgetsQuery.error,
-            "Nao foi possivel carregar os dados da obra.",
+            "Não foi possível carregar os dados da obra.",
           )}
         </Alert>
       ) : null}
@@ -544,13 +657,13 @@ export default function ProjectDetailPage() {
       {project ? (
         <>
           <SectionCard
-            description="Dados principais da obra e indicadores consolidados do grupo de orcamentos."
+            description="Dados principais da obra e indicadores consolidados do grupo de orçamentos."
             title="Resumo da obra"
           >
             <Box
               sx={{
                 display: "grid",
-                gap: 2,
+                gap: 1.75,
                 gridTemplateColumns: {
                   lg: "repeat(4, minmax(0, 1fr))",
                   md: "repeat(2, minmax(0, 1fr))",
@@ -558,15 +671,31 @@ export default function ProjectDetailPage() {
                 },
               }}
             >
-              <Box>
-                <Typography color="text.secondary" variant="caption">
-                  Codigo
+              <Box
+                sx={{
+                  background: (theme) =>
+                    `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.06)} 0%, ${alpha(theme.palette.info.main, 0.025)} 100%)`,
+                  border: "1px solid",
+                  borderColor: (theme) =>
+                    alpha(theme.palette.primary.main, 0.12),
+                  borderRadius: 3,
+                  p: 2,
+                }}
+              >
+                <Typography
+                  color="text.secondary"
+                  sx={{ fontWeight: 700 }}
+                  variant="caption"
+                >
+                  Código
                 </Typography>
                 <Box sx={{ alignItems: "center", display: "flex", gap: 0.5 }}>
-                  <Typography variant="body1">{project.code}</Typography>
-                  <Tooltip title="Copiar codigo">
+                  <Typography sx={{ fontWeight: 700 }} variant="body1">
+                    {project.code}
+                  </Typography>
+                  <Tooltip title="Copiar código">
                     <IconButton
-                      aria-label="Copiar codigo"
+                      aria-label="Copiar código"
                       onClick={handleCopyProjectCode}
                       size="small"
                     >
@@ -575,41 +704,109 @@ export default function ProjectDetailPage() {
                   </Tooltip>
                 </Box>
               </Box>
-              <Box>
-                <Typography color="text.secondary" variant="caption">
+              <Box
+                sx={{
+                  background: (theme) =>
+                    `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.06)} 0%, ${alpha(theme.palette.info.main, 0.025)} 100%)`,
+                  border: "1px solid",
+                  borderColor: (theme) =>
+                    alpha(theme.palette.primary.main, 0.12),
+                  borderRadius: 3,
+                  p: 2,
+                }}
+              >
+                <Typography
+                  color="text.secondary"
+                  sx={{ fontWeight: 700 }}
+                  variant="caption"
+                >
                   Obra
                 </Typography>
-                <Typography variant="body1">{project.name}</Typography>
+                <Typography sx={{ fontWeight: 700 }} variant="body1">
+                  {project.name}
+                </Typography>
               </Box>
-              <Box>
-                <Typography color="text.secondary" variant="caption">
+              <Box
+                sx={{
+                  background: (theme) =>
+                    `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.06)} 0%, ${alpha(theme.palette.info.main, 0.025)} 100%)`,
+                  border: "1px solid",
+                  borderColor: (theme) =>
+                    alpha(theme.palette.primary.main, 0.12),
+                  borderRadius: 3,
+                  p: 2,
+                }}
+              >
+                <Typography
+                  color="text.secondary"
+                  sx={{ fontWeight: 700 }}
+                  variant="caption"
+                >
                   Tipo de obra
                 </Typography>
-                <Typography variant="body1">
+                <Typography sx={{ fontWeight: 700 }} variant="body1">
                   {formatCatalogName(project.projectTypeId, projectTypeMap)}
                 </Typography>
               </Box>
-              <Box>
-                <Typography color="text.secondary" variant="caption">
+              <Box
+                sx={{
+                  background: (theme) =>
+                    `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.06)} 0%, ${alpha(theme.palette.info.main, 0.025)} 100%)`,
+                  border: "1px solid",
+                  borderColor: (theme) =>
+                    alpha(theme.palette.primary.main, 0.12),
+                  borderRadius: 3,
+                  p: 2,
+                }}
+              >
+                <Typography
+                  color="text.secondary"
+                  sx={{ fontWeight: 700 }}
+                  variant="caption"
+                >
                   Cidade / Estado
                 </Typography>
-                <Typography variant="body1">
+                <Typography sx={{ fontWeight: 700 }} variant="body1">
                   {project.city || project.state
                     ? [project.city, project.state].filter(Boolean).join(" / ")
-                    : "Nao informado"}
+                    : "Não informado"}
                 </Typography>
               </Box>
-              <Box>
-                <Typography color="text.secondary" variant="caption">
-                  Ultima atualizacao
+              <Box
+                sx={{
+                  background: (theme) =>
+                    `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.06)} 0%, ${alpha(theme.palette.info.main, 0.025)} 100%)`,
+                  border: "1px solid",
+                  borderColor: (theme) =>
+                    alpha(theme.palette.primary.main, 0.12),
+                  borderRadius: 3,
+                  p: 2,
+                }}
+              >
+                <Typography
+                  color="text.secondary"
+                  sx={{ fontWeight: 700 }}
+                  variant="caption"
+                >
+                  Última atualização
                 </Typography>
-                <Typography variant="body1">
+                <Typography sx={{ fontWeight: 700 }} variant="body1">
                   {dateTimeFormatter.format(new Date(project.updatedAt))}
                 </Typography>
               </Box>
             </Box>
 
-            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+            <Box
+              sx={{
+                display: "grid",
+                gap: 1.25,
+                gridTemplateColumns: {
+                  lg: "repeat(5, minmax(0, 1fr))",
+                  md: "repeat(3, minmax(0, 1fr))",
+                  xs: "repeat(2, minmax(0, 1fr))",
+                },
+              }}
+            >
               <Chip
                 color={winnerBudget ? "success" : "warning"}
                 label={
@@ -619,7 +816,7 @@ export default function ProjectDetailPage() {
                 }
               />
               <Chip
-                label={`${projectBudgets.length} orcamento(s)`}
+                label={`${projectBudgets.length} orçamento(s)`}
                 variant="outlined"
               />
               <Chip
@@ -627,7 +824,7 @@ export default function ProjectDetailPage() {
                 variant="outlined"
               />
               <Chip
-                label={`${budgetsRequiringAttentionCount} com atencao`}
+                label={`${budgetsRequiringAttentionCount} com atenção`}
                 variant="outlined"
               />
               <Chip
@@ -640,7 +837,7 @@ export default function ProjectDetailPage() {
 
             <Box>
               <Typography color="text.secondary" variant="caption">
-                Observacoes
+                Observações
               </Typography>
               <Typography sx={{ whiteSpace: "pre-wrap" }} variant="body2">
                 {formatOptionalText(project.notes)}
@@ -649,12 +846,12 @@ export default function ProjectDetailPage() {
           </SectionCard>
 
           <SectionCard
-            description="Lista de orcamentos atualmente associados a obra, com acoes para editar, abrir na listagem e remover o vinculo."
-            title="Orcamentos vinculados"
+            description="Lista de orçamentos atualmente associados à obra, com ações para editar, abrir na listagem e remover o vínculo."
+            title="Orçamentos vinculados"
           >
             {projectBudgets.length === 0 ? (
               <Alert severity="info" variant="outlined">
-                Nenhum orcamento vinculado a esta obra ate o momento.
+                Nenhum orçamento vinculado a esta obra até o momento.
               </Alert>
             ) : (
               <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -667,6 +864,8 @@ export default function ProjectDetailPage() {
                   const budgetHistory = budgetHistoryQuery?.data ?? [];
                   const statusCategory = getBudgetStatusCategory(statusName);
                   const isWinner = winnerBudget?.id === budget.id;
+                  const isWinnerReplacement =
+                    winnerBudget !== null && winnerBudget.id !== budget.id;
 
                   return (
                     <Box
@@ -733,7 +932,7 @@ export default function ProjectDetailPage() {
                           ) : null}
                           {statusCategory === "cancelado" ? (
                             <Chip
-                              label="Sem necessidade de atencao"
+                              label="Sem necessidade de atenção"
                               size="small"
                               variant="outlined"
                             />
@@ -778,6 +977,17 @@ export default function ProjectDetailPage() {
                               budget.installerId,
                               installerMap,
                               "Sem instalador vinculado",
+                            )}
+                          </Typography>
+                        </Box>
+                        <Box>
+                          <Typography color="text.secondary" variant="caption">
+                            Tipo de Sistema
+                          </Typography>
+                          <Typography variant="body2">
+                            {formatCatalogName(
+                              budget.systemTypeId,
+                              systemTypeMap,
                             )}
                           </Typography>
                         </Box>
@@ -832,12 +1042,30 @@ export default function ProjectDetailPage() {
                         }}
                       >
                         <Button
+                          color={isWinner ? "success" : "primary"}
+                          onClick={() => {
+                            setAssociationFeedback(null);
+                            setAssociationError(null);
+                            setPendingWinnerBudget(budget);
+                            setWinnerNotes("");
+                          }}
+                          size="small"
+                          startIcon={<EmojiEventsRoundedIcon />}
+                          variant={isWinner ? "contained" : "outlined"}
+                        >
+                          {isWinner
+                            ? "Reaplicar vencedor"
+                            : isWinnerReplacement
+                              ? "Trocar vencedor para este"
+                              : "Eleger vencedor"}
+                        </Button>
+                        <Button
                           onClick={() => navigate(`/budgets/${budget.id}/edit`)}
                           size="small"
                           startIcon={<EditRoundedIcon />}
                           variant="text"
                         >
-                          Editar orcamento
+                          Editar orçamento
                         </Button>
                         <Button
                           onClick={() => navigate("/budgets")}
@@ -882,22 +1110,22 @@ export default function ProjectDetailPage() {
                             sx={{ fontWeight: 700 }}
                             variant="subtitle2"
                           >
-                            Historico de status
+                            Histórico de status
                           </Typography>
                         </Box>
 
                         {budgetHistoryQuery?.isLoading ? (
                           <Typography color="text.secondary" variant="body2">
-                            Carregando historico...
+                            Carregando histórico...
                           </Typography>
                         ) : budgetHistoryQuery?.isError ? (
                           <Alert severity="warning" variant="outlined">
-                            Nao foi possivel carregar o historico deste
-                            orcamento.
+                            Não foi possível carregar o histórico deste
+                            orçamento.
                           </Alert>
                         ) : budgetHistory.length === 0 ? (
                           <Typography color="text.secondary" variant="body2">
-                            Nenhuma alteracao de status registrada ate o
+                            Nenhuma alteração de status registrada até o
                             momento.
                           </Typography>
                         ) : (
@@ -941,7 +1169,7 @@ export default function ProjectDetailPage() {
                                         {dateTimeFormatter.format(
                                           new Date(historyItem.changedAt),
                                         )}{" "}
-                                        por usuario #
+                                        por usuário #
                                         {historyItem.changedByUserId}
                                       </Typography>
                                       {historyItem.notes ? (
@@ -979,45 +1207,59 @@ export default function ProjectDetailPage() {
           setCandidateSearch("");
         }}
         open={associationDialogOpen}
+        sx={premiumDialogSx}
       >
-        <DialogTitle>Associar orcamento a obra</DialogTitle>
+        <DialogTitle sx={premiumDialogTitleSx}>
+          Associar orçamento à obra
+        </DialogTitle>
         <DialogContent
-          sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 2 }}
+          sx={{ display: "flex", flexDirection: "column", gap: 2.5, pt: 3 }}
         >
-          <DialogContentText>
-            Selecione um orcamento sem obra vinculada para adiciona-lo a esta
+          <DialogContentText sx={{ color: "text.primary", lineHeight: 1.7 }}>
+            Selecione um orçamento sem obra vinculada para adicioná-lo a esta
             obra.
           </DialogContentText>
-
-          <TextField
-            label="Buscar por numero ou responsavel"
-            onChange={(event) => setCandidateSearch(event.target.value)}
-            value={candidateSearch}
-          />
-
-          <TextField
-            helperText={
-              associationCandidatesQuery.isLoading
-                ? "Carregando orcamentos disponiveis..."
-                : availableAssociationCandidates.length === 0
-                  ? "Nenhum orcamento disponivel para associacao."
-                  : "Selecione um orcamento da lista."
-            }
-            label="Orcamento disponivel"
-            onChange={(event) => setAssociationCandidateId(event.target.value)}
-            select
-            value={associationCandidateId}
-          >
-            <MenuItem value="">Selecione</MenuItem>
-            {availableAssociationCandidates.map((budget) => (
-              <MenuItem key={budget.id} value={String(budget.id)}>
-                {budget.budgetNumber} Â·{" "}
-                {formatOptionalText(budget.salespersonName)}
-              </MenuItem>
-            ))}
-          </TextField>
+          <Box sx={filterGroupSx}>
+            <Typography sx={filterGroupTitleSx} variant="subtitle2">
+              Identificação
+            </Typography>
+            <FilterField label="Buscar por número ou responsável">
+              <TextField
+                onChange={(event) => setCandidateSearch(event.target.value)}
+                size="small"
+                sx={compactFilterFieldSx}
+                value={candidateSearch}
+              />
+            </FilterField>
+            <FilterField label="Orçamento disponível">
+              <TextField
+                helperText={
+                  associationCandidatesQuery.isLoading
+                    ? "Carregando orçamentos disponíveis..."
+                    : availableAssociationCandidates.length === 0
+                      ? "Nenhum orçamento disponível para associação."
+                      : "Selecione um orçamento da lista."
+                }
+                onChange={(event) =>
+                  setAssociationCandidateId(event.target.value)
+                }
+                select
+                size="small"
+                sx={compactFilterFieldSx}
+                value={associationCandidateId}
+              >
+                <MenuItem value="">Selecione</MenuItem>
+                {availableAssociationCandidates.map((budget) => (
+                  <MenuItem key={budget.id} value={String(budget.id)}>
+                    {budget.budgetNumber} -{" "}
+                    {formatOptionalText(budget.salespersonName)}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </FilterField>
+          </Box>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={premiumDialogActionsSx}>
           <Button
             disabled={associateBudgetMutation.isPending}
             onClick={() => {
@@ -1045,6 +1287,82 @@ export default function ProjectDetailPage() {
 
       <Dialog
         fullWidth
+        maxWidth="sm"
+        onClose={() => {
+          if (electWinnerMutation.isPending) {
+            return;
+          }
+
+          setPendingWinnerBudget(null);
+          setWinnerNotes("");
+        }}
+        open={pendingWinnerBudget !== null}
+        sx={premiumDialogSx}
+      >
+        <DialogTitle sx={premiumDialogTitleSx}>
+          {winnerBudget &&
+          pendingWinnerBudget &&
+          winnerBudget.id !== pendingWinnerBudget.id
+            ? "Trocar vencedor da obra"
+            : "Eleger vencedor da obra"}
+        </DialogTitle>
+        <DialogContent
+          sx={{ display: "flex", flexDirection: "column", gap: 2.5, pt: 3 }}
+        >
+          <DialogContentText sx={{ color: "text.primary", lineHeight: 1.7 }}>
+            {pendingWinnerBudget
+              ? winnerBudget && winnerBudget.id !== pendingWinnerBudget.id
+                ? `Ao confirmar, o orçamento ${pendingWinnerBudget.budgetNumber} passará a ser o novo vencedor da obra. O vencedor atual será substituído e os demais orçamentos da obra ficarão como Cancelado.`
+                : `Ao confirmar, o orçamento ${pendingWinnerBudget.budgetNumber} será definido como Pedido e os demais orçamentos desta obra serão alterados para Cancelado.`
+              : ""}
+          </DialogContentText>
+          <TextField
+            label={
+              winnerBudget &&
+              pendingWinnerBudget &&
+              winnerBudget.id !== pendingWinnerBudget.id
+                ? "Observação da troca"
+                : "Observação da eleição"
+            }
+            multiline
+            minRows={3}
+            onChange={(event) => setWinnerNotes(event.target.value)}
+            placeholder="Opcional. Ex: Orçamento escolhido como vencedor da obra."
+            value={winnerNotes}
+          />
+        </DialogContent>
+        <DialogActions sx={premiumDialogActionsSx}>
+          <Button
+            disabled={electWinnerMutation.isPending}
+            onClick={() => {
+              setPendingWinnerBudget(null);
+              setWinnerNotes("");
+            }}
+          >
+            Cancelar
+          </Button>
+          <Button
+            color="success"
+            disabled={
+              electWinnerMutation.isPending || pendingWinnerBudget === null
+            }
+            onClick={() => {
+              if (pendingWinnerBudget === null) {
+                return;
+              }
+
+              void electWinnerMutation.mutateAsync(pendingWinnerBudget);
+            }}
+            startIcon={<EmojiEventsRoundedIcon />}
+            variant="contained"
+          >
+            Confirmar vencedor
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        fullWidth
         maxWidth="xs"
         onClose={() => {
           if (disassociateBudgetMutation.isPending) {
@@ -1054,16 +1372,19 @@ export default function ProjectDetailPage() {
           setPendingDisassociationBudget(null);
         }}
         open={pendingDisassociationBudget !== null}
+        sx={premiumDialogSx}
       >
-        <DialogTitle>Remover orcamento da obra</DialogTitle>
-        <DialogContent sx={{ pt: 2 }}>
-          <DialogContentText>
+        <DialogTitle sx={premiumDialogTitleSx}>
+          Remover orçamento da obra
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          <DialogContentText sx={{ color: "text.primary", lineHeight: 1.7 }}>
             {pendingDisassociationBudget
-              ? `Confirma a remocao do orcamento ${pendingDisassociationBudget.budgetNumber} desta obra?`
+              ? `Confirma a remoção do orçamento ${pendingDisassociationBudget.budgetNumber} desta obra?`
               : ""}
           </DialogContentText>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={premiumDialogActionsSx}>
           <Button
             disabled={disassociateBudgetMutation.isPending}
             onClick={() => setPendingDisassociationBudget(null)}

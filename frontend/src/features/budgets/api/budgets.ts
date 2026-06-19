@@ -1,8 +1,9 @@
-﻿﻿﻿import { api } from "../../../lib/axios/api";
+﻿﻿import { api } from "../../../lib/axios/api";
 import type {
   BudgetCatalogItem,
   BudgetCatalogsResult,
   BudgetApiItem,
+  BudgetElectWinnerPayload,
   BudgetImportExecutionResult,
   BudgetImportPreviewOptions,
   BudgetImportPreviewResult,
@@ -32,6 +33,7 @@ function mapBudgetListItem(item: BudgetApiItem) {
     priorityId: item.priority_id ?? null,
     installerId: item.installer_id ?? null,
     productLineId: item.product_line_id ?? null,
+    systemTypeId: item.system_type_id ?? null,
     projectId: item.project_id ?? null,
     salespersonId: item.salesperson_id ?? null,
     estimatorId: item.estimator_id ?? null,
@@ -47,6 +49,9 @@ function mapBudgetListItem(item: BudgetApiItem) {
     installerName: item.installer_name ?? null,
     productLineCode: item.product_line_code ?? null,
     productLineName: item.product_line_name ?? null,
+    systemTypeCode: item.system_type_code ?? null,
+    systemTypeName: item.system_type_name ?? null,
+    projectCode: item.project_code ?? null,
     projectName: item.project_name ?? null,
     salespersonName: item.salesperson_name ?? null,
     estimatorName: item.estimator_name ?? null,
@@ -92,6 +97,7 @@ type CreateBudgetApiPayload = {
   priority_id: number | null;
   installer_id: number | null;
   product_line_id: number | null;
+  system_type_id: number | null;
   project_id: number | null;
   salesperson_id: number | null;
   estimator_id: number | null;
@@ -337,6 +343,7 @@ function mapCreateBudgetPayload(
     loss_reason_id: payload.lossReasonId,
     priority_id: payload.priorityId,
     product_line_id: payload.productLineId,
+    system_type_id: payload.systemTypeId,
     project_id: payload.projectId,
     revision: payload.revision,
     salesperson_id: payload.salespersonId,
@@ -355,7 +362,8 @@ function buildBudgetListParams(filters: BudgetListFilters) {
     year_budget: filters.yearBudget || undefined,
     status_id: filters.statusId || undefined,
     installer_id: filters.installerId || undefined,
-    project_name: filters.projectName || undefined,
+    system_type_id: filters.systemTypeId || undefined,
+    project_code: filters.projectCode || undefined,
     salesperson_id: filters.salespersonId || undefined,
     estimator_id: filters.estimatorId || undefined,
     sent_at_from: filters.sentAtFrom || undefined,
@@ -422,6 +430,7 @@ export async function getBudgetCatalogsRequest(): Promise<BudgetCatalogsResult> 
     prioritiesResponse,
     installersResponse,
     productLinesResponse,
+    systemTypesResponse,
     salespeopleResponse,
     estimatorsResponse,
     contactsResponse,
@@ -431,6 +440,7 @@ export async function getBudgetCatalogsRequest(): Promise<BudgetCatalogsResult> 
     api.get<NamedCatalogApiItem[]>("/priorities"),
     api.get<NamedCatalogApiItem[]>("/installers"),
     api.get<NamedCatalogApiItem[]>("/product-lines"),
+    api.get<NamedCatalogApiItem[]>("/system-types"),
     api.get<NamedCatalogApiItem[]>("/salespeople"),
     api.get<NamedCatalogApiItem[]>("/estimators"),
     api.get<NamedCatalogApiItem[]>("/contacts"),
@@ -442,6 +452,7 @@ export async function getBudgetCatalogsRequest(): Promise<BudgetCatalogsResult> 
     priorities: prioritiesResponse.data.map(mapNamedCatalogItem),
     installers: installersResponse.data.map(mapNamedCatalogItem),
     productLines: productLinesResponse.data.map(mapNamedCatalogItem),
+    systemTypes: systemTypesResponse.data.map(mapNamedCatalogItem),
     projects: [],
     salespeople: salespeopleResponse.data.map(mapNamedCatalogItem),
     estimators: estimatorsResponse.data.map(mapNamedCatalogItem),
@@ -456,6 +467,7 @@ export async function getBudgetManagementCatalogsRequest(): Promise<BudgetCatalo
     prioritiesResponse,
     installersResponse,
     productLinesResponse,
+    systemTypesResponse,
     salespeopleResponse,
     estimatorsResponse,
     lossReasonsResponse,
@@ -464,6 +476,7 @@ export async function getBudgetManagementCatalogsRequest(): Promise<BudgetCatalo
     api.get<NamedCatalogApiItem[]>("/priorities"),
     api.get<NamedCatalogApiItem[]>("/installers"),
     api.get<NamedCatalogApiItem[]>("/product-lines"),
+    api.get<NamedCatalogApiItem[]>("/system-types"),
     api.get<NamedCatalogApiItem[]>("/salespeople"),
     api.get<NamedCatalogApiItem[]>("/estimators"),
     api.get<NamedCatalogApiItem[]>("/loss-reasons"),
@@ -474,6 +487,7 @@ export async function getBudgetManagementCatalogsRequest(): Promise<BudgetCatalo
     priorities: prioritiesResponse.data.map(mapNamedCatalogItem),
     installers: installersResponse.data.map(mapNamedCatalogItem),
     productLines: productLinesResponse.data.map(mapNamedCatalogItem),
+    systemTypes: systemTypesResponse.data.map(mapNamedCatalogItem),
     projects: [],
     salespeople: salespeopleResponse.data.map(mapNamedCatalogItem),
     estimators: estimatorsResponse.data.map(mapNamedCatalogItem),
@@ -488,12 +502,14 @@ export async function getBudgetListCatalogsRequest(): Promise<BudgetCatalogsResu
     prioritiesResponse,
     installersResponse,
     productLinesResponse,
+    systemTypesResponse,
     lossReasonsResponse,
   ] = await Promise.all([
     api.get<NamedCatalogApiItem[]>("/budget-statuses"),
     api.get<NamedCatalogApiItem[]>("/priorities"),
     api.get<NamedCatalogApiItem[]>("/installers"),
     api.get<NamedCatalogApiItem[]>("/product-lines"),
+    api.get<NamedCatalogApiItem[]>("/system-types"),
     api.get<NamedCatalogApiItem[]>("/loss-reasons"),
   ]);
 
@@ -502,6 +518,7 @@ export async function getBudgetListCatalogsRequest(): Promise<BudgetCatalogsResu
     priorities: prioritiesResponse.data.map(mapNamedCatalogItem),
     installers: installersResponse.data.map(mapNamedCatalogItem),
     productLines: productLinesResponse.data.map(mapNamedCatalogItem),
+    systemTypes: systemTypesResponse.data.map(mapNamedCatalogItem),
     projects: [],
     salespeople: [],
     estimators: [],
@@ -544,6 +561,15 @@ export async function updateBudgetRequest(
   payload: BudgetCreatePayload,
 ): Promise<void> {
   await api.put(`/budgets/${budgetId}`, mapCreateBudgetPayload(payload));
+}
+
+export async function electBudgetWinnerRequest(
+  budgetId: number,
+  payload: BudgetElectWinnerPayload,
+): Promise<void> {
+  await api.post(`/budgets/${budgetId}/elect-winner`, {
+    notes: payload.notes,
+  });
 }
 
 export async function deleteBudgetRequest(budgetId: number): Promise<void> {

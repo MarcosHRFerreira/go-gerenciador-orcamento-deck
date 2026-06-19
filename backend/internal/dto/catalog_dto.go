@@ -141,6 +141,27 @@ type ProductLineResponse struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
+type CreateSystemTypeRequest struct {
+	Code        string `json:"code" validate:"required,min=2,max=50"`
+	Name        string `json:"name" validate:"required,min=2,max=150"`
+	Description string `json:"description"`
+}
+
+type UpdateSystemTypeRequest struct {
+	Code        string `json:"code" validate:"required,min=2,max=50"`
+	Name        string `json:"name" validate:"required,min=2,max=150"`
+	Description string `json:"description"`
+}
+
+type SystemTypeResponse struct {
+	ID          int64     `json:"id"`
+	Code        string    `json:"code"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
 type CreateContactRequest struct {
 	InstallerID int64  `json:"installer_id" validate:"required"`
 	Name        string `json:"name" validate:"required,min=3,max=150"`

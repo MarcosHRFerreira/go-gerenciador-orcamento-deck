@@ -62,11 +62,11 @@ export function UserEditPage() {
     payload: CreateUserPayload | UpdateUserPayload,
   ) => {
     if ("password" in payload) {
-      throw new Error("Payload invalido para edicao de usuario.");
+      throw new Error("Payload inválido para edição de usuário.");
     }
 
     if (!isValidUserId) {
-      throw new Error("Usuario invalido para edicao.");
+      throw new Error("Usuário inválido para edição.");
     }
 
     await updateUserRequest(parsedUserId, payload);
@@ -78,14 +78,16 @@ export function UserEditPage() {
     return (
       <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
         <PageHeader
-          description="O identificador informado para edicao nao e valido."
-          title="Editar usuario"
+          description="O identificador informado para edição não é válido."
+          title="Editar usuário"
         />
         <SectionCard
-          description="Revise a navegacao e tente novamente pela listagem de usuarios."
-          title="Usuario invalido"
+          description="Revise a navegação e tente novamente pela listagem de usuários."
+          title="Usuário inválido"
         >
-          <Alert severity="error">Nao foi possivel identificar o usuario.</Alert>
+          <Alert severity="error">
+            Não foi possível identificar o usuário.
+          </Alert>
         </SectionCard>
       </Box>
     );
@@ -95,12 +97,12 @@ export function UserEditPage() {
     return (
       <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
         <PageHeader
-          description="Carregando os dados cadastrais para edicao."
-          title="Editar usuario"
+          description="Carregando os dados cadastrais para edição."
+          title="Editar usuário"
         />
         <SectionCard
-          description="Aguarde enquanto os dados do usuario sao carregados."
-          title="Dados do usuario"
+          description="Aguarde enquanto os dados do usuário são carregados."
+          title="Dados do usuário"
         >
           <LinearProgress />
         </SectionCard>
@@ -112,14 +114,14 @@ export function UserEditPage() {
     return (
       <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
         <PageHeader
-          description="Nao foi possivel carregar o usuario solicitado."
-          title="Editar usuario"
+          description="Não foi possível carregar o usuário solicitado."
+          title="Editar usuário"
         />
         <SectionCard
-          description="Volte para a listagem e selecione novamente o usuario."
+          description="Volte para a listagem e selecione novamente o usuário."
           title="Falha ao carregar"
         >
-          <Alert severity="error">Usuario nao encontrado para edicao.</Alert>
+          <Alert severity="error">Usuário não encontrado para edição.</Alert>
         </SectionCard>
       </Box>
     );
@@ -131,9 +133,9 @@ export function UserEditPage() {
       mode="edit"
       onCancel={() => navigate("/users")}
       onSubmit={handleSubmit}
-      submitLabel="Salvar alteracoes"
-      subtitle="Atualize nome, e-mail, username e perfil do usuario selecionado."
-      title="Editar usuario"
+      submitLabel="Salvar alterações"
+      subtitle="Atualize nome, e-mail, username e perfil do usuário selecionado."
+      title="Editar usuário"
     />
   );
 }

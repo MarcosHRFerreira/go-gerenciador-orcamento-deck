@@ -14,6 +14,7 @@ export type BudgetFormValues = {
   lossReasonId: string;
   priorityId: string;
   productLineId: string;
+  systemTypeId: string;
   projectId: string;
   revision: string;
   salespersonId: string;
@@ -46,6 +47,7 @@ export function createDefaultBudgetFormValues(): BudgetFormValues {
     lossReasonId: "",
     priorityId: "",
     productLineId: "",
+    systemTypeId: "",
     projectId: "",
     revision: "0",
     salespersonId: "",
@@ -77,6 +79,8 @@ export function mapBudgetDetailToFormValues(
     priorityId: budget.priorityId === null ? "" : String(budget.priorityId),
     productLineId:
       budget.productLineId === null ? "" : String(budget.productLineId),
+    systemTypeId:
+      budget.systemTypeId === null ? "" : String(budget.systemTypeId),
     projectId: budget.projectId === null ? "" : String(budget.projectId),
     revision: String(budget.revision),
     salespersonId:

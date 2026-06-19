@@ -14,6 +14,7 @@ type CreateBudgetRequest struct {
 	PriorityID           *int64    `json:"priority_id"`
 	InstallerID          *int64    `json:"installer_id"`
 	ProductLineID        *int64    `json:"product_line_id"`
+	SystemTypeID         *int64    `json:"system_type_id"`
 	ProjectID            *int64    `json:"project_id"`
 	SalespersonID        *int64    `json:"salesperson_id"`
 	EstimatorID          *int64    `json:"estimator_id"`
@@ -39,6 +40,7 @@ type UpdateBudgetRequest struct {
 	PriorityID           *int64    `json:"priority_id"`
 	InstallerID          *int64    `json:"installer_id"`
 	ProductLineID        *int64    `json:"product_line_id"`
+	SystemTypeID         *int64    `json:"system_type_id"`
 	ProjectID            *int64    `json:"project_id"`
 	SalespersonID        *int64    `json:"salesperson_id"`
 	EstimatorID          *int64    `json:"estimator_id"`
@@ -50,6 +52,10 @@ type UpdateBudgetRequest struct {
 	ProjetistaName       string    `json:"projetista_name" validate:"max=150"`
 	SpecificationDetails string    `json:"specification_details"`
 	CurrentFollowUp      string    `json:"current_follow_up"`
+}
+
+type ElectBudgetWinnerRequest struct {
+	Notes string `json:"notes" validate:"max=500"`
 }
 
 type ListBudgetsFilters struct {
@@ -64,8 +70,9 @@ type ListBudgetsFilters struct {
 	InstallerID             *int64
 	PriorityID              *int64
 	ProductLineID           *int64
+	SystemTypeID            *int64
 	ProjectID               *int64
-	ProjectName             string
+	ProjectCode             string
 	ProjectTypeID           *int64
 	ProjetistaName          string
 	CompetitorName          string
@@ -92,6 +99,7 @@ type BudgetResponse struct {
 	PriorityID           *int64    `json:"priority_id,omitempty"`
 	InstallerID          *int64    `json:"installer_id,omitempty"`
 	ProductLineID        *int64    `json:"product_line_id,omitempty"`
+	SystemTypeID         *int64    `json:"system_type_id,omitempty"`
 	ProjectID            *int64    `json:"project_id,omitempty"`
 	SalespersonID        *int64    `json:"salesperson_id,omitempty"`
 	EstimatorID          *int64    `json:"estimator_id,omitempty"`
@@ -107,6 +115,9 @@ type BudgetResponse struct {
 	InstallerName        *string   `json:"installer_name,omitempty"`
 	ProductLineCode      *string   `json:"product_line_code,omitempty"`
 	ProductLineName      *string   `json:"product_line_name,omitempty"`
+	SystemTypeCode       *string   `json:"system_type_code,omitempty"`
+	SystemTypeName       *string   `json:"system_type_name,omitempty"`
+	ProjectCode          *string   `json:"project_code,omitempty"`
 	ProjectName          *string   `json:"project_name,omitempty"`
 	SalespersonName      *string   `json:"salesperson_name,omitempty"`
 	EstimatorName        *string   `json:"estimator_name,omitempty"`

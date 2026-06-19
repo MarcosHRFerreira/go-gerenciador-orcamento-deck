@@ -3,6 +3,8 @@ package user
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/model"
@@ -16,7 +18,9 @@ type Repository interface {
 	GetUserByUsername(ctx context.Context, username string) (*model.UserModel, error)
 	GetUserByEmailOrUsername(ctx context.Context, email string, username string) (*model.UserModel, error)
 	GetUserByID(ctx context.Context, userID int64) (*model.UserModel, error)
+	GetUsersByIDs(ctx context.Context, userIDs []int64) ([]model.UserModel, error)
 	ListUsers(ctx context.Context) ([]model.UserModel, error)
+	ListActiveUsers(ctx context.Context) ([]model.UserModel, error)
 	UpdateUser(ctx context.Context, userID int64, name string, email string, username string, role model.UserRole, userKind model.UserKind, updatedAt time.Time) error
 	UpdateUserRole(ctx context.Context, userID int64, role model.UserRole, userKind model.UserKind, updatedAt time.Time) error
 	UpdateUserActive(ctx context.Context, userID int64, active bool, updatedAt time.Time) error
@@ -138,6 +142,35 @@ func (r *repository) GetUserByID(ctx context.Context, userID int64) (*model.User
 	return r.getOne(ctx, query, userID)
 }
 
+func (r *repository) GetUsersByIDs(ctx context.Context, userIDs []int64) ([]model.UserModel, error) {
+	if len(userIDs) == 0 {
+		return []model.UserModel{}, nil
+	}
+
+	query := `
+		SELECT id, name, email, username, password_hash, role, user_kind, active, must_change_password, created_at, updated_at
+		FROM users
+		WHERE id IN (`
+
+	args := make([]interface{}, 0, len(userIDs))
+	placeholders := make([]string, 0, len(userIDs))
+	for index, userID := range userIDs {
+		args = append(args, userID)
+		placeholders = append(placeholders, fmt.Sprintf("$%d", index+1))
+	}
+
+	query += strings.Join(placeholders, ", ")
+	query += `) ORDER BY id ASC`
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanUserRows(rows)
+}
+
 func (r *repository) ListUsers(ctx context.Context) ([]model.UserModel, error) {
 	const query = `
 		SELECT id, name, email, username, password_hash, role, user_kind, active, must_change_password, created_at, updated_at
@@ -151,35 +184,24 @@ func (r *repository) ListUsers(ctx context.Context) ([]model.UserModel, error) {
 	}
 	defer rows.Close()
 
-	users := make([]model.UserModel, 0)
-	for rows.Next() {
-		var user model.UserModel
-		var userKind sql.NullString
-		if err := rows.Scan(
-			&user.ID,
-			&user.Name,
-			&user.Email,
-			&user.Username,
-			&user.PasswordHash,
-			&user.Role,
-			&userKind,
-			&user.Active,
-			&user.MustChangePassword,
-			&user.CreatedAt,
-			&user.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
+	return scanUserRows(rows)
+}
 
-		user.UserKind = normalizeUserKind(userKind)
-		users = append(users, user)
-	}
+func (r *repository) ListActiveUsers(ctx context.Context) ([]model.UserModel, error) {
+	const query = `
+		SELECT id, name, email, username, password_hash, role, user_kind, active, must_change_password, created_at, updated_at
+		FROM users
+		WHERE active = TRUE
+		ORDER BY id ASC
+	`
 
-	if err := rows.Err(); err != nil {
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
-	return users, nil
+	return scanUserRows(rows)
 }
 
 func (r *repository) UpdateUser(ctx context.Context, userID int64, name string, email string, username string, role model.UserRole, userKind model.UserKind, updatedAt time.Time) error {
@@ -322,6 +344,38 @@ func (r *repository) getOne(ctx context.Context, query string, args ...interface
 	user.UserKind = normalizeUserKind(userKind)
 
 	return &user, nil
+}
+
+func scanUserRows(rows *sql.Rows) ([]model.UserModel, error) {
+	users := make([]model.UserModel, 0)
+	for rows.Next() {
+		var user model.UserModel
+		var userKind sql.NullString
+		if err := rows.Scan(
+			&user.ID,
+			&user.Name,
+			&user.Email,
+			&user.Username,
+			&user.PasswordHash,
+			&user.Role,
+			&userKind,
+			&user.Active,
+			&user.MustChangePassword,
+			&user.CreatedAt,
+			&user.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		user.UserKind = normalizeUserKind(userKind)
+		users = append(users, user)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return users, nil
 }
 
 func nullableUserKind(userKind model.UserKind) interface{} {

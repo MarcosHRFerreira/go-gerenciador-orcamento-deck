@@ -22,7 +22,7 @@ export function UserCreatePage() {
     payload: CreateUserPayload | UpdateUserPayload,
   ) => {
     if (!("password" in payload)) {
-      throw new Error("Payload invalido para criacao de usuario.");
+      throw new Error("Payload inválido para criação de usuário.");
     }
 
     await createUserRequest(payload);
@@ -36,9 +36,9 @@ export function UserCreatePage() {
       mode="create"
       onCancel={() => navigate("/users")}
       onSubmit={handleSubmit}
-      submitLabel="Salvar usuario"
-      subtitle="Cadastre um novo acesso e defina se ele sera administrativo ou operacional."
-      title="Novo usuario"
+      submitLabel="Salvar usuário"
+      subtitle="Cadastre um novo acesso e defina se ele será administrativo ou operacional."
+      title="Novo usuário"
     />
   );
 }

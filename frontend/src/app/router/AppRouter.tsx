@@ -9,6 +9,7 @@ import { BudgetCreatePage } from "../../features/budgets/pages/BudgetCreatePage"
 import { BudgetEditPage } from "../../features/budgets/pages/BudgetEditPage";
 import { BudgetImportPage } from "../../features/budgets/pages/BudgetImportPage";
 import { BudgetListPage } from "../../features/budgets/pages/BudgetListPage";
+import { CommunicationPage } from "../../features/communication/pages/CommunicationPage";
 import { DashboardPage } from "../../features/dashboard/pages/DashboardPage";
 import EstimatorListPage from "../../features/estimators/pages/EstimatorListPage";
 import ProjectCreatePage from "../../features/projects/pages/ProjectCreatePage";
@@ -16,6 +17,7 @@ import ProjectDetailPage from "../../features/projects/pages/ProjectDetailPage";
 import ProjectEditPage from "../../features/projects/pages/ProjectEditPage";
 import ProjectListPage from "../../features/projects/pages/ProjectListPage";
 import SalespersonListPage from "../../features/salespeople/pages/SalespersonListPage";
+import SystemTypeListPage from "../../features/system-types/pages/SystemTypeListPage";
 import { UserCreatePage } from "../../features/users/pages/UserCreatePage";
 import { UserEditPage } from "../../features/users/pages/UserEditPage";
 import { UserListPage } from "../../features/users/pages/UserListPage";
@@ -32,6 +34,7 @@ export function AppRouter() {
           <Route path="/" element={<Navigate replace to="/budgets" />} />
           <Route path="/budgets" element={<BudgetListPage />} />
           <Route path="/budgets/:budgetId/edit" element={<BudgetEditPage />} />
+          <Route path="/communication" element={<CommunicationPage />} />
           <Route path="/projects" element={<ProjectListPage />} />
           <Route path="/projects/new" element={<ProjectCreatePage />} />
           <Route
@@ -45,6 +48,7 @@ export function AppRouter() {
             <Route path="/budgets/new" element={<BudgetCreatePage />} />
             <Route path="/salespeople" element={<SalespersonListPage />} />
             <Route path="/estimators" element={<EstimatorListPage />} />
+            <Route path="/system-types" element={<SystemTypeListPage />} />
             <Route path="/users" element={<UserListPage />} />
             <Route path="/users/new" element={<UserCreatePage />} />
             <Route path="/users/:userId/edit" element={<UserEditPage />} />

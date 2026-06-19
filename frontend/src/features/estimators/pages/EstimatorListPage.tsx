@@ -30,6 +30,13 @@ import { isAxiosError } from "axios";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import {
+  compactFilterFieldSx,
+  FilterField,
+  filterGroupSx,
+  filterGroupTitleSx,
+  filterSectionCardSx,
+} from "../../../components/common/FilterField";
 import { PageHeader } from "../../../components/common/PageHeader";
 import { SectionCard } from "../../../components/common/SectionCard";
 import { listUsersRequest } from "../../users/api/users";
@@ -58,21 +65,24 @@ const estimatorSchema = z.object({
   code: z
     .string()
     .trim()
-    .min(1, "Informe o codigo")
-    .max(30, "O codigo deve ter no maximo 30 caracteres"),
+    .min(1, "Informe o código")
+    .max(30, "O código deve ter no máximo 30 caracteres"),
   name: z
     .string()
     .trim()
     .min(3, "Informe um nome com pelo menos 3 caracteres")
-    .max(150, "O nome deve ter no maximo 150 caracteres"),
+    .max(150, "O nome deve ter no máximo 150 caracteres"),
   email: z
     .string()
     .trim()
     .refine(
       (value) => value === "" || z.string().email().safeParse(value).success,
-      "Informe um e-mail valido",
+      "Informe um e-mail válido",
     ),
-  phone: z.string().trim().max(50, "O telefone deve ter no maximo 50 caracteres"),
+  phone: z
+    .string()
+    .trim()
+    .max(50, "O telefone deve ter no máximo 50 caracteres"),
   notes: z.string().trim(),
   userId: z.string().trim(),
 });
@@ -91,10 +101,10 @@ const dateTimeFormatter = new Intl.DateTimeFormat("pt-BR", {
 });
 
 const tableHeadCellSx = {
-  backgroundColor: "rgba(37, 99, 235, 0.08)",
-  borderBottomColor: "primary.main",
+  background: "linear-gradient(180deg, #1E3A8A 0%, #1D4ED8 100%)",
+  borderBottomColor: "#1E40AF",
   borderBottomWidth: 2,
-  color: "text.primary",
+  color: "common.white",
   fontSize: "0.75rem",
   fontWeight: 700,
   letterSpacing: "0.04em",
@@ -160,7 +170,7 @@ function getDialogTitle(dialogState: EstimatorDialogState | null) {
 
 function getDialogSubmitLabel(dialogState: EstimatorDialogState | null) {
   return dialogState?.mode === "edit"
-    ? "Salvar alteracoes"
+    ? "Salvar alterações"
     : "Cadastrar orçamentista";
 }
 
@@ -168,9 +178,7 @@ function getLinkedEstimatorUsers(users: UserItem[]) {
   return users
     .filter(
       (item) =>
-        item.role === "user" &&
-        item.userKind === "estimator" &&
-        item.active,
+        item.role === "user" && item.userKind === "estimator" && item.active,
     )
     .sort((firstItem, secondItem) =>
       firstItem.name.localeCompare(secondItem.name, "pt-BR"),
@@ -185,7 +193,9 @@ export default function EstimatorListPage() {
   const [dialogState, setDialogState] = useState<EstimatorDialogState | null>(
     null,
   );
-  const [pendingDelete, setPendingDelete] = useState<EstimatorItem | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<EstimatorItem | null>(
+    null,
+  );
   const {
     formState: { errors, isSubmitting },
     handleSubmit,
@@ -236,7 +246,7 @@ export default function EstimatorListPage() {
       setFeedbackError(
         getMutationErrorMessage(
           error,
-          "Nao foi possivel cadastrar o orçamentista.",
+          "Não foi possível cadastrar o orçamentista.",
         ),
       );
     },
@@ -262,7 +272,7 @@ export default function EstimatorListPage() {
       setFeedbackError(
         getMutationErrorMessage(
           error,
-          "Nao foi possivel atualizar o orçamentista.",
+          "Não foi possível atualizar o orçamentista.",
         ),
       );
     },
@@ -281,7 +291,7 @@ export default function EstimatorListPage() {
       setFeedbackError(
         getMutationErrorMessage(
           error,
-          "Nao foi possivel remover o orçamentista.",
+          "Não foi possível remover o orçamentista.",
         ),
       );
     },
@@ -349,8 +359,9 @@ export default function EstimatorListPage() {
           item.name.toLocaleLowerCase("pt-BR").includes(normalizedSearch) ||
           item.email.toLocaleLowerCase("pt-BR").includes(normalizedSearch) ||
           item.phone.toLocaleLowerCase("pt-BR").includes(normalizedSearch) ||
-          item.userName?.toLocaleLowerCase("pt-BR").includes(normalizedSearch) ===
-            true;
+          item.userName
+            ?.toLocaleLowerCase("pt-BR")
+            .includes(normalizedSearch) === true;
         const matchesStatus =
           filters.status === "all" ||
           (filters.status === "active" && item.active) ||
@@ -443,12 +454,13 @@ export default function EstimatorListPage() {
             Novo orçamentista
           </Button>
         }
-        description="Cadastre e gerencie os orçamentistas usados na governanca operacional dos orcamentos."
+        description="Cadastre e gerencie os orçamentistas usados na governança operacional dos orçamentos."
         title="Orçamentistas"
       />
 
       <SectionCard
-        description="Use os filtros para localizar rapidamente um orçamentista pelo codigo, nome, e-mail ou usuario vinculado."
+        description="Use os filtros para localizar rapidamente um orçamentista pelo código, nome, e-mail ou usuário vinculado."
+        sx={filterSectionCardSx}
         title="Filtros"
       >
         <Box
@@ -456,55 +468,82 @@ export default function EstimatorListPage() {
             display: "grid",
             gap: 2,
             gridTemplateColumns: {
-              lg: "2fr 1fr 1fr",
+              lg: "minmax(0, 1.4fr) minmax(0, 1.6fr)",
               md: "repeat(2, minmax(0, 1fr))",
               xs: "minmax(0, 1fr)",
             },
           }}
         >
-          <TextField
-            label="Buscar por codigo, nome, e-mail ou usuario"
-            onChange={(event) =>
-              setFilters((currentFilters) => ({
-                ...currentFilters,
-                search: event.target.value,
-              }))
-            }
-            size="small"
-            value={filters.search}
-          />
-          <TextField
-            label="Status"
-            onChange={(event) =>
-              setFilters((currentFilters) => ({
-                ...currentFilters,
-                status: event.target.value as EstimatorListFilters["status"],
-              }))
-            }
-            select
-            size="small"
-            value={filters.status}
-          >
-            <MenuItem value="all">Todos</MenuItem>
-            <MenuItem value="active">Ativo</MenuItem>
-            <MenuItem value="inactive">Inativo</MenuItem>
-          </TextField>
-          <TextField
-            label="Vinculo de usuario"
-            onChange={(event) =>
-              setFilters((currentFilters) => ({
-                ...currentFilters,
-                link: event.target.value as EstimatorListFilters["link"],
-              }))
-            }
-            select
-            size="small"
-            value={filters.link}
-          >
-            <MenuItem value="all">Todos</MenuItem>
-            <MenuItem value="linked">Com usuario</MenuItem>
-            <MenuItem value="unlinked">Sem usuario</MenuItem>
-          </TextField>
+          <Box sx={filterGroupSx}>
+            <Typography sx={filterGroupTitleSx} variant="subtitle2">
+              Identificação
+            </Typography>
+            <FilterField label="Buscar por código, nome, e-mail ou usuário">
+              <TextField
+                onChange={(event) =>
+                  setFilters((currentFilters) => ({
+                    ...currentFilters,
+                    search: event.target.value,
+                  }))
+                }
+                size="small"
+                sx={compactFilterFieldSx}
+                value={filters.search}
+              />
+            </FilterField>
+          </Box>
+          <Box sx={filterGroupSx}>
+            <Typography sx={filterGroupTitleSx} variant="subtitle2">
+              Classificação
+            </Typography>
+            <Box
+              sx={{
+                display: "grid",
+                gap: 2,
+                gridTemplateColumns: {
+                  sm: "repeat(2, minmax(0, 1fr))",
+                  xs: "minmax(0, 1fr)",
+                },
+              }}
+            >
+              <FilterField label="Status">
+                <TextField
+                  onChange={(event) =>
+                    setFilters((currentFilters) => ({
+                      ...currentFilters,
+                      status: event.target.value as EstimatorListFilters["status"],
+                    }))
+                  }
+                  select
+                  size="small"
+                  sx={compactFilterFieldSx}
+                  value={filters.status}
+                >
+                  <MenuItem value="all">Todos</MenuItem>
+                  <MenuItem value="active">Ativo</MenuItem>
+                  <MenuItem value="inactive">Inativo</MenuItem>
+                </TextField>
+              </FilterField>
+              <FilterField label="Vínculo de usuário">
+                <TextField
+                  onChange={(event) =>
+                    setFilters((currentFilters) => ({
+                      ...currentFilters,
+                      link: event.target.value as EstimatorListFilters["link"],
+                    }))
+                  }
+                  select
+                  size="small"
+                  sx={compactFilterFieldSx}
+                  value={filters.link}
+                >
+                  <MenuItem value="all">Todos</MenuItem>
+                  <MenuItem value="linked">Com usuário</MenuItem>
+                  <MenuItem value="unlinked">Sem usuário</MenuItem>
+                </TextField>
+              </FilterField>
+            </Box>
+          </Box>
         </Box>
       </SectionCard>
 
@@ -515,7 +554,7 @@ export default function EstimatorListPage() {
         {estimatorsQuery.isLoading ? <LinearProgress /> : null}
         {estimatorsQuery.isError ? (
           <Alert severity="error">
-            Nao foi possivel carregar a listagem de orçamentistas.
+            Não foi possível carregar a listagem de orçamentistas.
           </Alert>
         ) : null}
         {feedbackMessage ? (
@@ -527,14 +566,14 @@ export default function EstimatorListPage() {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell sx={tableHeadCellSx}>Codigo</TableCell>
+                <TableCell sx={tableHeadCellSx}>Código</TableCell>
                 <TableCell sx={tableHeadCellSx}>Nome</TableCell>
                 <TableCell sx={tableHeadCellSx}>Contato</TableCell>
-                <TableCell sx={tableHeadCellSx}>Usuario vinculado</TableCell>
+                <TableCell sx={tableHeadCellSx}>Usuário vinculado</TableCell>
                 <TableCell sx={tableHeadCellSx}>Status</TableCell>
                 <TableCell sx={tableHeadCellSx}>Atualizado em</TableCell>
                 <TableCell align="right" sx={tableHeadCellSx}>
-                  Acoes
+                  Ações
                 </TableCell>
               </TableRow>
             </TableHead>
@@ -573,10 +612,10 @@ export default function EstimatorListPage() {
                       }}
                     >
                       <Typography variant="body2">
-                        {item.email || "E-mail nao informado"}
+                        {item.email || "E-mail não informado"}
                       </Typography>
                       <Typography color="text.secondary" variant="caption">
-                        {item.phone || "Telefone nao informado"}
+                        {item.phone || "Telefone não informado"}
                       </Typography>
                     </Box>
                   </TableCell>
@@ -589,7 +628,7 @@ export default function EstimatorListPage() {
                         variant="outlined"
                       />
                     ) : (
-                      "Nao vinculado"
+                      "Não vinculado"
                     )}
                   </TableCell>
                   <TableCell sx={tableDetailCellSx}>
@@ -691,10 +730,10 @@ export default function EstimatorListPage() {
               helperText={
                 errors.code?.message ??
                 (nextCodeQuery.isLoading && dialogState?.mode === "create"
-                  ? "Gerando proximo codigo..."
+                  ? "Gerando próximo código..."
                   : undefined)
               }
-              label="Codigo"
+              label="Código"
               {...register("code")}
             />
             <TextField
@@ -720,13 +759,13 @@ export default function EstimatorListPage() {
               error={Boolean(errors.userId)}
               helperText={
                 errors.userId?.message ??
-                "Vincule opcionalmente um usuario com role user e user_kind estimator."
+                "Vincule opcionalmente um usuário com role user e user_kind estimator."
               }
-              label="Usuario vinculado"
+              label="Usuário vinculado"
               select
               {...register("userId")}
             >
-              <MenuItem value="">Nao vincular</MenuItem>
+              <MenuItem value="">Não vincular</MenuItem>
               {linkedUsers.map((user) => (
                 <MenuItem key={user.id} value={String(user.id)}>
                   {user.name} ({user.username})
@@ -736,7 +775,7 @@ export default function EstimatorListPage() {
             <TextField
               error={Boolean(errors.notes)}
               helperText={errors.notes?.message}
-              label="Observacoes"
+              label="Observações"
               minRows={3}
               multiline
               {...register("notes")}
@@ -771,11 +810,11 @@ export default function EstimatorListPage() {
         }}
         open={pendingDelete !== null}
       >
-        <DialogTitle>Confirmar exclusao</DialogTitle>
+        <DialogTitle>Confirmar exclusão</DialogTitle>
         <DialogContent>
           <DialogContentText>
             {pendingDelete
-              ? `Confirma a exclusao do orçamentista ${pendingDelete.name}?`
+              ? `Confirma a exclusão do orçamentista ${pendingDelete.name}?`
               : ""}
           </DialogContentText>
         </DialogContent>

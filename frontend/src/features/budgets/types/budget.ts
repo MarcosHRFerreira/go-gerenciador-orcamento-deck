@@ -14,7 +14,8 @@ export type BudgetListFilters = {
   yearBudget: string;
   statusId: string;
   installerId: string;
-  projectName: string;
+  systemTypeId: string;
+  projectCode: string;
   salespersonId: string;
   estimatorId: string;
   sentAtFrom: string;
@@ -39,6 +40,7 @@ export type BudgetApiItem = {
   priority_id?: number | null;
   installer_id?: number | null;
   product_line_id?: number | null;
+  system_type_id?: number | null;
   project_id?: number | null;
   salesperson_id?: number | null;
   estimator_id?: number | null;
@@ -54,6 +56,9 @@ export type BudgetApiItem = {
   installer_name?: string | null;
   product_line_code?: string | null;
   product_line_name?: string | null;
+  system_type_code?: string | null;
+  system_type_name?: string | null;
+  project_code?: string | null;
   project_name?: string | null;
   salesperson_name?: string | null;
   estimator_name?: string | null;
@@ -85,6 +90,7 @@ export type BudgetListItem = {
   priorityId: number | null;
   installerId: number | null;
   productLineId: number | null;
+  systemTypeId: number | null;
   projectId: number | null;
   salespersonId: number | null;
   estimatorId: number | null;
@@ -100,6 +106,9 @@ export type BudgetListItem = {
   installerName: string | null;
   productLineCode: string | null;
   productLineName: string | null;
+  systemTypeCode: string | null;
+  systemTypeName: string | null;
+  projectCode: string | null;
   projectName: string | null;
   salespersonName: string | null;
   estimatorName: string | null;
@@ -154,6 +163,7 @@ export type BudgetCatalogsResult = {
   priorities: BudgetCatalogItem[];
   installers: BudgetCatalogItem[];
   productLines: BudgetCatalogItem[];
+  systemTypes: BudgetCatalogItem[];
   projects: BudgetCatalogItem[];
   salespeople: BudgetCatalogItem[];
   estimators: BudgetCatalogItem[];
@@ -173,6 +183,7 @@ export type BudgetCreatePayload = {
   priorityId: number | null;
   installerId: number | null;
   productLineId: number | null;
+  systemTypeId: number | null;
   projectId: number | null;
   salespersonId: number | null;
   estimatorId: number | null;
@@ -183,6 +194,10 @@ export type BudgetCreatePayload = {
   projetistaName: string;
   specificationDetails: string;
   currentFollowUp: string;
+};
+
+export type BudgetElectWinnerPayload = {
+  notes: string;
 };
 
 export type BudgetImportPreviewOptions = {

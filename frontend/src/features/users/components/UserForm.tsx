@@ -21,19 +21,19 @@ import type {
 
 const baseUserFormSchema = z
   .object({
-    email: z.string().trim().email("Informe um e-mail valido"),
+    email: z.string().trim().email("Informe um e-mail válido"),
     name: z
       .string()
       .trim()
       .min(1, "Informe o nome")
-      .max(150, "O nome deve ter no maximo 150 caracteres"),
+      .max(150, "O nome deve ter no máximo 150 caracteres"),
     role: z.enum(["admin", "user"]),
     userKind: z.enum(["salesperson", "estimator", ""]).default(""),
     username: z
       .string()
       .trim()
       .min(1, "Informe o username")
-      .max(100, "O username deve ter no maximo 100 caracteres"),
+      .max(100, "O username deve ter no máximo 100 caracteres"),
   })
   .superRefine((values, context) => {
     if (values.role === "user" && values.userKind === "") {
@@ -51,7 +51,7 @@ const createUserFormSchema = baseUserFormSchema
     passwordConfirm: z.string().min(8, "Confirme a senha"),
   })
   .refine((values) => values.password === values.passwordConfirm, {
-    message: "A confirmacao de senha deve ser igual a senha",
+    message: "A confirmação de senha deve ser igual à senha",
     path: ["passwordConfirm"],
   });
 
@@ -76,15 +76,15 @@ type UserFormProps = {
 function getSubmitErrorMessage(error: unknown) {
   if (isAxiosError<{ message?: string }>(error)) {
     return (
-      error.response?.data?.message ?? "Nao foi possivel salvar o usuario."
+      error.response?.data?.message ?? "Não foi possível salvar o usuário."
     );
   }
 
-  return "Nao foi possivel salvar o usuario.";
+  return "Não foi possível salvar o usuário.";
 }
 
 function getRoleLabel(role: UserRole) {
-  return role === "admin" ? "Administrador" : "Usuario";
+  return role === "admin" ? "Administrador" : "Usuário";
 }
 
 function getUserKindLabel(userKind: UserKind) {
@@ -99,7 +99,8 @@ function mapFormValuesToPayload(
     email: values.email.trim(),
     name: values.name.trim(),
     role: values.role,
-    userKind: values.role === "user" ? (values.userKind as UserKind) : undefined,
+    userKind:
+      values.role === "user" ? (values.userKind as UserKind) : undefined,
     username: values.username.trim(),
   };
 
@@ -170,9 +171,9 @@ export function UserForm({
           description={
             mode === "create"
               ? "Cadastre acessos administrativos ou operacionais com o perfil adequado."
-              : "Atualize os dados cadastrais e o perfil de acesso do usuario."
+              : "Atualize os dados cadastrais e o perfil de acesso do usuário."
           }
-          title="Dados do usuario"
+          title="Dados do usuário"
         >
           {submitError ? <Alert severity="error">{submitError}</Alert> : null}
           {mode === "create" ? (
@@ -236,7 +237,7 @@ export function UserForm({
                 fullWidth
                 helperText={
                   errors.userKind?.message ??
-                  "Defina se o usuario operacional atua no comercial ou como orçamentista."
+                  "Defina se o usuário operacional atua no comercial ou como orçamentista."
                 }
                 label="Tipo funcional"
                 select

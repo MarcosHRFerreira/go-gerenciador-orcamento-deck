@@ -1114,6 +1114,115 @@ func TestBudgetImportExecuteShouldNormalizeCatalogNamesAndReuseSalespersonByFirs
 	}
 }
 
+func TestBudgetImportShouldReuseExistingProjectWhenObraStartsWithProjectCode(t *testing.T) {
+	budgetRepo := &budgetImportBudgetRepositoryStub{}
+	salespersonRepo := &budgetImportSalespersonRepositoryStub{
+		items: []model.SalespersonModel{
+			{ID: 7, Name: "Marcos"},
+			{ID: 9, Name: "Marcos Ferreira"},
+			{ID: 8, Name: "Nao informado"},
+		},
+	}
+	projectRepo := &budgetImportProjectRepositoryStub{
+		items: []model.ProjectModel{
+			{ID: 1, Code: "OBR-000001", Name: "Nao informado"},
+			{ID: 2, Code: "OBR-000002", Name: "Projeto Helix Rj Dvr 1121-2026"},
+		},
+	}
+	installerRepo := &budgetImportInstallerRepositoryStub{
+		items: []model.InstallerModel{
+			{ID: 1, Name: "Nao informado"},
+		},
+	}
+
+	service := budgetimportservice.NewService(
+		budgetRepo,
+		&budgetImportStatusRepositoryStub{
+			items: []model.BudgetStatusModel{
+				{ID: 1, Name: "Fechado"},
+				{ID: 2, Name: "Nao informado"},
+			},
+		},
+		&budgetImportPriorityRepositoryStub{
+			items: []model.PriorityModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		installerRepo,
+		projectRepo,
+		&budgetImportProjectTypeRepositoryStub{
+			items: []model.ProjectTypeModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		salespersonRepo,
+		&budgetImportContactRepositoryStub{
+			items: []model.ContactModel{
+				{ID: 1, InstallerID: 1, Name: "Nao informado"},
+			},
+		},
+		&budgetImportLossReasonRepositoryStub{
+			items: []model.LossReasonModel{
+				{ID: 1, Name: "Nao informado"},
+			},
+		},
+		&budgetImportAuditRepositoryStub{},
+	)
+
+	previewResponse, err := service.Preview(
+		context.Background(),
+		"orcamentos.xlsx",
+		buildImportWorkbook(t, []map[string]string{
+			{
+				"A": "45670",
+				"B": "1004",
+				"C": "R1",
+				"D": "INSTALADOR ALFA",
+				"E": "OBR-000002-PROJETO HELIX RJ DVR 1121-2026",
+				"F": "-",
+				"G": "MARCOS FERREIRA",
+				"H": "-",
+				"I": "1234.56",
+				"J": "0.05",
+				"K": "10",
+				"L": "FECHADO",
+				"M": "EM NEGOCIACAO",
+				"N": "CONCORRENTE XPTO",
+				"O": "-",
+				"P": "1000",
+				"Q": "PROJETISTA SUL",
+				"R": "DETALHE TECNICO FINAL",
+			},
+		}),
+		dto.PreviewBudgetImportOptions{
+			CreateMissingCatalogs: true,
+			UseDefaultNotInformed: true,
+		},
+	)
+	if err != nil {
+		t.Fatalf("expected preview without error, got %v", err)
+	}
+	if previewResponse.CatalogActions.ProjectsToCreate != 0 {
+		t.Fatalf("expected no new projects in preview, got %d", previewResponse.CatalogActions.ProjectsToCreate)
+	}
+
+	_, err = service.ExecuteImport(context.Background(), &dto.ExecuteBudgetImportRequest{
+		PreviewID: previewResponse.PreviewID,
+	})
+	if err != nil {
+		t.Fatalf("expected import without error, got %v", err)
+	}
+	if budgetRepo.capturedCreateItem == nil {
+		t.Fatal("expected captured create budget item")
+	}
+	if !budgetRepo.capturedCreateItem.ProjectID.Valid || budgetRepo.capturedCreateItem.ProjectID.Int64 != 2 {
+		t.Fatalf("expected existing project id 2 to be reused, got %+v", budgetRepo.capturedCreateItem.ProjectID)
+	}
+	if len(projectRepo.items) != 2 {
+		t.Fatalf("expected no new project to be created, got %+v", projectRepo.items)
+	}
+}
+
 func TestBudgetImportPreviewShouldRejectWorkbookWithoutRocktecSheet(t *testing.T) {
 	service := budgetimportservice.NewService(
 		&budgetImportBudgetRepositoryStub{},

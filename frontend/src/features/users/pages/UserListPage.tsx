@@ -33,6 +33,13 @@ import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
+import {
+  compactFilterFieldSx,
+  FilterField,
+  filterGroupSx,
+  filterGroupTitleSx,
+  filterSectionCardSx,
+} from "../../../components/common/FilterField";
 import { PageHeader } from "../../../components/common/PageHeader";
 import { SectionCard } from "../../../components/common/SectionCard";
 import {
@@ -73,11 +80,11 @@ type PendingUserAction =
 
 const resetPasswordSchema = z
   .object({
-    password: createStrongPasswordSchema("A senha temporaria"),
-    passwordConfirm: z.string().min(8, "Confirme a senha temporaria"),
+    password: createStrongPasswordSchema("A senha temporária"),
+    passwordConfirm: z.string().min(8, "Confirme a senha temporária"),
   })
   .refine((values) => values.password === values.passwordConfirm, {
-    message: "A confirmacao deve ser igual a senha temporaria",
+    message: "A confirmação deve ser igual à senha temporária",
     path: ["passwordConfirm"],
   });
 
@@ -91,10 +98,10 @@ const defaultFilters: UserListFilters = {
 };
 
 const tableHeadCellSx = {
-  backgroundColor: "rgba(37, 99, 235, 0.08)",
-  borderBottomColor: "primary.main",
+  background: "linear-gradient(180deg, #1E3A8A 0%, #1D4ED8 100%)",
+  borderBottomColor: "#1E40AF",
   borderBottomWidth: 2,
-  color: "text.primary",
+  color: "common.white",
   fontSize: "0.75rem",
   fontWeight: 700,
   letterSpacing: "0.04em",
@@ -116,7 +123,7 @@ function formatDateTime(value: string) {
 }
 
 function getRoleLabel(role: UserRole) {
-  return role === "admin" ? "Administrador" : "Usuario";
+  return role === "admin" ? "Administrador" : "Usuário";
 }
 
 function getUserKindLabel(userKind: UserKind | null) {
@@ -128,7 +135,7 @@ function getUserKindLabel(userKind: UserKind | null) {
     return "Comercial";
   }
 
-  return "Nao se aplica";
+  return "Não se aplica";
 }
 
 function getRoleChipColor(role: UserRole) {
@@ -147,25 +154,25 @@ function getMutationErrorMessage(error: unknown) {
   if (isAxiosError<{ message?: string }>(error)) {
     return (
       error.response?.data?.message ??
-      "Nao foi possivel atualizar os dados do usuario."
+      "Não foi possível atualizar os dados do usuário."
     );
   }
 
-  return "Nao foi possivel atualizar os dados do usuario.";
+  return "Não foi possível atualizar os dados do usuário.";
 }
 
 function getRoleActionLabel(nextRole: UserRole) {
-  return nextRole === "admin" ? "Tornar administrador" : "Tornar usuario";
+  return nextRole === "admin" ? "Tornar administrador" : "Tornar usuário";
 }
 
 function getPendingActionDescription(action: PendingUserAction) {
   if (action.type === "role") {
-    return `Confirma a alteracao do perfil de ${action.user.name} para ${getRoleLabel(action.nextRole).toLowerCase()}?`;
+    return `Confirma a alteração do perfil de ${action.user.name} para ${getRoleLabel(action.nextRole).toLowerCase()}?`;
   }
 
   return action.nextActive
-    ? `Confirma a reativacao do usuario ${action.user.name}?`
-    : `Confirma a desativacao do usuario ${action.user.name}?`;
+    ? `Confirma a reativação do usuário ${action.user.name}?`
+    : `Confirma a desativação do usuário ${action.user.name}?`;
 }
 
 function mapResetPasswordFormValues(
@@ -242,8 +249,8 @@ export function UserListPage() {
       setFeedbackError(null);
       setFeedbackMessage(
         variables.active
-          ? "Usuario reativado com sucesso."
-          : "Usuario desativado com sucesso.",
+          ? "Usuário reativado com sucesso."
+          : "Usuário desativado com sucesso.",
       );
       setPendingAction(null);
     },
@@ -266,7 +273,7 @@ export function UserListPage() {
       await queryClient.invalidateQueries({ queryKey: ["users"] });
       setFeedbackError(null);
       setFeedbackMessage(
-        `Senha resetada para ${variables.userName}. No proximo acesso, o usuario devera trocar a senha.`,
+        `Senha resetada para ${variables.userName}. No próximo acesso, o usuário deverá trocar a senha.`,
       );
       setResetPasswordUser(null);
       resetResetPasswordForm();
@@ -356,16 +363,17 @@ export function UserListPage() {
               startIcon={<AddRoundedIcon />}
               variant="contained"
             >
-              Novo usuario
+              Novo usuário
             </Button>
           </Box>
         }
-        description="Gerencie acessos, perfil administrativo e status dos usuarios do sistema."
-        title="Usuarios"
+        description="Gerencie acessos, perfil administrativo e status dos usuários do sistema."
+        title="Usuários"
       />
 
       <SectionCard
-        description="Use os filtros para localizar usuarios rapidamente antes de alterar perfil ou status."
+        description="Use os filtros para localizar usuários rapidamente antes de alterar perfil ou status."
+        sx={filterSectionCardSx}
         title="Filtros"
       >
         <Box
@@ -373,84 +381,114 @@ export function UserListPage() {
             display: "grid",
             gap: 2,
             gridTemplateColumns: {
-              lg: "2fr 1fr 1fr 1fr",
+              lg: "minmax(0, 1.3fr) minmax(0, 1.7fr)",
               md: "repeat(2, minmax(0, 1fr))",
               xs: "minmax(0, 1fr)",
             },
           }}
         >
-          <TextField
-            label="Buscar por nome, e-mail ou username"
-            onChange={(event) =>
-              setFilters((currentFilters) => ({
-                ...currentFilters,
-                search: event.target.value,
-              }))
-            }
-            size="small"
-            value={filters.search}
-          />
-          <TextField
-            label="Perfil"
-            onChange={(event) =>
-              setFilters((currentFilters) => ({
-                ...currentFilters,
-                role: event.target.value as UserListFilters["role"],
-              }))
-            }
-            select
-            size="small"
-            value={filters.role}
-          >
-            <MenuItem value="all">Todos</MenuItem>
-            <MenuItem value="admin">Administrador</MenuItem>
-            <MenuItem value="user">Usuario</MenuItem>
-          </TextField>
-          <TextField
-            label="Tipo funcional"
-            onChange={(event) =>
-              setFilters((currentFilters) => ({
-                ...currentFilters,
-                userKind: event.target.value as UserListFilters["userKind"],
-              }))
-            }
-            select
-            size="small"
-            value={filters.userKind}
-          >
-            <MenuItem value="all">Todos</MenuItem>
-            <MenuItem value="salesperson">Comercial</MenuItem>
-            <MenuItem value="estimator">Orçamentista</MenuItem>
-          </TextField>
-          <TextField
-            label="Status"
-            onChange={(event) =>
-              setFilters((currentFilters) => ({
-                ...currentFilters,
-                status: event.target.value as UserListFilters["status"],
-              }))
-            }
-            select
-            size="small"
-            value={filters.status}
-          >
-            <MenuItem value="all">Todos</MenuItem>
-            <MenuItem value="active">Ativo</MenuItem>
-            <MenuItem value="inactive">Inativo</MenuItem>
-          </TextField>
+          <Box sx={filterGroupSx}>
+            <Typography sx={filterGroupTitleSx} variant="subtitle2">
+              Identificação
+            </Typography>
+            <FilterField label="Buscar por nome, e-mail ou username">
+              <TextField
+                onChange={(event) =>
+                  setFilters((currentFilters) => ({
+                    ...currentFilters,
+                    search: event.target.value,
+                  }))
+                }
+                size="small"
+                sx={compactFilterFieldSx}
+                value={filters.search}
+              />
+            </FilterField>
+          </Box>
+          <Box sx={filterGroupSx}>
+            <Typography sx={filterGroupTitleSx} variant="subtitle2">
+              Classificação
+            </Typography>
+            <Box
+              sx={{
+                display: "grid",
+                gap: 2,
+                gridTemplateColumns: {
+                  sm: "repeat(3, minmax(0, 1fr))",
+                  xs: "minmax(0, 1fr)",
+                },
+              }}
+            >
+              <FilterField label="Perfil">
+                <TextField
+                  onChange={(event) =>
+                    setFilters((currentFilters) => ({
+                      ...currentFilters,
+                      role: event.target.value as UserListFilters["role"],
+                    }))
+                  }
+                  select
+                  size="small"
+                  sx={compactFilterFieldSx}
+                  value={filters.role}
+                >
+                  <MenuItem value="all">Todos</MenuItem>
+                  <MenuItem value="admin">Administrador</MenuItem>
+                  <MenuItem value="user">Usuário</MenuItem>
+                </TextField>
+              </FilterField>
+              <FilterField label="Tipo funcional">
+                <TextField
+                  onChange={(event) =>
+                    setFilters((currentFilters) => ({
+                      ...currentFilters,
+                      userKind: event.target
+                        .value as UserListFilters["userKind"],
+                    }))
+                  }
+                  select
+                  size="small"
+                  sx={compactFilterFieldSx}
+                  value={filters.userKind}
+                >
+                  <MenuItem value="all">Todos</MenuItem>
+                  <MenuItem value="salesperson">Comercial</MenuItem>
+                  <MenuItem value="estimator">Orçamentista</MenuItem>
+                </TextField>
+              </FilterField>
+              <FilterField label="Status">
+                <TextField
+                  onChange={(event) =>
+                    setFilters((currentFilters) => ({
+                      ...currentFilters,
+                      status: event.target.value as UserListFilters["status"],
+                    }))
+                  }
+                  select
+                  size="small"
+                  sx={compactFilterFieldSx}
+                  value={filters.status}
+                >
+                  <MenuItem value="all">Todos</MenuItem>
+                  <MenuItem value="active">Ativo</MenuItem>
+                  <MenuItem value="inactive">Inativo</MenuItem>
+                </TextField>
+              </FilterField>
+            </Box>
+          </Box>
         </Box>
       </SectionCard>
 
       <SectionCard
         description={`${
           filteredUsers.length
-        } usuario(s) encontrado(s) com os filtros atuais.`}
+        } usuário(s) encontrado(s) com os filtros atuais.`}
         title="Listagem"
       >
         {usersQuery.isLoading ? <LinearProgress /> : null}
         {usersQuery.isError ? (
           <Alert severity="error">
-            Nao foi possivel carregar a listagem de usuarios.
+            Não foi possível carregar a listagem de usuários.
           </Alert>
         ) : null}
         {feedbackMessage ? (
@@ -470,7 +508,7 @@ export function UserListPage() {
                 <TableCell sx={tableHeadCellSx}>Status</TableCell>
                 <TableCell sx={tableHeadCellSx}>Atualizado em</TableCell>
                 <TableCell align="right" sx={tableHeadCellSx}>
-                  Acoes
+                  Ações
                 </TableCell>
               </TableRow>
             </TableHead>
@@ -632,7 +670,7 @@ export function UserListPage() {
               {!usersQuery.isLoading && filteredUsers.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} sx={tableDetailCellSx}>
-                    Nenhum usuario encontrado com os filtros informados.
+                    Nenhum usuário encontrado com os filtros informados.
                   </TableCell>
                 </TableRow>
               ) : null}
@@ -662,7 +700,7 @@ export function UserListPage() {
           >
             <DialogContentText>
               {resetPasswordUser
-                ? `Defina uma senha temporaria para ${resetPasswordUser.name}. No proximo acesso, o usuario sera obrigado a trocar a senha.`
+                ? `Defina uma senha temporária para ${resetPasswordUser.name}. No próximo acesso, o usuário será obrigado a trocar a senha.`
                 : ""}
             </DialogContentText>
             <Alert severity="info" variant="outlined">
@@ -672,14 +710,14 @@ export function UserListPage() {
               autoFocus
               error={Boolean(resetPasswordErrors.password)}
               helperText={resetPasswordErrors.password?.message}
-              label="Senha temporaria"
+              label="Senha temporária"
               type="password"
               {...registerResetPassword("password")}
             />
             <TextField
               error={Boolean(resetPasswordErrors.passwordConfirm)}
               helperText={resetPasswordErrors.passwordConfirm?.message}
-              label="Confirmar senha temporaria"
+              label="Confirmar senha temporária"
               type="password"
               {...registerResetPassword("passwordConfirm")}
             />
@@ -710,7 +748,7 @@ export function UserListPage() {
         }}
         open={pendingAction !== null}
       >
-        <DialogTitle>Confirmar alteracao</DialogTitle>
+        <DialogTitle>Confirmar alteração</DialogTitle>
         <DialogContent>
           <DialogContentText>
             {pendingAction ? getPendingActionDescription(pendingAction) : ""}
