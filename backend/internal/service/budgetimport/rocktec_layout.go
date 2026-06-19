@@ -9,8 +9,8 @@ import (
 
 const (
 	rocktecImportLayoutKey       = "rocktec"
-	rocktecImportSheetName       = "ORCAMENTOS"
-	rocktecImportHeaderRowNumber = 10
+	rocktecImportSheetName       = "Rocktec"
+	rocktecImportHeaderRowNumber = 1
 )
 
 type normalizedBudgetImportRow struct {
@@ -59,7 +59,7 @@ func (rocktecImportLayout) SourceCompany() string {
 }
 
 func (rocktecImportLayout) Description() string {
-	return "Layout legado da Rocktec com aba ORCAMENTOS e cabecalho na linha 10."
+	return "Layout atual da Rocktec com a mesma estrutura resumida da Trox, usando a aba Rocktec e cabecalho na linha 1."
 }
 
 func (rocktecImportLayout) SheetName() string {
@@ -73,12 +73,12 @@ func (rocktecImportLayout) HeaderRowNumber() int {
 func (rocktecImportLayout) PreviewWarnings() []dto.BudgetImportPreviewMessage {
 	return []dto.BudgetImportPreviewMessage{
 		{
-			Code:    "COMMISSION_INTERPRETATION_ASSUMED",
-			Message: "A coluna COMISSAO foi tratada como valor numerico simples.",
+			Code:    "ROCKTEC_STATUS_AS_FOLLOW_UP",
+			Message: "A coluna Status da Rocktec passa a alimentar o follow-up atual, enquanto o status principal da importacao inicia como Em Negociacao.",
 		},
 		{
-			Code:    "COLUMN_MAPPING_ASSUMED",
-			Message: "A coluna PRIORIDADE foi tratada como status catalogado e a coluna STATUS como follow-up atual.",
+			Code:    "ROCKTEC_PRODUCT_LINE_AND_CUSTOMER_MAPPED",
+			Message: "Linha de produtos passa a alimentar catalogo auxiliar e Nome Cliente passa a preencher Construtora na nova estrutura da Rocktec.",
 		},
 	}
 }
@@ -88,41 +88,40 @@ func (rocktecImportLayout) FieldGroups() []dto.BudgetImportPreviewFieldGroup {
 		{
 			Key:         "domain",
 			Title:       "Campos do dominio principal",
-			Description: "Entram diretamente no cadastro principal de orcamentos e catalogos relacionados.",
+			Description: "Entram no cadastro principal apos normalizacao do novo layout da Rocktec.",
 			Fields: []string{
-				"Numero",
-				"Ano",
+				"Orcamento",
 				"Revisao",
-				"Data",
-				"Valor bruto",
-				"Comissao",
-				"Area m2",
-				"Status",
-				"Prioridade",
-				"Instalador",
+				"Data de Emissao",
+				"Linha de produtos",
+				"Construtora",
 				"Obra",
-				"Tipo de obra",
 				"Vendedor",
+				"Instalador",
 				"Contato",
-				"Motivo de perda",
-				"Concorrente",
-				"Preco concorrente",
-				"Projetista",
-				"Especificacao",
-				"Follow-up atual",
+				"Total do orcamento",
+				"Status como follow-up atual",
 			},
 		},
 		{
 			Key:         "tracking",
-			Title:       "Campos preservados para rastreabilidade",
-			Description: "O lote e as linhas processadas ficam auditados no banco para consulta posterior.",
+			Title:       "Campos preservados so para rastreabilidade",
+			Description: "Ficam gravados nas linhas brutas/normalizadas do lote, sem entrar no dominio principal nesta fase.",
 			Fields: []string{
-				"Arquivo importado",
-				"Aba",
-				"Linha original",
-				"Linha normalizada",
-				"Mensagens do preview",
-				"Origem Rocktec",
+				"Tipo",
+				"Codigo Cliente",
+				"Fator Medio",
+			},
+		},
+		{
+			Key:         "business_notes",
+			Title:       "Regras aplicadas no parser",
+			Description: "Transformacoes e convencoes especificas usadas para a nova Rocktec.",
+			Fields: []string{
+				"Prefixo DECK - removido do vendedor",
+				"Status principal definido como Em Negociacao",
+				"Status da Rocktec enviado para follow-up atual",
+				"Tipo e Linha de produtos nao viram tipo de obra",
 			},
 		},
 	}
@@ -132,8 +131,8 @@ func (rocktecImportLayout) Governance() dto.BudgetImportPreviewGovernance {
 	return dto.BudgetImportPreviewGovernance{
 		DuplicateScope:      "source_company + budget_number + year_budget",
 		DuplicatePolicy:     "A Rocktec concilia duplicidade pela origem Rocktec, numero do orcamento e ano. Registros legados sem origem definida ainda podem ser conciliados para evitar duplicacao na migracao.",
-		MissingValuePolicy:  "Campos ausentes podem usar o item padrao Nao informado quando a opcao correspondente estiver ativa no preview.",
-		DefaultCatalogs:     []string{"Status", "Prioridade", "Instalador", "Obra", "Tipo de obra", "Vendedor", "Contato", "Motivo de perda"},
+		MissingValuePolicy:  "Campos sem aderencia ao dominio principal usam Nao informado ou seguem apenas para rastreabilidade, conforme o mapeamento aprovado da nova Rocktec.",
+		DefaultCatalogs:     []string{"Status", "Prioridade", "Instalador", "Linha de produto", "Obra", "Tipo de obra", "Vendedor", "Contato", "Motivo de perda"},
 		LegacyMatchingScope: "Registros sem source_company continuam elegiveis como correspondencia legado durante a transicao.",
 	}
 }
@@ -148,100 +147,72 @@ func (rocktecImportLayout) IsRowEmpty(rowValues []string) bool {
 
 func (rocktecImportLayout) ParseNormalizedRow(rowNumber int, rowValues []string) (normalizedBudgetImportRow, error) {
 	row := normalizedBudgetImportRow{
-		rowNumber:    rowNumber,
-		budgetNumber: normalizeCellText(getCell(rowValues, 1)),
-		warnings:     []string{},
+		rowNumber: rowNumber,
+		warnings:  []string{},
 	}
 
+	row.budgetNumber = normalizeCellText(getCell(rowValues, 0))
 	if row.budgetNumber == "" {
 		return row, fmt.Errorf("Numero do orcamento nao informado.")
 	}
 
-	sentAt, err := parseExcelDate(getCell(rowValues, 0))
+	rawRevision := getCell(rowValues, 1)
+	if isMissingValue(rawRevision) {
+		row.revision = 0
+		row.warnings = append(row.warnings, "Revisao nao informada, sera usada revisao 0.")
+	} else {
+		row.revision = extractRevision(rawRevision)
+		if row.revision == 0 && normalizeCellText(rawRevision) != "0" {
+			return row, fmt.Errorf("Revisao invalida.")
+		}
+	}
+
+	sentAt, err := parseDateBR(getCell(rowValues, 2))
 	if err != nil {
 		return row, fmt.Errorf("Data do orcamento invalida.")
 	}
 	row.sentAt = sentAt
 	row.yearBudget = sentAt.Year()
 
-	row.grossValue, err = parseOptionalNumber(getCell(rowValues, 8), true)
+	row.grossValue, err = parseOptionalNumber(getCell(rowValues, 12), true)
 	if err != nil {
 		return row, fmt.Errorf("Valor bruto invalido.")
 	}
 
-	row.commissionValue, err = parseOptionalNumber(getCell(rowValues, 9), false)
-	if err != nil {
-		return row, fmt.Errorf("Comissao invalida.")
-	}
-
-	row.areaM2, err = parseOptionalNumber(getCell(rowValues, 10), false)
-	if err != nil {
-		return row, fmt.Errorf("M2 invalido.")
-	}
-
-	if !isMissingValue(getCell(rowValues, 15)) {
-		value, valueErr := parseOptionalNumber(getCell(rowValues, 15), false)
-		if valueErr != nil {
-			return row, fmt.Errorf("Valor concorrente invalido.")
-		}
-		row.competitorPrice = &value
-	}
-
-	rawRevision := getCell(rowValues, 2)
-	row.revision = extractRevision(rawRevision)
-	if row.revision == 0 && !isMissingValue(rawRevision) {
-		row.warnings = append(row.warnings, "Revisao nao reconhecida, sera usada revisao 0.")
-	}
-
-	if isMissingValue(getCell(rowValues, 12)) {
-		row.warnings = append(row.warnings, "Follow-up atual nao informado, sera usado Nao informado.")
-	}
-	if isMissingValue(getCell(rowValues, 13)) {
-		row.warnings = append(row.warnings, "Concorrente nao informado, sera usado Nao informado.")
-	}
-	if isMissingValue(getCell(rowValues, 16)) {
-		row.warnings = append(row.warnings, "Projetista nao informado, sera usado Nao informado.")
-	}
-	if isMissingValue(getCell(rowValues, 17)) {
-		row.warnings = append(row.warnings, "Especificacoes nao informadas, sera usado Nao informado.")
-	}
-
-	row.statusName = fallbackName(getCell(rowValues, 11))
+	row.statusName = "Em Negociacao"
 	row.priorityName = notInformedName
-	row.installerName = fallbackName(getCell(rowValues, 3))
-	row.projectName = fallbackName(getCell(rowValues, 4))
-	row.projectTypeName = fallbackName(getCell(rowValues, 5))
-	row.salespersonName = fallbackName(getCell(rowValues, 6))
-	row.contactName = fallbackName(getCell(rowValues, 7))
-	row.lossReasonName = fallbackName(getCell(rowValues, 14))
-	row.competitorName = fallbackName(getCell(rowValues, 13))
-	row.projetistaName = fallbackName(getCell(rowValues, 16))
-	row.specification = fallbackName(getCell(rowValues, 17))
-	row.currentFollowUp = fallbackName(getCell(rowValues, 12))
+	row.installerName = fallbackName(getCell(rowValues, 11))
+	row.productLineName = normalizeDisplayText(getCell(rowValues, 6))
+	row.projectName = fallbackName(getCell(rowValues, 9))
+	row.projectTypeName = notInformedName
+	row.salespersonName = fallbackName(normalizeTroxSalespersonName(getCell(rowValues, 10)))
+	row.contactName = fallbackName(getCell(rowValues, 5))
+	row.lossReasonName = notInformedName
+	row.constructionCompany = fallbackName(getCell(rowValues, 8))
+	row.competitorName = notInformedName
+	row.projetistaName = notInformedName
+	row.specification = notInformedName
+	row.currentFollowUp = fallbackName(getCell(rowValues, 4))
 
 	return row, nil
 }
 
 func rocktecHasExpectedHeader(header []string) bool {
-	if len(header) < 18 {
+	if len(header) < 14 {
 		return false
 	}
 
-	first := normalizeLookupKey(getCell(header, 0))
-	fourth := normalizeLookupKey(getCell(header, 3))
-	fifth := normalizeLookupKey(getCell(header, 4))
-	seventh := normalizeLookupKey(getCell(header, 6))
-	eighth := normalizeLookupKey(getCell(header, 7))
-
-	return first == "data" &&
-		fourth != "" &&
-		fifth != "" &&
-		seventh != "" &&
-		eighth != ""
+	return normalizeLookupKey(getCell(header, 0)) == "or\u00e7amento" &&
+		normalizeLookupKey(getCell(header, 1)) == "revis\u00e3o" &&
+		normalizeLookupKey(getCell(header, 2)) == "data de emiss\u00e3o" &&
+		normalizeLookupKey(getCell(header, 9)) == "obra" &&
+		normalizeLookupKey(getCell(header, 10)) == "vendedor" &&
+		normalizeLookupKey(getCell(header, 11)) == "instalador" &&
+		normalizeLookupKey(getCell(header, 12)) == "total do or\u00e7amento"
 }
 
 func rocktecIsRowEmpty(values []string) bool {
-	for column := 0; column < 18; column++ {
+	for column := 0; column < 14; column++ {
 		if !isMissingValue(getCell(values, column)) {
 			return false
 		}

@@ -3,6 +3,7 @@ import DarkModeRoundedIcon from "@mui/icons-material/DarkModeRounded";
 import DescriptionRoundedIcon from "@mui/icons-material/DescriptionRounded";
 import ApartmentRoundedIcon from "@mui/icons-material/ApartmentRounded";
 import ManageAccountsRoundedIcon from "@mui/icons-material/ManageAccountsRounded";
+import EngineeringRoundedIcon from "@mui/icons-material/EngineeringRounded";
 import LightModeRoundedIcon from "@mui/icons-material/LightModeRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
@@ -50,17 +51,22 @@ type NavigationItem = {
 };
 
 const navigationItems: NavigationItem[] = [
-  { icon: <DashboardRoundedIcon />, label: "Dashboard", to: "/dashboard" },
+  {
+    icon: <DashboardRoundedIcon />,
+    label: "Dashboard",
+    requiresAdmin: true,
+    to: "/dashboard",
+  },
   { icon: <DescriptionRoundedIcon />, label: "Orçamentos", to: "/budgets" },
   {
     icon: <ApartmentRoundedIcon />,
     label: "Obras",
-    requiresAdmin: true,
     to: "/projects",
   },
   {
     icon: <UploadFileRoundedIcon />,
     label: "Importação",
+    requiresAdmin: true,
     to: "/budgets/import",
   },
   {
@@ -68,6 +74,12 @@ const navigationItems: NavigationItem[] = [
     label: "Vendedores",
     requiresAdmin: true,
     to: "/salespeople",
+  },
+  {
+    icon: <EngineeringRoundedIcon />,
+    label: "Orçamentistas",
+    requiresAdmin: true,
+    to: "/estimators",
   },
   {
     icon: <ManageAccountsRoundedIcon />,
@@ -95,10 +107,18 @@ export function AppShell() {
   const { logout, user } = useAuth();
   const availableNavigationItems = useMemo(
     () =>
-      navigationItems.filter(
-        (item) => !item.requiresAdmin || user?.role === "admin",
-      ),
-    [user?.role],
+      navigationItems.filter((item) => {
+        if (item.requiresAdmin && user?.role !== "admin") {
+          return false;
+        }
+
+        if (item.to === "/dashboard" && user?.user_kind === "estimator") {
+          return false;
+        }
+
+        return true;
+      }),
+    [user?.role, user?.user_kind],
   );
   const currentDrawerWidth = desktopSidebarCollapsed
     ? collapsedDrawerWidth
@@ -116,7 +136,11 @@ export function AppShell() {
   const userInitial = user?.name?.charAt(0).toUpperCase() ?? "A";
   const userLabel = user?.name ?? "Usuario";
   const userRoleLabel =
-    user?.role === "admin" ? "Perfil administrador" : "Perfil usuario";
+    user?.role === "admin"
+      ? "Perfil administrador"
+      : user?.user_kind === "estimator"
+        ? "Perfil orcamentista"
+        : "Perfil comercial";
   const themeModeLabel = mode === "light" ? "Modo claro" : "Modo escuro";
 
   const handleLogout = () => {
@@ -226,7 +250,7 @@ export function AppShell() {
               >
                 <ListItemIcon
                   sx={{
-                    color: "inherit",
+                    color: "#C2410C",
                     justifyContent: "center",
                     minWidth: collapsed ? 0 : 40,
                   }}
@@ -256,7 +280,7 @@ export function AppShell() {
         >
           <ListItemIcon
             sx={{
-              color: "inherit",
+              color: "#C2410C",
               justifyContent: "center",
               minWidth: collapsed ? 0 : 40,
             }}

@@ -62,10 +62,78 @@ function mapProjectPayload(payload: ProjectPayload): ProjectApiPayload {
   };
 }
 
-export async function listProjectsRequest(): Promise<ProjectItem[]> {
-  const response = await api.get<ProjectApiItem[]>("/projects");
+function reportProjectsDebugEvent(
+  hypothesisId: string,
+  location: string,
+  message: string,
+  data: Record<string, unknown>,
+) {
+  // #region debug-point D:projects-api-report
+  fetch("http://127.0.0.1:7777/event", {
+    body: JSON.stringify({
+      data,
+      hypothesisId,
+      location,
+      msg: message,
+      runId: "pre-fix",
+      sessionId: "projects-user-load",
+      ts: Date.now(),
+    }),
+    headers: {
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  }).catch(() => undefined);
+  // #endregion
+}
 
-  return response.data.map(mapProjectItem);
+export async function listProjectsRequest(): Promise<ProjectItem[]> {
+  // #region debug-point D:projects-api-entry
+  reportProjectsDebugEvent(
+    "D",
+    "projects/api.ts:listProjectsRequest:entry",
+    "[DEBUG] frontend requesting /projects",
+    {
+      baseURL: api.defaults.baseURL ?? null,
+    },
+  );
+  // #endregion
+  try {
+    const response = await api.get<ProjectApiItem[]>("/projects");
+
+    // #region debug-point E:projects-api-success
+    reportProjectsDebugEvent(
+      "E",
+      "projects/api.ts:listProjectsRequest:success",
+      "[DEBUG] frontend received /projects success",
+      {
+        itemCount: response.data.length,
+        status: response.status,
+      },
+    );
+    // #endregion
+
+    return response.data.map(mapProjectItem);
+  } catch (error) {
+    const typedError = error as {
+      message?: string;
+      response?: { data?: unknown; status?: number };
+    };
+
+    // #region debug-point E:projects-api-error
+    reportProjectsDebugEvent(
+      "E",
+      "projects/api.ts:listProjectsRequest:error",
+      "[DEBUG] frontend received /projects error",
+      {
+        errorMessage: typedError.message ?? null,
+        responseData: typedError.response?.data ?? null,
+        status: typedError.response?.status ?? null,
+      },
+    );
+    // #endregion
+    throw error;
+  }
 }
 
 export async function getProjectByIdRequest(
@@ -88,11 +156,12 @@ export async function createProjectRequest(
 }
 
 export async function getNextProjectCodeRequest(): Promise<string> {
-  const response = await api.get<NextProjectCodeApiResponse>("/projects/next-code");
+  const response = await api.get<NextProjectCodeApiResponse>(
+    "/projects/next-code",
+  );
 
   return response.data.code;
 }
-
 
 export async function updateProjectRequest(
   projectId: number,
@@ -108,8 +177,37 @@ export async function deleteProjectRequest(projectId: number): Promise<void> {
 export async function listProjectTypesRequest(): Promise<
   ProjectTypeCatalogItem[]
 > {
-  const response =
-    await api.get<NamedProjectCatalogApiItem[]>("/project-types");
+  try {
+    const response =
+      await api.get<NamedProjectCatalogApiItem[]>("/project-types");
 
-  return response.data.map(mapProjectTypeCatalogItem);
+    reportProjectsDebugEvent(
+      "C",
+      "projects/api.ts:listProjectTypesRequest:success",
+      "[DEBUG] frontend received /project-types success",
+      {
+        itemCount: response.data.length,
+        status: response.status,
+      },
+    );
+
+    return response.data.map(mapProjectTypeCatalogItem);
+  } catch (error) {
+    const typedError = error as {
+      message?: string;
+      response?: { data?: unknown; status?: number };
+    };
+
+    reportProjectsDebugEvent(
+      "C",
+      "projects/api.ts:listProjectTypesRequest:error",
+      "[DEBUG] frontend received /project-types error",
+      {
+        errorMessage: typedError.message ?? null,
+        responseData: typedError.response?.data ?? null,
+        status: typedError.response?.status ?? null,
+      },
+    );
+    throw error;
+  }
 }

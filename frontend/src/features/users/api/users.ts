@@ -17,6 +17,7 @@ type CreateUserApiPayload = {
   password: string;
   password_confirm: string;
   role: "admin" | "user";
+  user_kind?: "salesperson" | "estimator";
 };
 
 type CreateUserApiResponse = {
@@ -28,6 +29,7 @@ type UpdateUserApiPayload = {
   email: string;
   username: string;
   role: "admin" | "user";
+  user_kind?: "salesperson" | "estimator";
 };
 
 function mapUserItem(item: UserApiItem): UserItem {
@@ -37,6 +39,7 @@ function mapUserItem(item: UserApiItem): UserItem {
     email: item.email,
     username: item.username,
     role: item.role,
+    userKind: item.user_kind ?? null,
     active: item.active,
     mustChangePassword: item.must_change_password,
     createdAt: item.created_at,
@@ -54,6 +57,7 @@ function mapCreateUserPayload(
     password: payload.password,
     password_confirm: payload.passwordConfirm,
     role: payload.role,
+    user_kind: payload.role === "user" ? payload.userKind : undefined,
   };
 }
 
@@ -64,6 +68,7 @@ function mapUpdateUserPayload(
     email: payload.email,
     name: payload.name,
     role: payload.role,
+    user_kind: payload.role === "user" ? payload.userKind : undefined,
     username: payload.username,
   };
 }

@@ -10,7 +10,6 @@ import (
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/dto"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/httpresponse"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/middleware"
-	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/model"
 	budgetservice "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/service/budget"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
@@ -37,13 +36,9 @@ func (h *Handler) RouteList() {
 	protectedRoutes.Use(middleware.Auth(h.secretKey))
 	protectedRoutes.GET("", h.List)
 	protectedRoutes.GET("/:budget_id", h.GetByID)
+	protectedRoutes.POST("", h.Create)
 	protectedRoutes.PUT("/:budget_id", h.Update)
-
-	adminRoutes := h.router.Group("/budgets")
-	adminRoutes.Use(middleware.Auth(h.secretKey))
-	adminRoutes.Use(middleware.RequireRoles(model.RoleAdmin))
-	adminRoutes.POST("", h.Create)
-	adminRoutes.DELETE("/:budget_id", h.Delete)
+	protectedRoutes.DELETE("/:budget_id", h.Delete)
 }
 
 func (h *Handler) Create(c *gin.Context) {
@@ -52,7 +47,12 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	id, err := h.service.Create(c.Request.Context(), &req)
+	id, err := h.service.Create(
+		c.Request.Context(),
+		middleware.Role(c),
+		middleware.Username(c),
+		&req,
+	)
 	if err != nil {
 		httpresponse.JSONAppError(c, err)
 		return
@@ -173,7 +173,12 @@ func (h *Handler) Delete(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.Delete(c.Request.Context(), budgetID); err != nil {
+	if err := h.service.Delete(
+		c.Request.Context(),
+		budgetID,
+		middleware.Role(c),
+		middleware.Username(c),
+	); err != nil {
 		httpresponse.JSONAppError(c, err)
 		return
 	}
@@ -191,6 +196,10 @@ func parseListFilters(c *gin.Context) (*dto.ListBudgetsFilters, error) {
 		return nil, err
 	}
 	salespersonID, err := parseOptionalInt64(c.Query("salesperson_id"))
+	if err != nil {
+		return nil, err
+	}
+	estimatorID, err := parseOptionalInt64(c.Query("estimator_id"))
 	if err != nil {
 		return nil, err
 	}
@@ -241,6 +250,7 @@ func parseListFilters(c *gin.Context) (*dto.ListBudgetsFilters, error) {
 		YearBudget:     yearBudget,
 		StatusID:       statusID,
 		SalespersonID:  salespersonID,
+		EstimatorID:    estimatorID,
 		InstallerID:    installerID,
 		PriorityID:     priorityID,
 		ProjectID:      projectID,

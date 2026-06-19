@@ -105,6 +105,10 @@ function createCatalogItems(previewResult: BudgetImportPreviewResult) {
       value: previewResult.catalogActions.installersToCreate,
     },
     {
+      label: "Linhas de produtos",
+      value: previewResult.catalogActions.productLinesToCreate,
+    },
+    {
       label: "Obras",
       value: previewResult.catalogActions.projectsToCreate,
     },
@@ -166,7 +170,7 @@ export function BudgetImportPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewOptions, setPreviewOptions] =
     useState<BudgetImportPreviewOptions>({
-      duplicateStrategy: "update",
+      duplicateStrategy: "ignore",
       createMissingCatalogs: true,
       useDefaultNotInformed: true,
     });
@@ -415,26 +419,18 @@ export function BudgetImportPage() {
               display: "grid",
               gap: 2,
               gridTemplateColumns: {
-                md: "minmax(180px, 220px) auto auto",
+                md: "minmax(220px, 280px) auto auto",
                 xs: "minmax(0, 1fr)",
               },
             }}
           >
             <TextField
+              helperText="Configuracao fixa para proteger ajustes manuais ja feitos no sistema."
               label="Duplicidade"
-              onChange={(event) =>
-                setPreviewOptions((currentValue) => ({
-                  ...currentValue,
-                  duplicateStrategy: event.target.value as "ignore" | "update",
-                }))
-              }
-              select
               size="small"
-              value={previewOptions.duplicateStrategy}
-            >
-              <MenuItem value="update">Atualizar existente</MenuItem>
-              <MenuItem value="ignore">Ignorar existente</MenuItem>
-            </TextField>
+              slotProps={{ input: { readOnly: true } }}
+              value="Ignorar existente"
+            />
             <FormControlLabel
               control={
                 <Checkbox
@@ -756,11 +752,7 @@ export function BudgetImportPage() {
                 <Typography color="text.secondary" variant="body2">
                   Estrategia aplicada
                 </Typography>
-                <Typography variant="h6">
-                  {previewResult.options.duplicateStrategy === "update"
-                    ? "Atualizar duplicados"
-                    : "Ignorar duplicados"}
-                </Typography>
+                <Typography variant="h6">Ignorar duplicados</Typography>
                 <Typography color="text.secondary" variant="body2">
                   {previewResult.options.createMissingCatalogs
                     ? "Cria catalogos ausentes durante a carga"

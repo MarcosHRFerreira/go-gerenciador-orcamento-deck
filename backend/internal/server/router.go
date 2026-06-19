@@ -14,10 +14,12 @@ import (
 	budgetstatushistoryhandler "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/handler/budgetstatushistory"
 	contacthandler "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/handler/contact"
 	dashboardhandler "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/handler/dashboard"
+	estimatorhandler "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/handler/estimator"
 	healthhandler "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/handler/health"
 	installerhandler "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/handler/installer"
 	lossreasonhandler "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/handler/lossreason"
 	priorityhandler "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/handler/priority"
+	productlinehandler "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/handler/productline"
 	projecthandler "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/handler/project"
 	projecttypehandler "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/handler/projecttype"
 	salespersonhandler "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/handler/salesperson"
@@ -29,6 +31,7 @@ import (
 	budgetstatushistoryrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budgetstatushistory"
 	contactrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/contact"
 	dashboardrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/dashboard"
+	estimatorrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/estimator"
 	installerrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/installer"
 	lossreasonrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/lossreason"
 	priorityrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/priority"
@@ -45,9 +48,11 @@ import (
 	budgetstatushistoryservice "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/service/budgetstatushistory"
 	contactservice "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/service/contact"
 	dashboardservice "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/service/dashboard"
+	estimatorservice "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/service/estimator"
 	installerservice "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/service/installer"
 	lossreasonservice "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/service/lossreason"
 	priorityservice "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/service/priority"
+	productlineservice "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/service/productline"
 	projectservice "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/service/project"
 	projecttypeservice "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/service/projecttype"
 	salespersonservice "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/service/salesperson"
@@ -104,6 +109,7 @@ func NewRouter(validate *validator.Validate, deps Dependencies) *gin.Engine {
 	installerRepo := installerrepository.NewRepository(deps.DB)
 	contactRepo := contactrepository.NewRepository(deps.DB)
 	dashboardRepo := dashboardrepository.NewRepository(deps.DB)
+	estimatorRepo := estimatorrepository.NewRepository(deps.DB)
 	lossReasonRepo := lossreasonrepository.NewRepository(deps.DB)
 	priorityRepo := priorityrepository.NewRepository(deps.DB)
 	productLineRepo := productlinerepository.NewRepository(deps.DB)
@@ -113,7 +119,7 @@ func NewRouter(validate *validator.Validate, deps Dependencies) *gin.Engine {
 
 	authService := authservice.NewService(userRepo, deps.Config)
 	userService := userservice.NewService(userRepo)
-	budgetService := budgetservice.NewService(budgetRepo, salespersonRepo)
+	budgetService := budgetservice.NewService(budgetRepo, userRepo, salespersonRepo, estimatorRepo)
 	budgetImportService := budgetimportservice.NewService(
 		budgetRepo,
 		budgetStatusRepo,
@@ -127,14 +133,16 @@ func NewRouter(validate *validator.Validate, deps Dependencies) *gin.Engine {
 		budgetImportRepo,
 		productLineRepo,
 	)
-	budgetFollowUpService := budgetfollowupservice.NewService(budgetFollowUpRepo, budgetRepo, salespersonRepo)
+	budgetFollowUpService := budgetfollowupservice.NewService(budgetFollowUpRepo, budgetRepo, userRepo, salespersonRepo, estimatorRepo)
 	budgetStatusService := budgetstatusservice.NewService(budgetStatusRepo)
-	budgetStatusHistoryService := budgetstatushistoryservice.NewService(budgetStatusHistoryRepo, budgetRepo, budgetStatusRepo, salespersonRepo)
+	budgetStatusHistoryService := budgetstatushistoryservice.NewService(budgetStatusHistoryRepo, budgetRepo, budgetStatusRepo, userRepo, salespersonRepo, estimatorRepo)
 	installerService := installerservice.NewService(installerRepo)
 	contactService := contactservice.NewService(contactRepo, installerRepo)
-	dashboardService := dashboardservice.NewService(dashboardRepo, salespersonRepo)
+	dashboardService := dashboardservice.NewService(dashboardRepo, userRepo, salespersonRepo, estimatorRepo)
+	estimatorService := estimatorservice.NewService(estimatorRepo, userRepo)
 	lossReasonService := lossreasonservice.NewService(lossReasonRepo)
 	priorityService := priorityservice.NewService(priorityRepo)
+	productLineService := productlineservice.NewService(productLineRepo)
 	projectTypeService := projecttypeservice.NewService(projectTypeRepo)
 	projectService := projectservice.NewService(projectRepo, projectTypeRepo)
 	salespersonService := salespersonservice.NewService(salespersonRepo)
@@ -149,8 +157,10 @@ func NewRouter(validate *validator.Validate, deps Dependencies) *gin.Engine {
 	installerhandler.NewHandler(router, validate, installerService, deps.Config.SecretJWT).RouteList()
 	contacthandler.NewHandler(router, validate, contactService, deps.Config.SecretJWT).RouteList()
 	dashboardhandler.NewHandler(router, dashboardService, deps.Config.SecretJWT).RouteList()
+	estimatorhandler.NewHandler(router, validate, estimatorService, deps.Config.SecretJWT).RouteList()
 	lossreasonhandler.NewHandler(router, validate, lossReasonService, deps.Config.SecretJWT).RouteList()
 	priorityhandler.NewHandler(router, validate, priorityService, deps.Config.SecretJWT).RouteList()
+	productlinehandler.NewHandler(router, productLineService, deps.Config.SecretJWT).RouteList()
 	projecttypehandler.NewHandler(router, validate, projectTypeService, deps.Config.SecretJWT).RouteList()
 	projecthandler.NewHandler(router, validate, projectService, deps.Config.SecretJWT).RouteList()
 	salespersonhandler.NewHandler(router, validate, salespersonService, deps.Config.SecretJWT).RouteList()

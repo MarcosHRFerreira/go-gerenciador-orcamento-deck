@@ -59,6 +59,7 @@ type installerRepository interface {
 
 type projectRepository interface {
 	Create(ctx context.Context, item *model.ProjectModel) (int64, error)
+	GetNextCode(ctx context.Context) (string, error)
 	List(ctx context.Context) ([]model.ProjectModel, error)
 }
 
@@ -672,13 +673,7 @@ func (s *service) buildRowPreview(
 
 func normalizePreviewOptions(options dto.PreviewBudgetImportOptions) (dto.PreviewBudgetImportOptions, error) {
 	normalized := options
-	normalized.DuplicateStrategy = strings.ToLower(strings.TrimSpace(normalized.DuplicateStrategy))
-	if normalized.DuplicateStrategy == "" {
-		normalized.DuplicateStrategy = duplicateStrategyUpdate
-	}
-	if normalized.DuplicateStrategy != duplicateStrategyIgnore && normalized.DuplicateStrategy != duplicateStrategyUpdate {
-		return dto.PreviewBudgetImportOptions{}, apperror.BadRequest("duplicate_strategy deve ser ignore ou update")
-	}
+	normalized.DuplicateStrategy = duplicateStrategyIgnore
 	if !options.CreateMissingCatalogs && !options.UseDefaultNotInformed {
 		normalized.CreateMissingCatalogs = false
 		normalized.UseDefaultNotInformed = false

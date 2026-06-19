@@ -1046,9 +1046,14 @@ func (s *service) ensureProjectID(ctx context.Context, catalogs *catalogRuntime,
 		return 0, 0, apperror.BadRequest("Obra nao encontrada para importacao")
 	}
 
+	code, err := s.projectRepo.GetNextCode(ctx)
+	if err != nil {
+		return 0, 0, apperror.Internal("Falha ao gerar codigo da obra para importacao", err)
+	}
+
 	now := time.Now()
 	id, err := s.projectRepo.Create(ctx, &model.ProjectModel{
-		Code: buildCatalogCode(name),
+		Code: code,
 		Name: name,
 		ProjectTypeID: sql.NullInt64{
 			Int64: projectTypeID,

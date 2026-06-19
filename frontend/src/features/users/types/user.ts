@@ -1,4 +1,5 @@
 export type UserRole = "admin" | "user";
+export type UserKind = "salesperson" | "estimator";
 
 export type UserApiItem = {
   id: number;
@@ -6,6 +7,7 @@ export type UserApiItem = {
   email: string;
   username: string;
   role: UserRole;
+  user_kind?: UserKind | null;
   active: boolean;
   must_change_password: boolean;
   created_at: string;
@@ -18,6 +20,7 @@ export type UserItem = {
   email: string;
   username: string;
   role: UserRole;
+  userKind: UserKind | null;
   active: boolean;
   mustChangePassword: boolean;
   createdAt: string;
@@ -27,6 +30,7 @@ export type UserItem = {
 export type UserListFilters = {
   search: string;
   role: "all" | UserRole;
+  userKind: "all" | UserKind;
   status: "all" | "active" | "inactive";
 };
 
@@ -37,6 +41,7 @@ export type CreateUserPayload = {
   password: string;
   passwordConfirm: string;
   role: UserRole;
+  userKind?: UserKind;
 };
 
 export type CreateUserResponse = {
@@ -48,10 +53,12 @@ export type UpdateUserPayload = {
   email: string;
   username: string;
   role: UserRole;
+  userKind?: UserKind;
 };
 
 export type UpdateUserRolePayload = {
   role: UserRole;
+  userKind?: UserKind;
 };
 
 export type UpdateUserActivePayload = {

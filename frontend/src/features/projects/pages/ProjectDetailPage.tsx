@@ -38,6 +38,7 @@ import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../../../components/common/PageHeader";
 import { SectionCard } from "../../../components/common/SectionCard";
+import { useAuth } from "../../auth/hooks/useAuth";
 import {
   getBudgetByIdRequest,
   getBudgetListCatalogsRequest,
@@ -152,6 +153,7 @@ const projectBudgetsFilters = (projectId: number): BudgetListFilters => ({
   projectId: String(projectId),
   projectName: "",
   salespersonId: "",
+  estimatorId: "",
   sentAtFrom: "",
   sentAtTo: "",
   sourceCompany: "",
@@ -168,6 +170,7 @@ const associationCandidateFilters: BudgetListFilters = {
   pageSize: 100,
   projectName: "",
   salespersonId: "",
+  estimatorId: "",
   sentAtFrom: "",
   sentAtTo: "",
   sourceCompany: "",
@@ -194,9 +197,11 @@ function mapBudgetDetailToPayload(
     installerId: budget.installerId,
     lossReasonId: budget.lossReasonId,
     priorityId: budget.priorityId,
+    productLineId: budget.productLineId,
     projectId,
     revision: budget.revision,
     salespersonId: budget.salespersonId,
+    estimatorId: budget.estimatorId,
     sentAt: budget.sentAt,
     specificationDetails: budget.specificationDetails,
     statusId: budget.statusId,
@@ -207,9 +212,13 @@ function mapBudgetDetailToPayload(
 export default function ProjectDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const { projectId: rawProjectId } = useParams();
   const projectId = Number(rawProjectId);
   const hasValidProjectId = Number.isInteger(projectId) && projectId > 0;
+  const canCreateBudget =
+    user?.role === "admin" ||
+    (user?.role === "user" && user.user_kind === "estimator");
   const [associationDialogOpen, setAssociationDialogOpen] = useState(false);
   const [associationCandidateId, setAssociationCandidateId] = useState("");
   const [associationFeedback, setAssociationFeedback] = useState<string | null>(
@@ -374,10 +383,7 @@ export default function ProjectDetailPage() {
     onError: (error) => {
       setAssociationFeedback(null);
       setAssociationError(
-        getErrorMessage(
-          error,
-          "Nao foi possivel associar o orcamento a obra.",
-        ),
+        getErrorMessage(error, "Nao foi possivel associar o orcamento a obra."),
       );
     },
   });
@@ -402,10 +408,7 @@ export default function ProjectDetailPage() {
     onError: (error) => {
       setAssociationFeedback(null);
       setAssociationError(
-        getErrorMessage(
-          error,
-          "Nao foi possivel remover o orcamento da obra.",
-        ),
+        getErrorMessage(error, "Nao foi possivel remover o orcamento da obra."),
       );
       setPendingDisassociationBudget(null);
     },
@@ -465,15 +468,17 @@ export default function ProjectDetailPage() {
       <PageHeader
         action={
           <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
-            <Button
-              onClick={() =>
-                navigate(`/budgets/new?projectId=${projectId}&returnTo=project`)
-              }
-              startIcon={<NoteAddRoundedIcon />}
-              variant="contained"
-            >
-              Novo orcamento
-            </Button>
+            {canCreateBudget ? (
+              <Button
+                onClick={() =>
+                  navigate(`/budgets/new?projectId=${projectId}&returnTo=project`)
+                }
+                startIcon={<NoteAddRoundedIcon />}
+                variant="contained"
+              >
+                Novo orcamento
+              </Button>
+            ) : null}
             <Button
               onClick={() => {
                 setAssociationFeedback(null);
@@ -1090,4 +1095,3 @@ export default function ProjectDetailPage() {
     </Box>
   );
 }
-

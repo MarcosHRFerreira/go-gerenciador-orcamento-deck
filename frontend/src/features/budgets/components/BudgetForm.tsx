@@ -17,7 +17,10 @@ import { Controller, useForm } from "react-hook-form";
 import { PageHeader } from "../../../components/common/PageHeader";
 import { SectionCard } from "../../../components/common/SectionCard";
 import { useAuth } from "../../auth/hooks/useAuth";
-import { getBudgetCatalogsRequest } from "../api/budgets";
+import {
+  getBudgetCatalogsRequest,
+  getBudgetListCatalogsRequest,
+} from "../api/budgets";
 import { listProjectsRequest } from "../../projects/api/projects";
 import type { BudgetCreatePayload } from "../types/budget";
 import type { BudgetFormValues } from "./budgetFormValues";
@@ -83,6 +86,13 @@ const budgetFormSchema = schema.object({
       (value) => isValidOptionalPositiveInteger(value),
       "Selecione um instalador valido",
     ),
+  productLineId: schema
+    .string()
+    .trim()
+    .refine(
+      (value) => isValidOptionalPositiveInteger(value),
+      "Selecione uma linha de produtos valida",
+    ),
   lossReasonId: schema
     .string()
     .trim()
@@ -118,6 +128,13 @@ const budgetFormSchema = schema.object({
     .refine(
       (value) => isValidOptionalPositiveInteger(value),
       "Selecione um vendedor valido",
+    ),
+  estimatorId: schema
+    .string()
+    .trim()
+    .refine(
+      (value) => isValidOptionalPositiveInteger(value),
+      "Selecione um orçamentista valido",
     ),
   sentAt: schema
     .string()
@@ -268,9 +285,11 @@ function mapFormValuesToPayload(values: BudgetFormValues): BudgetCreatePayload {
     installerId: parseOptionalInteger(values.installerId),
     lossReasonId: parseOptionalInteger(values.lossReasonId),
     priorityId: parseOptionalInteger(values.priorityId),
+    productLineId: parseOptionalInteger(values.productLineId),
     projectId: parseOptionalInteger(values.projectId),
     revision: parseInteger(values.revision),
     salespersonId: parseOptionalInteger(values.salespersonId),
+    estimatorId: parseOptionalInteger(values.estimatorId),
     sentAt: new Date(values.sentAt).toISOString(),
     specificationDetails: values.specificationDetails.trim(),
     statusId: parseInteger(values.statusId),
@@ -297,13 +316,18 @@ export function BudgetForm({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const isEstimatorUser =
+    user?.role === "user" && user.user_kind === "estimator";
+  const canManageBudgetAssignments = isAdmin || isEstimatorUser;
   const budgetCatalogsQuery = useQuery({
     queryKey: ["budget-catalogs"],
-    queryFn: getBudgetCatalogsRequest,
+    queryFn: canManageBudgetAssignments
+      ? getBudgetCatalogsRequest
+      : getBudgetListCatalogsRequest,
     staleTime: 1000 * 60 * 5,
   });
   const projectsQuery = useQuery({
-    enabled: isAdmin,
+    enabled: canManageBudgetAssignments,
     queryFn: listProjectsRequest,
     queryKey: ["projects", "budget-form"],
     staleTime: 1000 * 60 * 5,
@@ -423,7 +447,6 @@ export function BudgetForm({
           ) : null}
 
           {submitError ? <Alert severity="error">{submitError}</Alert> : null}
-
           <SectionCard
             description="Campos principais para identificacao e envio do orcamento."
             title="Dados principais"
@@ -598,6 +621,25 @@ export function BudgetForm({
                   ),
                 )}
               </TextField>
+              <TextField
+                error={Boolean(errors.productLineId)}
+                helperText={errors.productLineId?.message}
+                label="Linha de produtos"
+                select
+                {...register("productLineId")}
+              >
+                <MenuItem value="">Nao informar</MenuItem>
+                {(budgetCatalogsQuery.data?.productLines ?? []).map(
+                  (productLine) => (
+                    <MenuItem
+                      key={productLine.id}
+                      value={String(productLine.id)}
+                    >
+                      {productLine.name}
+                    </MenuItem>
+                  ),
+                )}
+              </TextField>
               <Controller
                 control={control}
                 name="projectId"
@@ -642,25 +684,45 @@ export function BudgetForm({
                   );
                 }}
               />
-              <TextField
-                error={Boolean(errors.salespersonId)}
-                helperText={errors.salespersonId?.message}
-                label="Vendedor"
-                select
-                {...register("salespersonId")}
-              >
-                <MenuItem value="">Nao informar</MenuItem>
-                {(budgetCatalogsQuery.data?.salespeople ?? []).map(
-                  (salesperson) => (
-                    <MenuItem
-                      key={salesperson.id}
-                      value={String(salesperson.id)}
-                    >
-                      {salesperson.name}
-                    </MenuItem>
-                  ),
-                )}
-              </TextField>
+              {canManageBudgetAssignments ? (
+                <TextField
+                  error={Boolean(errors.salespersonId)}
+                  helperText={errors.salespersonId?.message}
+                  label="Vendedor"
+                  select
+                  {...register("salespersonId")}
+                >
+                  <MenuItem value="">Nao informar</MenuItem>
+                  {(budgetCatalogsQuery.data?.salespeople ?? []).map(
+                    (salesperson) => (
+                      <MenuItem
+                        key={salesperson.id}
+                        value={String(salesperson.id)}
+                      >
+                        {salesperson.name}
+                      </MenuItem>
+                    ),
+                  )}
+                </TextField>
+              ) : null}
+              {canManageBudgetAssignments ? (
+                <TextField
+                  error={Boolean(errors.estimatorId)}
+                  helperText={errors.estimatorId?.message}
+                  label="Orçamentista"
+                  select
+                  {...register("estimatorId")}
+                >
+                  <MenuItem value="">Nao informar</MenuItem>
+                  {(budgetCatalogsQuery.data?.estimators ?? []).map(
+                    (estimator) => (
+                      <MenuItem key={estimator.id} value={String(estimator.id)}>
+                        {estimator.name}
+                      </MenuItem>
+                    ),
+                  )}
+                </TextField>
+              ) : null}
               <TextField
                 error={Boolean(errors.contactId)}
                 helperText={errors.contactId?.message}

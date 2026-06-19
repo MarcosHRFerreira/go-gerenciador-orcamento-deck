@@ -1,4 +1,4 @@
-﻿import type { BudgetDetailItem } from "../types/budget";
+import type { BudgetDetailItem } from "../types/budget";
 
 export type BudgetFormValues = {
   areaM2: string;
@@ -13,9 +13,11 @@ export type BudgetFormValues = {
   installerId: string;
   lossReasonId: string;
   priorityId: string;
+  productLineId: string;
   projectId: string;
   revision: string;
   salespersonId: string;
+  estimatorId: string;
   sentAt: string;
   specificationDetails: string;
   statusId: string;
@@ -43,9 +45,11 @@ export function createDefaultBudgetFormValues(): BudgetFormValues {
     installerId: "",
     lossReasonId: "",
     priorityId: "",
+    productLineId: "",
     projectId: "",
     revision: "0",
     salespersonId: "",
+    estimatorId: "",
     sentAt: toDateTimeLocalValue(new Date().toISOString()),
     specificationDetails: "",
     statusId: "",
@@ -71,14 +75,16 @@ export function mapBudgetDetailToFormValues(
     lossReasonId:
       budget.lossReasonId === null ? "" : String(budget.lossReasonId),
     priorityId: budget.priorityId === null ? "" : String(budget.priorityId),
+    productLineId:
+      budget.productLineId === null ? "" : String(budget.productLineId),
     projectId: budget.projectId === null ? "" : String(budget.projectId),
     revision: String(budget.revision),
     salespersonId:
       budget.salespersonId === null ? "" : String(budget.salespersonId),
+    estimatorId: budget.estimatorId === null ? "" : String(budget.estimatorId),
     sentAt: toDateTimeLocalValue(budget.sentAt),
     specificationDetails: budget.specificationDetails,
     statusId: String(budget.statusId),
     yearBudget: String(budget.yearBudget),
   };
 }
-

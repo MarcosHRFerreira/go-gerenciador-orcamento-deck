@@ -229,6 +229,31 @@ func (e *integrationTestEnv) createAdminToken(t *testing.T) string {
 	return loginPayload.Token
 }
 
+func userKindJSONField(role string) string {
+	if role != "user" {
+		return ""
+	}
+
+	return `,"user_kind":"salesperson"`
+}
+
+func userKindJSONFieldWithValue(role string, userKind string) string {
+	if role != "user" {
+		return ""
+	}
+
+	if strings.TrimSpace(userKind) == "" {
+		return userKindJSONField(role)
+	}
+
+	return fmt.Sprintf(`,"user_kind":"%s"`, userKind)
+}
+
+type integrationUserSession struct {
+	token  string
+	userID int64
+}
+
 func (e *integrationTestEnv) createUserToken(t *testing.T, adminToken string, suffix string, role string) string {
 	t.Helper()
 
@@ -251,21 +276,45 @@ func (e *integrationTestEnv) createUserTokenWithCredentials(
 	username string,
 	role string,
 ) string {
+	session := e.createUserSessionWithCredentialsAndKind(
+		t,
+		adminToken,
+		name,
+		email,
+		username,
+		role,
+		"",
+	)
+
+	return session.token
+}
+
+func (e *integrationTestEnv) createUserSessionWithCredentialsAndKind(
+	t *testing.T,
+	adminToken string,
+	name string,
+	email string,
+	username string,
+	role string,
+	userKind string,
+) integrationUserSession {
 	t.Helper()
 
 	createUserBody := fmt.Sprintf(
-		`{"name":"%s","email":"%s","username":"%s","password":"%s","password_confirm":"%s","role":"%s"}`,
+		`{"name":"%s","email":"%s","username":"%s","password":"%s","password_confirm":"%s","role":"%s"%s}`,
 		name,
 		email,
 		username,
 		integrationStrongPassword,
 		integrationStrongPassword,
 		role,
+		userKindJSONFieldWithValue(role, userKind),
 	)
 	createUserResponse := e.doJSONRequest(t, http.MethodPost, "/users", adminToken, createUserBody)
 	if createUserResponse.Code != http.StatusCreated {
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, createUserResponse.Code)
 	}
+	createUserPayload := decodeJSONResponse[dto.CreateUserResponse](t, createUserResponse.Body)
 
 	loginBody := fmt.Sprintf(`{"email":"%s","password":"%s"}`, email, integrationStrongPassword)
 	loginResponse := e.doJSONRequest(t, http.MethodPost, "/auth/login", "", loginBody)
@@ -294,7 +343,62 @@ func (e *integrationTestEnv) createUserTokenWithCredentials(
 		t.Fatal("expected updated access token to be returned")
 	}
 
-	return changePasswordPayload.Token
+	return integrationUserSession{
+		token:  changePasswordPayload.Token,
+		userID: createUserPayload.ID,
+	}
+}
+
+func (e *integrationTestEnv) createUserTokenWithCredentialsAndKind(
+	t *testing.T,
+	adminToken string,
+	name string,
+	email string,
+	username string,
+	role string,
+	userKind string,
+) string {
+	session := e.createUserSessionWithCredentialsAndKind(
+		t,
+		adminToken,
+		name,
+		email,
+		username,
+		role,
+		userKind,
+	)
+
+	return session.token
+}
+
+func (e *integrationTestEnv) seedEstimatorForUser(
+	t *testing.T,
+	code string,
+	name string,
+	userID int64,
+) int64 {
+	t.Helper()
+
+	now := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), integrationRequestTimeout)
+	defer cancel()
+
+	return e.insertReturningID(
+		t,
+		ctx,
+		`INSERT INTO estimators (code, name, email, phone, active, notes, user_id, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		RETURNING id`,
+		code,
+		name,
+		fmt.Sprintf("%s@local.dev", strings.ToLower(strings.ReplaceAll(code, " ", ""))),
+		"11999990000",
+		true,
+		"estimator de teste",
+		userID,
+		now,
+		now,
+	)
 }
 
 func (e *integrationTestEnv) seedBudgetData(t *testing.T, suffix string) budgetSeedData {

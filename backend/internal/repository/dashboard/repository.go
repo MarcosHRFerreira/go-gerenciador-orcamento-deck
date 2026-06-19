@@ -13,8 +13,13 @@ import (
 type Repository interface {
 	GetSummary(ctx context.Context, filters *dto.DashboardSalespeopleFilters) (*dto.DashboardSummaryResponse, error)
 	ListSalespersonSummaries(ctx context.Context, filters *dto.DashboardSalespeopleFilters) ([]dto.DashboardSalespersonSummaryResponse, error)
+	ListEstimatorSummaries(ctx context.Context, filters *dto.DashboardSalespeopleFilters) ([]dto.DashboardEstimatorSummaryResponse, error)
 	ListStaleBudgets(ctx context.Context, filters *dto.DashboardSalespeopleFilters, limit int) ([]dto.DashboardStaleBudgetResponse, error)
 	ListMonthlyEvolution(ctx context.Context, filters *dto.DashboardSalespeopleFilters, limit int) ([]dto.DashboardMonthlyEvolutionResponse, error)
+	ListConstructionCompanyPerformance(ctx context.Context, filters *dto.DashboardSalespeopleFilters, limit int) ([]dto.DashboardEntityPerformanceResponse, error)
+	ListProjectPerformance(ctx context.Context, filters *dto.DashboardSalespeopleFilters, limit int) ([]dto.DashboardEntityPerformanceResponse, error)
+	ListLossReasonSummaries(ctx context.Context, filters *dto.DashboardSalespeopleFilters, limit int) ([]dto.DashboardLossReasonSummaryResponse, error)
+	ListClosingTimeSummaries(ctx context.Context, filters *dto.DashboardSalespeopleFilters) ([]dto.DashboardClosingTimeSummaryResponse, error)
 	ListAvailableYears(ctx context.Context, filters *dto.DashboardSalespeopleFilters) ([]int, error)
 }
 
@@ -38,6 +43,7 @@ func (r *repository) GetSummary(
 			COALESCE(AVG(gross_value), 0)::double precision AS average_ticket,
 			COALESCE(SUM(CASE WHEN status_category = 'negotiation' THEN gross_value ELSE 0 END), 0)::double precision AS total_negotiation_gross_value,
 			COALESCE((COUNT(*) FILTER (WHERE status_category = 'won')::double precision / NULLIF(COUNT(*), 0)) * 100, 0)::double precision AS conversion_rate,
+			COALESCE((SUM(CASE WHEN status_category = 'won' THEN gross_value ELSE 0 END) / NULLIF(SUM(gross_value), 0)) * 100, 0)::double precision AS value_conversion_rate,
 			COUNT(*) FILTER (WHERE status_category = 'won')::int AS won_budgets,
 			COUNT(*) FILTER (WHERE status_category = 'negotiation')::int AS negotiation_budgets,
 			COUNT(*) FILTER (WHERE status_category = 'lost')::int AS lost_budgets,
@@ -57,6 +63,7 @@ func (r *repository) GetSummary(
 		&item.AverageTicket,
 		&item.TotalNegotiationGrossValue,
 		&item.ConversionRate,
+		&item.ValueConversionRate,
 		&item.WonBudgets,
 		&item.NegotiationBudgets,
 		&item.LostBudgets,
@@ -100,6 +107,69 @@ func (r *repository) ListSalespersonSummaries(
 	items := make([]dto.DashboardSalespersonSummaryResponse, 0)
 	for rows.Next() {
 		var item dto.DashboardSalespersonSummaryResponse
+		var lastActivityAt sql.NullTime
+		if err := rows.Scan(
+			&item.Label,
+			&item.BudgetCount,
+			&item.GrossValue,
+			&item.NegotiationBudgetCount,
+			&item.NegotiationGrossValue,
+			&item.WonBudgetCount,
+			&item.StalledBudgetCount,
+			&item.AverageTicket,
+			&item.ConversionRate,
+			&lastActivityAt,
+		); err != nil {
+			return nil, err
+		}
+
+		if lastActivityAt.Valid {
+			value := lastActivityAt.Time
+			item.LastActivityAt = &value
+		}
+		items = append(items, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+func (r *repository) ListEstimatorSummaries(
+	ctx context.Context,
+	filters *dto.DashboardSalespeopleFilters,
+) ([]dto.DashboardEstimatorSummaryResponse, error) {
+	query, args := buildFilteredBudgetsCTE(filters, `
+		SELECT
+			estimator_label,
+			COUNT(*)::int AS budget_count,
+			COALESCE(SUM(gross_value), 0)::double precision AS gross_value,
+			COUNT(*) FILTER (WHERE status_category = 'negotiation')::int AS negotiation_budget_count,
+			COALESCE(SUM(CASE WHEN status_category = 'negotiation' THEN gross_value ELSE 0 END), 0)::double precision AS negotiation_gross_value,
+			COUNT(*) FILTER (WHERE status_category = 'won')::int AS won_budget_count,
+			COUNT(*) FILTER (
+				WHERE status_category = 'negotiation'
+				  AND last_activity_at <= CURRENT_TIMESTAMP - INTERVAL '7 days'
+			)::int AS stalled_budget_count,
+			COALESCE(AVG(gross_value), 0)::double precision AS average_ticket,
+			COALESCE((COUNT(*) FILTER (WHERE status_category = 'won')::double precision / NULLIF(COUNT(*), 0)) * 100, 0)::double precision AS conversion_rate,
+			MAX(last_activity_at) AS last_activity_at
+		FROM filtered_budgets
+		WHERE estimator_id IS NOT NULL
+		GROUP BY estimator_label
+	`)
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]dto.DashboardEstimatorSummaryResponse, 0)
+	for rows.Next() {
+		var item dto.DashboardEstimatorSummaryResponse
 		var lastActivityAt sql.NullTime
 		if err := rows.Scan(
 			&item.Label,
@@ -265,6 +335,210 @@ func (r *repository) ListMonthlyEvolution(
 	return items, nil
 }
 
+func (r *repository) ListConstructionCompanyPerformance(
+	ctx context.Context,
+	filters *dto.DashboardSalespeopleFilters,
+	limit int,
+) ([]dto.DashboardEntityPerformanceResponse, error) {
+	return r.listEntityPerformance(ctx, filters, "construction_company_label", limit)
+}
+
+func (r *repository) ListProjectPerformance(
+	ctx context.Context,
+	filters *dto.DashboardSalespeopleFilters,
+	limit int,
+) ([]dto.DashboardEntityPerformanceResponse, error) {
+	return r.listEntityPerformance(ctx, filters, "project_label", limit)
+}
+
+func (r *repository) listEntityPerformance(
+	ctx context.Context,
+	filters *dto.DashboardSalespeopleFilters,
+	groupField string,
+	limit int,
+) ([]dto.DashboardEntityPerformanceResponse, error) {
+	query, args := buildFilteredBudgetsCTE(filters, fmt.Sprintf(`
+		SELECT
+			%[1]s AS label,
+			COUNT(*)::int AS budget_count,
+			COUNT(*) FILTER (WHERE status_category = 'won')::int AS won_budget_count,
+			COUNT(*) FILTER (WHERE status_category = 'lost')::int AS lost_budget_count,
+			COALESCE(SUM(gross_value), 0)::double precision AS gross_value,
+			COALESCE(SUM(CASE WHEN status_category = 'won' THEN gross_value ELSE 0 END), 0)::double precision AS won_gross_value,
+			COALESCE((COUNT(*) FILTER (WHERE status_category = 'won')::double precision / NULLIF(COUNT(*), 0)) * 100, 0)::double precision AS conversion_rate,
+			COALESCE((SUM(CASE WHEN status_category = 'won' THEN gross_value ELSE 0 END) / NULLIF(SUM(gross_value), 0)) * 100, 0)::double precision AS value_conversion_rate,
+			MAX(last_activity_at) AS last_activity_at
+		FROM filtered_budgets
+		GROUP BY %[1]s
+		ORDER BY gross_value DESC, budget_count DESC
+		LIMIT %d
+	`, groupField, limit))
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]dto.DashboardEntityPerformanceResponse, 0)
+	for rows.Next() {
+		var item dto.DashboardEntityPerformanceResponse
+		var lastActivityAt sql.NullTime
+		if err := rows.Scan(
+			&item.Label,
+			&item.BudgetCount,
+			&item.WonBudgetCount,
+			&item.LostBudgetCount,
+			&item.GrossValue,
+			&item.WonGrossValue,
+			&item.ConversionRate,
+			&item.ValueConversionRate,
+			&lastActivityAt,
+		); err != nil {
+			return nil, err
+		}
+
+		if lastActivityAt.Valid {
+			value := lastActivityAt.Time
+			item.LastActivityAt = &value
+		}
+		items = append(items, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+func (r *repository) ListLossReasonSummaries(
+	ctx context.Context,
+	filters *dto.DashboardSalespeopleFilters,
+	limit int,
+) ([]dto.DashboardLossReasonSummaryResponse, error) {
+	query, args := buildFilteredBudgetsCTE(filters, fmt.Sprintf(`
+		SELECT
+			loss_reason_label,
+			COUNT(*)::int AS lost_budget_count,
+			COALESCE(SUM(gross_value), 0)::double precision AS gross_value,
+			COALESCE(AVG(gross_value), 0)::double precision AS average_ticket
+		FROM filtered_budgets
+		WHERE status_category = 'lost'
+		GROUP BY loss_reason_label
+		ORDER BY gross_value DESC, lost_budget_count DESC
+		LIMIT %d
+	`, limit))
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]dto.DashboardLossReasonSummaryResponse, 0)
+	for rows.Next() {
+		var item dto.DashboardLossReasonSummaryResponse
+		if err := rows.Scan(
+			&item.Label,
+			&item.LostBudgetCount,
+			&item.GrossValue,
+			&item.AverageTicket,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+func (r *repository) ListClosingTimeSummaries(
+	ctx context.Context,
+	filters *dto.DashboardSalespeopleFilters,
+) ([]dto.DashboardClosingTimeSummaryResponse, error) {
+	query, args := buildFilteredBudgetsCTE(filters, `
+		, closed_budgets AS (
+			SELECT
+				status_category,
+				gross_value,
+				GREATEST(
+					0,
+					EXTRACT(EPOCH FROM (COALESCE(closed_at, last_activity_at) - sent_at)) / 86400
+				)::double precision AS closing_days
+			FROM filtered_budgets
+			WHERE status_category IN ('won', 'lost')
+		),
+		closing_summary AS (
+			SELECT
+				'Geral' AS label,
+				COUNT(*)::int AS budget_count,
+				COALESCE(AVG(closing_days), 0)::double precision AS average_closing_days,
+				COALESCE(SUM(gross_value), 0)::double precision AS gross_value,
+				0 AS sort_order
+			FROM closed_budgets
+			UNION ALL
+			SELECT
+				'Pedidos' AS label,
+				COUNT(*)::int AS budget_count,
+				COALESCE(AVG(closing_days), 0)::double precision AS average_closing_days,
+				COALESCE(SUM(gross_value), 0)::double precision AS gross_value,
+				1 AS sort_order
+			FROM closed_budgets
+			WHERE status_category = 'won'
+			UNION ALL
+			SELECT
+				'Cancelados' AS label,
+				COUNT(*)::int AS budget_count,
+				COALESCE(AVG(closing_days), 0)::double precision AS average_closing_days,
+				COALESCE(SUM(gross_value), 0)::double precision AS gross_value,
+				2 AS sort_order
+			FROM closed_budgets
+			WHERE status_category = 'lost'
+		)
+		SELECT
+			label,
+			budget_count,
+			average_closing_days,
+			gross_value
+		FROM closing_summary
+		WHERE budget_count > 0
+		ORDER BY sort_order
+	`)
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]dto.DashboardClosingTimeSummaryResponse, 0)
+	for rows.Next() {
+		var item dto.DashboardClosingTimeSummaryResponse
+		if err := rows.Scan(
+			&item.Label,
+			&item.BudgetCount,
+			&item.AverageClosingDays,
+			&item.GrossValue,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
 func (r *repository) ListAvailableYears(
 	ctx context.Context,
 	filters *dto.DashboardSalespeopleFilters,
@@ -368,18 +642,61 @@ func buildFilteredBudgetsCTE(
 	whereClause, args := buildWhereClause(filters)
 
 	return `
-		WITH filtered_budgets AS (
+		WITH budget_follow_up_activity AS (
+			SELECT
+				budget_id,
+				MAX(follow_up_at) AS last_follow_up_at
+			FROM budget_follow_ups
+			GROUP BY budget_id
+		),
+		budget_final_activity AS (
+			SELECT
+				bsh.budget_id,
+				MAX(bsh.changed_at) FILTER (
+					WHERE lower(TRIM(COALESCE(target_status.name, ''))) IN ('pedido', 'cancelado')
+					   OR target_status.is_final = TRUE
+				) AS closed_at
+			FROM budget_status_history bsh
+			LEFT JOIN budget_statuses target_status ON target_status.id = bsh.to_status_id
+			GROUP BY bsh.budget_id
+		),
+		budget_status_activity AS (
+			SELECT
+				budget_id,
+				MAX(changed_at) AS last_status_changed_at
+			FROM budget_status_history
+			GROUP BY budget_id
+		),
+		filtered_budgets AS (
 			SELECT
 				b.id,
 				b.budget_number,
 				b.sent_at,
 				b.year_budget,
 				b.gross_value,
+				b.estimator_id,
 				COALESCE(NULLIF(TRIM(b.construction_company), ''), 'Construtora nao informada') AS construction_company_label,
-				COALESCE(b.updated_at, b.sent_at) AS last_activity_at,
+				COALESCE(NULLIF(TRIM(lr.name), ''), 'Motivo nao informado') AS loss_reason_label,
+				GREATEST(
+					b.sent_at,
+					COALESCE(follow_up_activity.last_follow_up_at, b.sent_at),
+					COALESCE(status_activity.last_status_changed_at, b.sent_at)
+				) AS last_activity_at,
+				COALESCE(
+					final_activity.closed_at,
+					CASE
+						WHEN lower(TRIM(COALESCE(bs.name, ''))) IN ('pedido', 'cancelado') OR bs.is_final = TRUE THEN GREATEST(
+							b.sent_at,
+							COALESCE(follow_up_activity.last_follow_up_at, b.sent_at),
+							COALESCE(status_activity.last_status_changed_at, b.sent_at)
+						)
+						ELSE NULL
+					END
+				) AS closed_at,
 				COALESCE(NULLIF(TRIM(bs.name), ''), 'Status nao informado') AS status_label,
 				COALESCE(NULLIF(TRIM(p.name), ''), 'Sem obra vinculada') AS project_label,
 				COALESCE(NULLIF(TRIM(s.name), ''), 'Sem vendedor') AS salesperson_label,
+				COALESCE(NULLIF(TRIM(e.name), ''), 'Orcamentista sem nome') AS estimator_label,
 				CASE
 					WHEN lower(TRIM(COALESCE(bs.name, ''))) = 'pedido' THEN 'won'
 					WHEN lower(TRIM(COALESCE(bs.name, ''))) = 'cancelado' THEN 'lost'
@@ -387,8 +704,13 @@ func buildFilteredBudgetsCTE(
 				END AS status_category
 			FROM budgets b
 			LEFT JOIN budget_statuses bs ON bs.id = b.status_id
+			LEFT JOIN loss_reasons lr ON lr.id = b.loss_reason_id
 			LEFT JOIN projects p ON p.id = b.project_id
 			LEFT JOIN salespeople s ON s.id = b.salesperson_id
+			LEFT JOIN estimators e ON e.id = b.estimator_id
+			LEFT JOIN budget_follow_up_activity follow_up_activity ON follow_up_activity.budget_id = b.id
+			LEFT JOIN budget_final_activity final_activity ON final_activity.budget_id = b.id
+			LEFT JOIN budget_status_activity status_activity ON status_activity.budget_id = b.id
 			` + whereClause + `
 		)
 	` + body, args

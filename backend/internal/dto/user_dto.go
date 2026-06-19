@@ -3,12 +3,13 @@ package dto
 import "time"
 
 type CreateUserRequest struct {
-	Name            string `json:"name" validate:"required,min=3"`
-	Email           string `json:"email" validate:"required,email"`
-	Username        string `json:"username" validate:"required,min=3"`
-	Password        string `json:"password" validate:"required,min=8,max=72"`
-	PasswordConfirm string `json:"password_confirm" validate:"required,eqfield=Password"`
-	Role            string `json:"role" validate:"required,oneof=admin user"`
+	Name            string  `json:"name" validate:"required,min=3"`
+	Email           string  `json:"email" validate:"required,email"`
+	Username        string  `json:"username" validate:"required,min=3"`
+	Password        string  `json:"password" validate:"required,min=8,max=72"`
+	PasswordConfirm string  `json:"password_confirm" validate:"required,eqfield=Password"`
+	Role            string  `json:"role" validate:"required,oneof=admin user"`
+	UserKind        *string `json:"user_kind" validate:"omitempty,oneof=salesperson estimator"`
 }
 
 type CreateUserResponse struct {
@@ -16,14 +17,16 @@ type CreateUserResponse struct {
 }
 
 type UpdateUserRequest struct {
-	Name     string `json:"name" validate:"required,min=3"`
-	Email    string `json:"email" validate:"required,email"`
-	Username string `json:"username" validate:"required,min=3"`
-	Role     string `json:"role" validate:"required,oneof=admin user"`
+	Name     string  `json:"name" validate:"required,min=3"`
+	Email    string  `json:"email" validate:"required,email"`
+	Username string  `json:"username" validate:"required,min=3"`
+	Role     string  `json:"role" validate:"required,oneof=admin user"`
+	UserKind *string `json:"user_kind" validate:"omitempty,oneof=salesperson estimator"`
 }
 
 type UpdateUserRoleRequest struct {
-	Role string `json:"role" validate:"required,oneof=admin user"`
+	Role     string  `json:"role" validate:"required,oneof=admin user"`
+	UserKind *string `json:"user_kind" validate:"omitempty,oneof=salesperson estimator"`
 }
 
 type UpdateUserActiveRequest struct {
@@ -41,6 +44,7 @@ type UserResponse struct {
 	Email              string    `json:"email"`
 	Username           string    `json:"username"`
 	Role               string    `json:"role"`
+	UserKind           *string   `json:"user_kind,omitempty"`
 	Active             bool      `json:"active"`
 	MustChangePassword bool      `json:"must_change_password"`
 	CreatedAt          time.Time `json:"created_at"`

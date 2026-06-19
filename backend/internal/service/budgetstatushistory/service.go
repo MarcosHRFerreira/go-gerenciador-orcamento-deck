@@ -14,7 +14,9 @@ import (
 	budgetrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budget"
 	budgetstatusrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budgetstatus"
 	budgetstatushistoryrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budgetstatushistory"
+	estimatorrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/estimator"
 	salespersonrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/salesperson"
+	userrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/user"
 )
 
 type Service interface {
@@ -26,20 +28,26 @@ type service struct {
 	repo             budgetstatushistoryrepository.Repository
 	budgetRepo       budgetrepository.Repository
 	budgetStatusRepo budgetstatusrepository.Repository
+	userRepo         userrepository.Repository
 	salespersonRepo  salespersonrepository.Repository
+	estimatorRepo    estimatorrepository.Repository
 }
 
 func NewService(
 	repo budgetstatushistoryrepository.Repository,
 	budgetRepo budgetrepository.Repository,
 	budgetStatusRepo budgetstatusrepository.Repository,
+	userRepo userrepository.Repository,
 	salespersonRepo salespersonrepository.Repository,
+	estimatorRepo estimatorrepository.Repository,
 ) Service {
 	return &service{
 		repo:             repo,
 		budgetRepo:       budgetRepo,
 		budgetStatusRepo: budgetStatusRepo,
+		userRepo:         userRepo,
 		salespersonRepo:  salespersonRepo,
+		estimatorRepo:    estimatorRepo,
 	}
 }
 
@@ -56,12 +64,12 @@ func (s *service) ChangeStatus(ctx context.Context, budgetID int64, userID int64
 		return 0, apperror.BadRequest("status_id e obrigatorio")
 	}
 
-	restrictedSalespersonID, err := accessscope.ResolveRestrictedSalespersonID(ctx, role, username, s.salespersonRepo)
+	scope, err := accessscope.ResolveBudgetScope(ctx, role, username, s.userRepo, s.salespersonRepo, s.estimatorRepo)
 	if err != nil {
 		return 0, err
 	}
 
-	budget, err := s.budgetRepo.GetByIDScoped(ctx, budgetID, restrictedSalespersonID)
+	budget, err := s.budgetRepo.GetByIDScoped(ctx, budgetID, scope.RestrictedSalespersonID, scope.RestrictedEstimatorID)
 	if err != nil {
 		return 0, apperror.Internal("failed to check budget", err)
 	}
@@ -121,12 +129,12 @@ func (s *service) ListByBudgetID(ctx context.Context, budgetID int64, role model
 		return nil, apperror.BadRequest("budget_id e obrigatorio")
 	}
 
-	restrictedSalespersonID, err := accessscope.ResolveRestrictedSalespersonID(ctx, role, username, s.salespersonRepo)
+	scope, err := accessscope.ResolveBudgetScope(ctx, role, username, s.userRepo, s.salespersonRepo, s.estimatorRepo)
 	if err != nil {
 		return nil, err
 	}
 
-	budget, err := s.budgetRepo.GetByIDScoped(ctx, budgetID, restrictedSalespersonID)
+	budget, err := s.budgetRepo.GetByIDScoped(ctx, budgetID, scope.RestrictedSalespersonID, scope.RestrictedEstimatorID)
 	if err != nil {
 		return nil, apperror.Internal("failed to check budget", err)
 	}

@@ -49,6 +49,7 @@ import {
 import type {
   ResetUserPasswordPayload,
   UserItem,
+  UserKind,
   UserListFilters,
   UserRole,
 } from "../types/user";
@@ -85,6 +86,7 @@ type ResetPasswordFormValues = z.infer<typeof resetPasswordSchema>;
 const defaultFilters: UserListFilters = {
   role: "all",
   search: "",
+  userKind: "all",
   status: "all",
 };
 
@@ -115,6 +117,18 @@ function formatDateTime(value: string) {
 
 function getRoleLabel(role: UserRole) {
   return role === "admin" ? "Administrador" : "Usuario";
+}
+
+function getUserKindLabel(userKind: UserKind | null) {
+  if (userKind === "estimator") {
+    return "Orçamentista";
+  }
+
+  if (userKind === "salesperson") {
+    return "Comercial";
+  }
+
+  return "Nao se aplica";
 }
 
 function getRoleChipColor(role: UserRole) {
@@ -201,7 +215,11 @@ export function UserListPage() {
     }: {
       nextRole: UserRole;
       userId: number;
-    }) => updateUserRoleRequest(userId, { role: nextRole }),
+    }) =>
+      updateUserRoleRequest(userId, {
+        role: nextRole,
+        userKind: nextRole === "user" ? "salesperson" : undefined,
+      }),
     onSuccess: async (_, variables) => {
       await queryClient.invalidateQueries({ queryKey: ["users"] });
       setFeedbackError(null);
@@ -272,17 +290,25 @@ export function UserListPage() {
           item.username.toLocaleLowerCase("pt-BR").includes(normalizedSearch);
         const matchesRole =
           filters.role === "all" || item.role === filters.role;
+        const matchesUserKind =
+          filters.userKind === "all" || item.userKind === filters.userKind;
         const matchesStatus =
           filters.status === "all" ||
           (filters.status === "active" && item.active) ||
           (filters.status === "inactive" && !item.active);
 
-        return matchesSearch && matchesRole && matchesStatus;
+        return matchesSearch && matchesRole && matchesUserKind && matchesStatus;
       })
       .sort((firstItem, secondItem) =>
         firstItem.name.localeCompare(secondItem.name, "pt-BR"),
       );
-  }, [filters.role, filters.search, filters.status, usersQuery.data]);
+  }, [
+    filters.role,
+    filters.search,
+    filters.status,
+    filters.userKind,
+    usersQuery.data,
+  ]);
 
   const isMutating =
     updateRoleMutation.isPending ||
@@ -347,7 +373,7 @@ export function UserListPage() {
             display: "grid",
             gap: 2,
             gridTemplateColumns: {
-              lg: "2fr 1fr 1fr",
+              lg: "2fr 1fr 1fr 1fr",
               md: "repeat(2, minmax(0, 1fr))",
               xs: "minmax(0, 1fr)",
             },
@@ -379,6 +405,22 @@ export function UserListPage() {
             <MenuItem value="all">Todos</MenuItem>
             <MenuItem value="admin">Administrador</MenuItem>
             <MenuItem value="user">Usuario</MenuItem>
+          </TextField>
+          <TextField
+            label="Tipo funcional"
+            onChange={(event) =>
+              setFilters((currentFilters) => ({
+                ...currentFilters,
+                userKind: event.target.value as UserListFilters["userKind"],
+              }))
+            }
+            select
+            size="small"
+            value={filters.userKind}
+          >
+            <MenuItem value="all">Todos</MenuItem>
+            <MenuItem value="salesperson">Comercial</MenuItem>
+            <MenuItem value="estimator">Orçamentista</MenuItem>
           </TextField>
           <TextField
             label="Status"
@@ -424,6 +466,7 @@ export function UserListPage() {
                 <TableCell sx={tableHeadCellSx}>E-mail</TableCell>
                 <TableCell sx={tableHeadCellSx}>Username</TableCell>
                 <TableCell sx={tableHeadCellSx}>Perfil</TableCell>
+                <TableCell sx={tableHeadCellSx}>Tipo funcional</TableCell>
                 <TableCell sx={tableHeadCellSx}>Status</TableCell>
                 <TableCell sx={tableHeadCellSx}>Atualizado em</TableCell>
                 <TableCell align="right" sx={tableHeadCellSx}>
@@ -466,6 +509,18 @@ export function UserListPage() {
                         label={getRoleLabel(item.role)}
                         size="small"
                         variant={item.role === "admin" ? "filled" : "outlined"}
+                      />
+                    </TableCell>
+                    <TableCell sx={tableDetailCellSx}>
+                      <Chip
+                        color={
+                          item.userKind === "estimator"
+                            ? "secondary"
+                            : "default"
+                        }
+                        label={getUserKindLabel(item.userKind)}
+                        size="small"
+                        variant={item.userKind ? "outlined" : "filled"}
                       />
                     </TableCell>
                     <TableCell sx={tableDetailCellSx}>
@@ -576,7 +631,7 @@ export function UserListPage() {
               })}
               {!usersQuery.isLoading && filteredUsers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} sx={tableDetailCellSx}>
+                  <TableCell colSpan={8} sx={tableDetailCellSx}>
                     Nenhum usuario encontrado com os filtros informados.
                   </TableCell>
                 </TableRow>

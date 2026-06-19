@@ -1,4 +1,4 @@
-﻿export type BudgetSortBy =
+﻿﻿﻿export type BudgetSortBy =
   | "sent_at"
   | "gross_value"
   | "created_at"
@@ -16,6 +16,7 @@ export type BudgetListFilters = {
   installerId: string;
   projectName: string;
   salespersonId: string;
+  estimatorId: string;
   sentAtFrom: string;
   sentAtTo: string;
   projectId?: string;
@@ -37,8 +38,10 @@ export type BudgetApiItem = {
   status_id: number;
   priority_id?: number | null;
   installer_id?: number | null;
+  product_line_id?: number | null;
   project_id?: number | null;
   salesperson_id?: number | null;
+  estimator_id?: number | null;
   contact_id?: number | null;
   loss_reason_id?: number | null;
   construction_company: string;
@@ -49,8 +52,11 @@ export type BudgetApiItem = {
   status_name?: string | null;
   priority_name?: string | null;
   installer_name?: string | null;
+  product_line_code?: string | null;
+  product_line_name?: string | null;
   project_name?: string | null;
   salesperson_name?: string | null;
+  estimator_name?: string | null;
   contact_name?: string | null;
   loss_reason_name?: string | null;
   specification_details: string;
@@ -78,8 +84,10 @@ export type BudgetListItem = {
   statusId: number;
   priorityId: number | null;
   installerId: number | null;
+  productLineId: number | null;
   projectId: number | null;
   salespersonId: number | null;
+  estimatorId: number | null;
   contactId: number | null;
   lossReasonId: number | null;
   constructionCompany: string;
@@ -90,8 +98,11 @@ export type BudgetListItem = {
   sourceCompany: string;
   priorityName: string | null;
   installerName: string | null;
+  productLineCode: string | null;
+  productLineName: string | null;
   projectName: string | null;
   salespersonName: string | null;
+  estimatorName: string | null;
   contactName: string | null;
   lossReasonName: string | null;
   specificationDetails: string;
@@ -142,8 +153,10 @@ export type BudgetCatalogsResult = {
   statuses: BudgetCatalogItem[];
   priorities: BudgetCatalogItem[];
   installers: BudgetCatalogItem[];
+  productLines: BudgetCatalogItem[];
   projects: BudgetCatalogItem[];
   salespeople: BudgetCatalogItem[];
+  estimators: BudgetCatalogItem[];
   contacts: BudgetCatalogItem[];
   lossReasons: BudgetCatalogItem[];
 };
@@ -159,8 +172,10 @@ export type BudgetCreatePayload = {
   statusId: number;
   priorityId: number | null;
   installerId: number | null;
+  productLineId: number | null;
   projectId: number | null;
   salespersonId: number | null;
+  estimatorId: number | null;
   contactId: number | null;
   lossReasonId: number | null;
   competitorName: string;
@@ -195,6 +210,7 @@ export type BudgetImportCatalogActions = {
   budgetStatusesToCreate: number;
   prioritiesToCreate: number;
   installersToCreate: number;
+  productLinesToCreate: number;
   projectsToCreate: number;
   projectTypesToCreate: number;
   salespeopleToCreate: number;

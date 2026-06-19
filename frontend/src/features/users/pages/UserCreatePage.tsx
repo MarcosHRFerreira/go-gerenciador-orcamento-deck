@@ -10,6 +10,7 @@ const defaultUserFormValues: UserFormValues = {
   password: "",
   passwordConfirm: "",
   role: "user",
+  userKind: "salesperson",
   username: "",
 };
 

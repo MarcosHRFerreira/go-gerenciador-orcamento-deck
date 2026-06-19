@@ -12,31 +12,42 @@ import (
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/dto"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/model"
 	budgetrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budget"
+	estimatorrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/estimator"
 	salespersonrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/salesperson"
+	userrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/user"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type Service interface {
-	Create(ctx context.Context, req *dto.CreateBudgetRequest) (int64, error)
+	Create(ctx context.Context, role model.UserRole, username string, req *dto.CreateBudgetRequest) (int64, error)
 	List(ctx context.Context, filters *dto.ListBudgetsFilters, role model.UserRole, username string) (*dto.ListBudgetsResponse, error)
 	GetByID(ctx context.Context, budgetID int64, role model.UserRole, username string) (*dto.BudgetResponse, error)
 	Update(ctx context.Context, budgetID int64, role model.UserRole, username string, req *dto.UpdateBudgetRequest) error
-	Delete(ctx context.Context, budgetID int64) error
+	Delete(ctx context.Context, budgetID int64, role model.UserRole, username string) error
 }
 
 type service struct {
 	repo            budgetrepository.Repository
+	userRepo        userrepository.Repository
 	salespersonRepo salespersonrepository.Repository
+	estimatorRepo   estimatorrepository.Repository
 }
 
-func NewService(repo budgetrepository.Repository, salespersonRepo salespersonrepository.Repository) Service {
+func NewService(
+	repo budgetrepository.Repository,
+	userRepo userrepository.Repository,
+	salespersonRepo salespersonrepository.Repository,
+	estimatorRepo estimatorrepository.Repository,
+) Service {
 	return &service{
 		repo:            repo,
+		userRepo:        userRepo,
 		salespersonRepo: salespersonRepo,
+		estimatorRepo:   estimatorRepo,
 	}
 }
 
-func (s *service) Create(ctx context.Context, req *dto.CreateBudgetRequest) (int64, error) {
+func (s *service) Create(ctx context.Context, role model.UserRole, username string, req *dto.CreateBudgetRequest) (int64, error) {
 	budgetNumber := strings.TrimSpace(req.BudgetNumber)
 	if budgetNumber == "" {
 		return 0, apperror.BadRequest("budget_number e obrigatorio")
@@ -66,6 +77,18 @@ func (s *service) Create(ctx context.Context, req *dto.CreateBudgetRequest) (int
 		return 0, apperror.Conflict("Ja existe um orcamento para o budget_number e year_budget informados")
 	}
 
+	salespersonID, estimatorID, err := s.resolveCreateAndUpdateAssignments(
+		ctx,
+		role,
+		username,
+		req.SalespersonID,
+		req.EstimatorID,
+		true,
+	)
+	if err != nil {
+		return 0, err
+	}
+
 	now := time.Now()
 	id, err := s.repo.Create(ctx, &model.BudgetModel{
 		BudgetNumber:         budgetNumber,
@@ -80,7 +103,8 @@ func (s *service) Create(ctx context.Context, req *dto.CreateBudgetRequest) (int
 		InstallerID:          newNullInt64(req.InstallerID),
 		ProductLineID:        newNullInt64(req.ProductLineID),
 		ProjectID:            newNullInt64(req.ProjectID),
-		SalespersonID:        newNullInt64(req.SalespersonID),
+		SalespersonID:        newNullInt64(salespersonID),
+		EstimatorID:          newNullInt64(estimatorID),
 		ContactID:            newNullInt64(req.ContactID),
 		LossReasonID:         newNullInt64(req.LossReasonID),
 		ConstructionCompany:  strings.TrimSpace(req.ConstructionCompany),
@@ -105,11 +129,12 @@ func (s *service) List(ctx context.Context, filters *dto.ListBudgetsFilters, rol
 		return nil, err
 	}
 
-	restrictedSalespersonID, err := accessscope.ResolveRestrictedSalespersonID(ctx, role, username, s.salespersonRepo)
+	scope, err := accessscope.ResolveBudgetScope(ctx, role, username, s.userRepo, s.salespersonRepo, s.estimatorRepo)
 	if err != nil {
 		return nil, err
 	}
-	normalizedFilters.RestrictedSalespersonID = restrictedSalespersonID
+	normalizedFilters.RestrictedSalespersonID = scope.RestrictedSalespersonID
+	normalizedFilters.RestrictedEstimatorID = scope.RestrictedEstimatorID
 
 	items, total, err := s.repo.List(ctx, normalizedFilters)
 	if err != nil {
@@ -129,12 +154,12 @@ func (s *service) GetByID(ctx context.Context, budgetID int64, role model.UserRo
 		return nil, apperror.BadRequest("budget_id e obrigatorio")
 	}
 
-	restrictedSalespersonID, err := accessscope.ResolveRestrictedSalespersonID(ctx, role, username, s.salespersonRepo)
+	scope, err := accessscope.ResolveBudgetScope(ctx, role, username, s.userRepo, s.salespersonRepo, s.estimatorRepo)
 	if err != nil {
 		return nil, err
 	}
 
-	item, err := s.repo.GetByIDScoped(ctx, budgetID, restrictedSalespersonID)
+	item, err := s.repo.GetByIDScoped(ctx, budgetID, scope.RestrictedSalespersonID, scope.RestrictedEstimatorID)
 	if err != nil {
 		return nil, apperror.Internal("failed to get budget", err)
 	}
@@ -151,12 +176,12 @@ func (s *service) Update(ctx context.Context, budgetID int64, role model.UserRol
 		return apperror.BadRequest("budget_id e obrigatorio")
 	}
 
-	restrictedSalespersonID, err := accessscope.ResolveRestrictedSalespersonID(ctx, role, username, s.salespersonRepo)
+	scope, err := accessscope.ResolveBudgetScope(ctx, role, username, s.userRepo, s.salespersonRepo, s.estimatorRepo)
 	if err != nil {
 		return err
 	}
 
-	currentBudget, err := s.repo.GetByIDScoped(ctx, budgetID, restrictedSalespersonID)
+	currentBudget, err := s.repo.GetByIDScoped(ctx, budgetID, scope.RestrictedSalespersonID, scope.RestrictedEstimatorID)
 	if err != nil {
 		return apperror.Internal("failed to check budget", err)
 	}
@@ -195,6 +220,18 @@ func (s *service) Update(ctx context.Context, budgetID int64, role model.UserRol
 		}
 	}
 
+	salespersonID, estimatorID, err := s.resolveCreateAndUpdateAssignments(
+		ctx,
+		role,
+		username,
+		req.SalespersonID,
+		req.EstimatorID,
+		false,
+	)
+	if err != nil {
+		return err
+	}
+
 	err = s.repo.Update(ctx, &model.BudgetModel{
 		ID:                   budgetID,
 		BudgetNumber:         budgetNumber,
@@ -209,7 +246,8 @@ func (s *service) Update(ctx context.Context, budgetID int64, role model.UserRol
 		InstallerID:          newNullInt64(req.InstallerID),
 		ProductLineID:        newNullInt64(req.ProductLineID),
 		ProjectID:            newNullInt64(req.ProjectID),
-		SalespersonID:        newNullInt64(req.SalespersonID),
+		SalespersonID:        newNullInt64(salespersonID),
+		EstimatorID:          newNullInt64(estimatorID),
 		ContactID:            newNullInt64(req.ContactID),
 		LossReasonID:         newNullInt64(req.LossReasonID),
 		ConstructionCompany:  strings.TrimSpace(req.ConstructionCompany),
@@ -227,12 +265,20 @@ func (s *service) Update(ctx context.Context, budgetID int64, role model.UserRol
 	return nil
 }
 
-func (s *service) Delete(ctx context.Context, budgetID int64) error {
+func (s *service) Delete(ctx context.Context, budgetID int64, role model.UserRole, username string) error {
 	if budgetID <= 0 {
 		return apperror.BadRequest("budget_id e obrigatorio")
 	}
 
-	item, err := s.repo.GetByID(ctx, budgetID)
+	scope, err := accessscope.ResolveBudgetScope(ctx, role, username, s.userRepo, s.salespersonRepo, s.estimatorRepo)
+	if err != nil {
+		return err
+	}
+	if role == model.RoleUser && scope.UserKind == model.UserKindSalesperson {
+		return apperror.Forbidden("Perfil comercial nao pode excluir orcamentos")
+	}
+
+	item, err := s.repo.GetByIDScoped(ctx, budgetID, scope.RestrictedSalespersonID, scope.RestrictedEstimatorID)
 	if err != nil {
 		return apperror.Internal("failed to check budget", err)
 	}
@@ -265,6 +311,8 @@ func mapBudgetPersistenceError(action string, err error) error {
 			return apperror.BadRequest("Obra nao encontrada")
 		case "fk_budgets_salesperson_id":
 			return apperror.BadRequest("Vendedor nao encontrado")
+		case "fk_budgets_estimator_id":
+			return apperror.BadRequest("Orcamentista nao encontrado")
 		case "fk_budgets_contact_id":
 			return apperror.BadRequest("Contato nao encontrado")
 		case "fk_budgets_loss_reason_id":
@@ -320,6 +368,9 @@ func normalizeListFilters(filters *dto.ListBudgetsFilters) (*dto.ListBudgetsFilt
 	}
 	if normalized.SalespersonID != nil && *normalized.SalespersonID <= 0 {
 		return nil, apperror.BadRequest("salesperson_id deve ser maior que zero")
+	}
+	if normalized.EstimatorID != nil && *normalized.EstimatorID <= 0 {
+		return nil, apperror.BadRequest("estimator_id deve ser maior que zero")
 	}
 	if normalized.InstallerID != nil && *normalized.InstallerID <= 0 {
 		return nil, apperror.BadRequest("installer_id deve ser maior que zero")
@@ -394,6 +445,7 @@ func mapBudgetResponse(item *model.BudgetModel) dto.BudgetResponse {
 		ProductLineID:        nullableInt64Pointer(item.ProductLineID),
 		ProjectID:            nullableInt64Pointer(item.ProjectID),
 		SalespersonID:        nullableInt64Pointer(item.SalespersonID),
+		EstimatorID:          nullableInt64Pointer(item.EstimatorID),
 		ContactID:            nullableInt64Pointer(item.ContactID),
 		LossReasonID:         nullableInt64Pointer(item.LossReasonID),
 		ConstructionCompany:  item.ConstructionCompany,
@@ -408,6 +460,7 @@ func mapBudgetResponse(item *model.BudgetModel) dto.BudgetResponse {
 		ProductLineName:      nullableStringPointer(item.ProductLineName),
 		ProjectName:          nullableStringPointer(item.ProjectName),
 		SalespersonName:      nullableStringPointer(item.SalespersonName),
+		EstimatorName:        nullableStringPointer(item.EstimatorName),
 		ContactName:          nullableStringPointer(item.ContactName),
 		LossReasonName:       nullableStringPointer(item.LossReasonName),
 		SpecificationDetails: item.SpecificationDetails,
@@ -461,4 +514,39 @@ func nullableStringPointer(value sql.NullString) *string {
 	}
 
 	return &value.String
+}
+
+func (s *service) resolveCreateAndUpdateAssignments(
+	ctx context.Context,
+	role model.UserRole,
+	username string,
+	requestedSalespersonID *int64,
+	requestedEstimatorID *int64,
+	isCreate bool,
+) (*int64, *int64, error) {
+	if role == model.RoleAdmin {
+		return requestedSalespersonID, requestedEstimatorID, nil
+	}
+
+	scope, err := accessscope.ResolveBudgetScope(ctx, role, username, s.userRepo, s.salespersonRepo, s.estimatorRepo)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	switch scope.UserKind {
+	case model.UserKindEstimator:
+		return requestedSalespersonID, requestedEstimatorID, nil
+	case model.UserKindSalesperson:
+		if isCreate {
+			return nil, nil, apperror.Forbidden("Perfil comercial nao pode criar orcamentos")
+		}
+
+		if scope.RestrictedSalespersonID == nil || *scope.RestrictedSalespersonID <= 0 {
+			return nil, nil, apperror.Forbidden("Usuario operacional nao possui vinculo ativo com vendedor")
+		}
+
+		return scope.RestrictedSalespersonID, requestedEstimatorID, nil
+	default:
+		return nil, nil, apperror.Forbidden("Usuario operacional sem tipo funcional valido")
+	}
 }

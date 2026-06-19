@@ -527,7 +527,7 @@ func TestBudgetsWriteRoutesShouldRespectAdminAuthorization(t *testing.T) {
 	}
 
 	forbiddenCreatePayload := decodeJSONResponse[httpresponse.ErrorResponse](t, forbiddenCreateResponse.Body)
-	if forbiddenCreatePayload.Message != "Permissoes insuficientes" {
+	if forbiddenCreatePayload.Message != "Perfil comercial nao pode criar orcamentos" {
 		t.Fatalf("expected forbidden message, got %s", forbiddenCreatePayload.Message)
 	}
 
@@ -560,6 +560,157 @@ func TestBudgetsWriteRoutesShouldRespectAdminAuthorization(t *testing.T) {
 	forbiddenDeletePayload := decodeJSONResponse[httpresponse.ErrorResponse](t, forbiddenDeleteResponse.Body)
 	if forbiddenDeletePayload.Message != "Permissoes insuficientes" {
 		t.Fatalf("expected forbidden message, got %s", forbiddenDeletePayload.Message)
+	}
+}
+
+func TestBudgetsEstimatorUserShouldCreateListEditAndBeBlockedOnDelete(t *testing.T) {
+	env := newIntegrationTestEnv(t)
+	adminToken := env.createAdminToken(t)
+	suffix := uniqueSuffix()
+	seed := env.seedBudgetData(t, suffix)
+	normalizedSuffix := strings.ToLower(strings.NewReplacer("-", "", "_", "", " ", "").Replace(suffix))
+	estimatorSession := env.createUserSessionWithCredentialsAndKind(
+		t,
+		adminToken,
+		"Orcamentista Auth",
+		fmt.Sprintf("estimator.auth.%s@local.dev", normalizedSuffix),
+		fmt.Sprintf("estimator.%s", normalizedSuffix),
+		"user",
+		"estimator",
+	)
+	env.seedEstimatorForUser(
+		t,
+		"EST-"+normalizedSuffix,
+		"Orcamentista "+suffix,
+		estimatorSession.userID,
+	)
+	adminCreatedResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/budgets",
+		adminToken,
+		buildBudgetRequestBody(
+			"EST-AUTH-ADMIN-001",
+			2026,
+			time.Date(2026, time.November, 30, 10, 0, 0, 0, time.UTC),
+			1800,
+			seed,
+			"Projetista Admin",
+			"Concorrente Admin",
+		),
+	)
+	if adminCreatedResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, adminCreatedResponse.Code)
+	}
+
+	adminCreatedBudget := decodeJSONResponse[createResourceResponse](t, adminCreatedResponse.Body)
+
+	createBody := buildBudgetRequestBody(
+		"EST-AUTH-001",
+		2026,
+		time.Date(2026, time.December, 1, 10, 0, 0, 0, time.UTC),
+		2500,
+		seed,
+		"Projetista Estimator",
+		"Concorrente Estimator",
+	)
+
+	createResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/budgets",
+		estimatorSession.token,
+		createBody,
+	)
+	if createResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createResponse.Code)
+	}
+
+	createdBudget := decodeJSONResponse[createResourceResponse](t, createResponse.Body)
+	getResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		fmt.Sprintf("/budgets/%d", createdBudget.ID),
+		estimatorSession.token,
+		"",
+	)
+	if getResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, getResponse.Code)
+	}
+
+	getPayload := decodeJSONResponse[dto.BudgetResponse](t, getResponse.Body)
+	if getPayload.EstimatorID != nil {
+		t.Fatalf("expected estimator id to remain unset, got %v", getPayload.EstimatorID)
+	}
+
+	listResponse := env.doJSONRequest(t, http.MethodGet, "/budgets", estimatorSession.token, "")
+	if listResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, listResponse.Code)
+	}
+
+	listPayload := decodeJSONResponse[dto.ListBudgetsResponse](t, listResponse.Body)
+	if listPayload.Total != 2 {
+		t.Fatalf("expected total 2, got %d", listPayload.Total)
+	}
+	if len(listPayload.Items) != 2 {
+		t.Fatalf("expected 2 budgets in list, got %+v", listPayload.Items)
+	}
+
+	adminBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		fmt.Sprintf("/budgets/%d", adminCreatedBudget.ID),
+		estimatorSession.token,
+		"",
+	)
+	if adminBudgetResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, adminBudgetResponse.Code)
+	}
+
+	adminBudgetPayload := decodeJSONResponse[dto.BudgetResponse](t, adminBudgetResponse.Body)
+	if adminBudgetPayload.ID != adminCreatedBudget.ID {
+		t.Fatalf("expected admin-created budget id %d, got %d", adminCreatedBudget.ID, adminBudgetPayload.ID)
+	}
+
+	updateResponse := env.doJSONRequest(
+		t,
+		http.MethodPut,
+		fmt.Sprintf("/budgets/%d", createdBudget.ID),
+		estimatorSession.token,
+		buildBudgetRequestBody(
+			"EST-AUTH-001",
+			2026,
+			time.Date(2026, time.December, 2, 10, 0, 0, 0, time.UTC),
+			2600,
+			seed,
+			"Projetista Estimator Atualizado",
+			"Concorrente Estimator Atualizado",
+		),
+	)
+	if updateResponse.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d", http.StatusNoContent, updateResponse.Code)
+	}
+
+	deleteResponse := env.doJSONRequest(
+		t,
+		http.MethodDelete,
+		fmt.Sprintf("/budgets/%d", createdBudget.ID),
+		estimatorSession.token,
+		"",
+	)
+	if deleteResponse.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d", http.StatusNoContent, deleteResponse.Code)
+	}
+
+	deletedBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		fmt.Sprintf("/budgets/%d", createdBudget.ID),
+		estimatorSession.token,
+		"",
+	)
+	if deletedBudgetResponse.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d", http.StatusNotFound, deletedBudgetResponse.Code)
 	}
 }
 

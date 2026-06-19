@@ -36,7 +36,7 @@ type Repository interface {
 	GetByNumberAndYear(ctx context.Context, budgetNumber string, yearBudget int) (*model.BudgetModel, error)
 	GetBySourceAndNumberAndYear(ctx context.Context, sourceCompany string, budgetNumber string, yearBudget int) (*model.BudgetModel, error)
 	GetByID(ctx context.Context, budgetID int64) (*model.BudgetModel, error)
-	GetByIDScoped(ctx context.Context, budgetID int64, restrictedSalespersonID *int64) (*model.BudgetModel, error)
+	GetByIDScoped(ctx context.Context, budgetID int64, restrictedSalespersonID *int64, restrictedEstimatorID *int64) (*model.BudgetModel, error)
 	Update(ctx context.Context, item *model.BudgetModel) error
 	Delete(ctx context.Context, budgetID int64) error
 	UpdateCurrentFollowUp(ctx context.Context, budgetID int64, currentFollowUp string, updatedAt time.Time) error
@@ -68,6 +68,7 @@ func (r *repository) Create(ctx context.Context, item *model.BudgetModel) (int64
 			product_line_id,
 			project_id,
 			salesperson_id,
+			estimator_id,
 			contact_id,
 			loss_reason_id,
 			construction_company,
@@ -82,7 +83,7 @@ func (r *repository) Create(ctx context.Context, item *model.BudgetModel) (int64
 			created_at,
 			updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
 		RETURNING id
 	`
 
@@ -103,6 +104,7 @@ func (r *repository) Create(ctx context.Context, item *model.BudgetModel) (int64
 		nullableInt64(item.ProductLineID),
 		nullableInt64(item.ProjectID),
 		nullableInt64(item.SalespersonID),
+		nullableInt64(item.EstimatorID),
 		nullableInt64(item.ContactID),
 		nullableInt64(item.LossReasonID),
 		item.ConstructionCompany,
@@ -141,6 +143,7 @@ func (r *repository) List(ctx context.Context, filters *dto.ListBudgetsFilters) 
 			b.product_line_id,
 			b.project_id,
 			b.salesperson_id,
+			b.estimator_id,
 			b.contact_id,
 			b.loss_reason_id,
 			b.construction_company,
@@ -155,6 +158,7 @@ func (r *repository) List(ctx context.Context, filters *dto.ListBudgetsFilters) 
 			pl.name AS product_line_name,
 			p.name AS project_name,
 			s.name AS salesperson_name,
+			e.name AS estimator_name,
 			c.name AS contact_name,
 			lr.name AS loss_reason_name,
 			b.specification_details,
@@ -168,6 +172,7 @@ func (r *repository) List(ctx context.Context, filters *dto.ListBudgetsFilters) 
 		LEFT JOIN product_lines pl ON pl.id = b.product_line_id
 		LEFT JOIN projects p ON p.id = b.project_id
 		LEFT JOIN salespeople s ON s.id = b.salesperson_id
+		LEFT JOIN estimators e ON e.id = b.estimator_id
 		LEFT JOIN contacts c ON c.id = b.contact_id
 		LEFT JOIN loss_reasons lr ON lr.id = b.loss_reason_id
 	`
@@ -206,6 +211,7 @@ func (r *repository) List(ctx context.Context, filters *dto.ListBudgetsFilters) 
 			&item.ProductLineID,
 			&item.ProjectID,
 			&item.SalespersonID,
+			&item.EstimatorID,
 			&item.ContactID,
 			&item.LossReasonID,
 			&item.ConstructionCompany,
@@ -220,6 +226,7 @@ func (r *repository) List(ctx context.Context, filters *dto.ListBudgetsFilters) 
 			&item.ProductLineName,
 			&item.ProjectName,
 			&item.SalespersonName,
+			&item.EstimatorName,
 			&item.ContactName,
 			&item.LossReasonName,
 			&item.SpecificationDetails,
@@ -281,6 +288,14 @@ func buildListWhereClause(filters *dto.ListBudgetsFilters) (string, []interface{
 		if filters.SalespersonID != nil {
 			args = append(args, *filters.SalespersonID)
 			conditions = append(conditions, fmt.Sprintf("b.salesperson_id = $%d", len(args)))
+		}
+		if filters.RestrictedEstimatorID != nil {
+			args = append(args, *filters.RestrictedEstimatorID)
+			conditions = append(conditions, fmt.Sprintf("b.estimator_id = $%d", len(args)))
+		}
+		if filters.EstimatorID != nil {
+			args = append(args, *filters.EstimatorID)
+			conditions = append(conditions, fmt.Sprintf("b.estimator_id = $%d", len(args)))
 		}
 		if filters.InstallerID != nil {
 			args = append(args, *filters.InstallerID)
@@ -476,6 +491,7 @@ func (r *repository) GetByNumberAndYear(ctx context.Context, budgetNumber string
 			product_line_id,
 			project_id,
 			salesperson_id,
+			estimator_id,
 			contact_id,
 			loss_reason_id,
 			construction_company,
@@ -486,6 +502,7 @@ func (r *repository) GetByNumberAndYear(ctx context.Context, budgetNumber string
 			NULL::text AS product_line_name,
 			NULL::text AS project_name,
 			NULL::text AS salesperson_name,
+			NULL::text AS estimator_name,
 			NULL::text AS contact_name,
 			specification_details,
 			current_follow_up,
@@ -513,6 +530,7 @@ func (r *repository) GetByNumberAndYear(ctx context.Context, budgetNumber string
 		&item.ProductLineID,
 		&item.ProjectID,
 		&item.SalespersonID,
+		&item.EstimatorID,
 		&item.ContactID,
 		&item.LossReasonID,
 		&item.ConstructionCompany,
@@ -523,6 +541,7 @@ func (r *repository) GetByNumberAndYear(ctx context.Context, budgetNumber string
 		&item.ProductLineName,
 		&item.ProjectName,
 		&item.SalespersonName,
+		&item.EstimatorName,
 		&item.ContactName,
 		&item.SpecificationDetails,
 		&item.CurrentFollowUp,
@@ -557,6 +576,7 @@ func (r *repository) GetBySourceAndNumberAndYear(ctx context.Context, sourceComp
 			product_line_id,
 			project_id,
 			salesperson_id,
+			estimator_id,
 			contact_id,
 			loss_reason_id,
 			construction_company,
@@ -567,6 +587,7 @@ func (r *repository) GetBySourceAndNumberAndYear(ctx context.Context, sourceComp
 			NULL::text AS product_line_name,
 			NULL::text AS project_name,
 			NULL::text AS salesperson_name,
+			NULL::text AS estimator_name,
 			NULL::text AS contact_name,
 			specification_details,
 			current_follow_up,
@@ -601,6 +622,7 @@ func (r *repository) GetBySourceAndNumberAndYear(ctx context.Context, sourceComp
 		&item.ProductLineID,
 		&item.ProjectID,
 		&item.SalespersonID,
+		&item.EstimatorID,
 		&item.ContactID,
 		&item.LossReasonID,
 		&item.ConstructionCompany,
@@ -611,6 +633,7 @@ func (r *repository) GetBySourceAndNumberAndYear(ctx context.Context, sourceComp
 		&item.ProductLineName,
 		&item.ProjectName,
 		&item.SalespersonName,
+		&item.EstimatorName,
 		&item.ContactName,
 		&item.SpecificationDetails,
 		&item.CurrentFollowUp,
@@ -632,10 +655,10 @@ func (r *repository) GetBySourceAndNumberAndYear(ctx context.Context, sourceComp
 }
 
 func (r *repository) GetByID(ctx context.Context, budgetID int64) (*model.BudgetModel, error) {
-	return r.GetByIDScoped(ctx, budgetID, nil)
+	return r.GetByIDScoped(ctx, budgetID, nil, nil)
 }
 
-func (r *repository) GetByIDScoped(ctx context.Context, budgetID int64, restrictedSalespersonID *int64) (*model.BudgetModel, error) {
+func (r *repository) GetByIDScoped(ctx context.Context, budgetID int64, restrictedSalespersonID *int64, restrictedEstimatorID *int64) (*model.BudgetModel, error) {
 	const query = `
 		SELECT
 			b.id,
@@ -652,6 +675,7 @@ func (r *repository) GetByIDScoped(ctx context.Context, budgetID int64, restrict
 			b.product_line_id,
 			b.project_id,
 			b.salesperson_id,
+			b.estimator_id,
 			b.contact_id,
 			b.loss_reason_id,
 			b.construction_company,
@@ -665,6 +689,7 @@ func (r *repository) GetByIDScoped(ctx context.Context, budgetID int64, restrict
 			pl.name AS product_line_name,
 			p.name AS project_name,
 			s.name AS salesperson_name,
+			e.name AS estimator_name,
 			c.name AS contact_name,
 			lr.name AS loss_reason_name,
 			b.specification_details,
@@ -678,6 +703,7 @@ func (r *repository) GetByIDScoped(ctx context.Context, budgetID int64, restrict
 		LEFT JOIN product_lines pl ON pl.id = b.product_line_id
 		LEFT JOIN projects p ON p.id = b.project_id
 		LEFT JOIN salespeople s ON s.id = b.salesperson_id
+		LEFT JOIN estimators e ON e.id = b.estimator_id
 		LEFT JOIN contacts c ON c.id = b.contact_id
 		LEFT JOIN loss_reasons lr ON lr.id = b.loss_reason_id
 		WHERE b.id = $1
@@ -686,7 +712,11 @@ func (r *repository) GetByIDScoped(ctx context.Context, budgetID int64, restrict
 	finalQuery := query
 	if restrictedSalespersonID != nil {
 		args = append(args, *restrictedSalespersonID)
-		finalQuery += " AND salesperson_id = $2"
+		finalQuery += fmt.Sprintf(" AND b.salesperson_id = $%d", len(args))
+	}
+	if restrictedEstimatorID != nil {
+		args = append(args, *restrictedEstimatorID)
+		finalQuery += fmt.Sprintf(" AND b.estimator_id = $%d", len(args))
 	}
 
 	row := r.db.QueryRowContext(ctx, finalQuery, args...)
@@ -707,6 +737,7 @@ func (r *repository) GetByIDScoped(ctx context.Context, budgetID int64, restrict
 		&item.ProductLineID,
 		&item.ProjectID,
 		&item.SalespersonID,
+		&item.EstimatorID,
 		&item.ContactID,
 		&item.LossReasonID,
 		&item.ConstructionCompany,
@@ -720,6 +751,7 @@ func (r *repository) GetByIDScoped(ctx context.Context, budgetID int64, restrict
 		&item.ProductLineName,
 		&item.ProjectName,
 		&item.SalespersonName,
+		&item.EstimatorName,
 		&item.ContactName,
 		&item.LossReasonName,
 		&item.SpecificationDetails,
@@ -755,18 +787,19 @@ func (r *repository) Update(ctx context.Context, item *model.BudgetModel) error 
 			product_line_id = $12,
 			project_id = $13,
 			salesperson_id = $14,
-			contact_id = $15,
-			loss_reason_id = $16,
-			construction_company = $17,
-			competitor_name = $18,
-			competitor_price = $19,
-			projetista_name = $20,
-			specification_details = $21,
-			current_follow_up = $22,
-			updated_at = $23,
-			source_company = COALESCE(NULLIF($24, ''), source_company),
-			source_layout = COALESCE(NULLIF($25, ''), source_layout),
-			import_batch_id = COALESCE($26, import_batch_id)
+			estimator_id = $15,
+			contact_id = $16,
+			loss_reason_id = $17,
+			construction_company = $18,
+			competitor_name = $19,
+			competitor_price = $20,
+			projetista_name = $21,
+			specification_details = $22,
+			current_follow_up = $23,
+			updated_at = $24,
+			source_company = COALESCE(NULLIF($25, ''), source_company),
+			source_layout = COALESCE(NULLIF($26, ''), source_layout),
+			import_batch_id = COALESCE($27, import_batch_id)
 		WHERE id = $1
 	`
 
@@ -787,6 +820,7 @@ func (r *repository) Update(ctx context.Context, item *model.BudgetModel) error 
 		nullableInt64(item.ProductLineID),
 		nullableInt64(item.ProjectID),
 		nullableInt64(item.SalespersonID),
+		nullableInt64(item.EstimatorID),
 		nullableInt64(item.ContactID),
 		nullableInt64(item.LossReasonID),
 		item.ConstructionCompany,

@@ -128,7 +128,7 @@ func TestAuthAndUsersShouldRejectWeakPasswords(t *testing.T) {
 		http.MethodPost,
 		"/users",
 		adminToken,
-		fmt.Sprintf(`{"name":"Usuario Fraco","email":"weak.user@local.dev","username":"weak_user","password":"%s","password_confirm":"%s","role":"user"}`, integrationWeakPassword, integrationWeakPassword),
+		fmt.Sprintf(`{"name":"Usuario Fraco","email":"weak.user@local.dev","username":"weak_user","password":"%s","password_confirm":"%s","role":"user","user_kind":"salesperson"}`, integrationWeakPassword, integrationWeakPassword),
 	)
 	if createUserResponse.Code != http.StatusBadRequest {
 		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, createUserResponse.Code)
@@ -157,7 +157,7 @@ func TestUsersRoutesShouldRespectAdminAuthorization(t *testing.T) {
 
 	adminLoginPayload := decodeJSONResponse[dto.LoginResponse](t, adminLoginResponse.Body)
 
-	createUserBody := fmt.Sprintf(`{"name":"Usuario Comum","email":"user@local.dev","username":"user","password":"%s","password_confirm":"%s","role":"user"}`, integrationStrongPassword, integrationStrongPassword)
+	createUserBody := fmt.Sprintf(`{"name":"Usuario Comum","email":"user@local.dev","username":"user","password":"%s","password_confirm":"%s","role":"user","user_kind":"salesperson"}`, integrationStrongPassword, integrationStrongPassword)
 	createUserResponse := env.doJSONRequest(t, http.MethodPost, "/users", adminLoginPayload.Token, createUserBody)
 	if createUserResponse.Code != http.StatusCreated {
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, createUserResponse.Code)
@@ -189,7 +189,7 @@ func TestUsersRoutesShouldRespectAdminAuthorization(t *testing.T) {
 	}
 }
 
-func TestProjectsRoutesShouldRespectAdminAuthorization(t *testing.T) {
+func TestProjectsRoutesShouldAllowUserFullAccess(t *testing.T) {
 	env := newIntegrationTestEnv(t)
 	adminToken := env.createAdminToken(t)
 	userToken := env.createUserToken(t, adminToken, uniqueSuffix(), "user")
@@ -205,20 +205,99 @@ func TestProjectsRoutesShouldRespectAdminAuthorization(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, adminCreateResponse.Code)
 	}
 
-	forbiddenCreateResponse := env.doJSONRequest(
+	userCreateResponse := env.doJSONRequest(
 		t,
 		http.MethodPost,
 		"/projects",
 		userToken,
-		`{"code":"PROJETO_USER","name":"Projeto User","city":"Campinas","state":"SP","notes":"projeto bloqueado para user"}`,
+		`{"code":"PROJETO_USER","name":"Projeto User","city":"Campinas","state":"SP","notes":"projeto liberado para user"}`,
 	)
-	if forbiddenCreateResponse.Code != http.StatusForbidden {
-		t.Fatalf("expected status %d, got %d", http.StatusForbidden, forbiddenCreateResponse.Code)
+	if userCreateResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, userCreateResponse.Code)
 	}
 
-	forbiddenPayload := decodeJSONResponse[httpresponse.ErrorResponse](t, forbiddenCreateResponse.Body)
-	if forbiddenPayload.Message != "Permissoes insuficientes" {
-		t.Fatalf("expected forbidden message, got %s", forbiddenPayload.Message)
+	userCreatePayload := decodeJSONResponse[createResourceResponse](t, userCreateResponse.Body)
+	if userCreatePayload.ID <= 0 {
+		t.Fatalf("expected valid project id, got %d", userCreatePayload.ID)
+	}
+
+	listResponse := env.doJSONRequest(t, http.MethodGet, "/projects", userToken, "")
+	if listResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, listResponse.Code)
+	}
+
+	listPayload := decodeJSONResponse[[]dto.ProjectResponse](t, listResponse.Body)
+	if len(listPayload) < 2 {
+		t.Fatalf("expected at least 2 projects, got %d", len(listPayload))
+	}
+
+	getByIDResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		fmt.Sprintf("/projects/%d", userCreatePayload.ID),
+		userToken,
+		"",
+	)
+	if getByIDResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, getByIDResponse.Code)
+	}
+
+	getByIDPayload := decodeJSONResponse[dto.ProjectResponse](t, getByIDResponse.Body)
+	if getByIDPayload.Name != "Projeto User" {
+		t.Fatalf("expected project name Projeto User, got %s", getByIDPayload.Name)
+	}
+
+	nextCodeResponse := env.doJSONRequest(t, http.MethodGet, "/projects/next-code", userToken, "")
+	if nextCodeResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, nextCodeResponse.Code)
+	}
+
+	updateResponse := env.doJSONRequest(
+		t,
+		http.MethodPut,
+		fmt.Sprintf("/projects/%d", userCreatePayload.ID),
+		userToken,
+		`{"code":"PROJETO_USER","name":"Projeto User Atualizado","city":"Valinhos","state":"SP","notes":"alterado por user"}`,
+	)
+	if updateResponse.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d", http.StatusNoContent, updateResponse.Code)
+	}
+
+	deleteResponse := env.doJSONRequest(
+		t,
+		http.MethodDelete,
+		fmt.Sprintf("/projects/%d", userCreatePayload.ID),
+		userToken,
+		"",
+	)
+	if deleteResponse.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d", http.StatusNoContent, deleteResponse.Code)
+	}
+}
+
+func TestContactsListRouteShouldAllowAuthenticatedUser(t *testing.T) {
+	env := newIntegrationTestEnv(t)
+	adminToken := env.createAdminToken(t)
+	userToken := env.createUserToken(t, adminToken, uniqueSuffix(), "user")
+	seedData := env.seedBudgetData(t, uniqueSuffix())
+
+	listResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		fmt.Sprintf("/contacts?installer_id=%d", seedData.installerID),
+		userToken,
+		"",
+	)
+	if listResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, listResponse.Code)
+	}
+
+	listPayload := decodeJSONResponse[[]dto.ContactResponse](t, listResponse.Body)
+	if len(listPayload) == 0 {
+		t.Fatal("expected at least one contact in response")
+	}
+	if listPayload[0].InstallerID != seedData.installerID {
+		t.Fatalf("expected installer id %d, got %d", seedData.installerID, listPayload[0].InstallerID)
 	}
 }
 
@@ -231,7 +310,7 @@ func TestUsersAdminShouldUpdateRoleAndActive(t *testing.T) {
 		http.MethodPost,
 		"/users",
 		adminToken,
-		fmt.Sprintf(`{"name":"Usuario Comum","email":"user@local.dev","username":"user","password":"%s","password_confirm":"%s","role":"user"}`, integrationStrongPassword, integrationStrongPassword),
+		fmt.Sprintf(`{"name":"Usuario Comum","email":"user@local.dev","username":"user","password":"%s","password_confirm":"%s","role":"user","user_kind":"salesperson"}`, integrationStrongPassword, integrationStrongPassword),
 	)
 	if createUserResponse.Code != http.StatusCreated {
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, createUserResponse.Code)
@@ -312,7 +391,7 @@ func TestUsersAdminShouldUpdateUserData(t *testing.T) {
 		http.MethodPost,
 		"/users",
 		adminToken,
-		fmt.Sprintf(`{"name":"Usuario Editavel","email":"editable.user@local.dev","username":"editable_user","password":"%s","password_confirm":"%s","role":"user"}`, integrationStrongPassword, integrationStrongPassword),
+		fmt.Sprintf(`{"name":"Usuario Editavel","email":"editable.user@local.dev","username":"editable_user","password":"%s","password_confirm":"%s","role":"user","user_kind":"salesperson"}`, integrationStrongPassword, integrationStrongPassword),
 	)
 	if createUserResponse.Code != http.StatusCreated {
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, createUserResponse.Code)
@@ -369,7 +448,7 @@ func TestUsersAdminShouldRejectUpdateWhenEmailIsDuplicated(t *testing.T) {
 		http.MethodPost,
 		"/users",
 		adminToken,
-		fmt.Sprintf(`{"name":"Primeiro Usuario","email":"first.user@local.dev","username":"first_user","password":"%s","password_confirm":"%s","role":"user"}`, integrationStrongPassword, integrationStrongPassword),
+		fmt.Sprintf(`{"name":"Primeiro Usuario","email":"first.user@local.dev","username":"first_user","password":"%s","password_confirm":"%s","role":"user","user_kind":"salesperson"}`, integrationStrongPassword, integrationStrongPassword),
 	)
 	if firstUserResponse.Code != http.StatusCreated {
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, firstUserResponse.Code)
@@ -380,7 +459,7 @@ func TestUsersAdminShouldRejectUpdateWhenEmailIsDuplicated(t *testing.T) {
 		http.MethodPost,
 		"/users",
 		adminToken,
-		fmt.Sprintf(`{"name":"Segundo Usuario","email":"second.user@local.dev","username":"second_user","password":"%s","password_confirm":"%s","role":"user"}`, integrationStrongPassword, integrationStrongPassword),
+		fmt.Sprintf(`{"name":"Segundo Usuario","email":"second.user@local.dev","username":"second_user","password":"%s","password_confirm":"%s","role":"user","user_kind":"salesperson"}`, integrationStrongPassword, integrationStrongPassword),
 	)
 	if secondUserResponse.Code != http.StatusCreated {
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, secondUserResponse.Code)
@@ -393,7 +472,7 @@ func TestUsersAdminShouldRejectUpdateWhenEmailIsDuplicated(t *testing.T) {
 		http.MethodPut,
 		fmt.Sprintf("/users/%d", secondUserPayload.ID),
 		adminToken,
-		`{"name":"Segundo Usuario","email":"first.user@local.dev","username":"second_user","role":"user"}`,
+		`{"name":"Segundo Usuario","email":"first.user@local.dev","username":"second_user","role":"user","user_kind":"salesperson"}`,
 	)
 	if updateUserResponse.Code != http.StatusConflict {
 		t.Fatalf("expected status %d, got %d", http.StatusConflict, updateUserResponse.Code)
@@ -414,7 +493,7 @@ func TestUsersAdminShouldResetPasswordAndRequireChangeOnNextLogin(t *testing.T) 
 		http.MethodPost,
 		"/users",
 		adminToken,
-		fmt.Sprintf(`{"name":"Usuario Reset","email":"user.reset@local.dev","username":"user_reset","password":"%s","password_confirm":"%s","role":"user"}`, integrationStrongPassword, integrationStrongPassword),
+		fmt.Sprintf(`{"name":"Usuario Reset","email":"user.reset@local.dev","username":"user_reset","password":"%s","password_confirm":"%s","role":"user","user_kind":"salesperson"}`, integrationStrongPassword, integrationStrongPassword),
 	)
 	if createUserResponse.Code != http.StatusCreated {
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, createUserResponse.Code)
@@ -501,7 +580,7 @@ func TestAuthChangePasswordAndResetPasswordShouldRejectWeakPassword(t *testing.T
 		http.MethodPost,
 		"/users",
 		adminToken,
-		fmt.Sprintf(`{"name":"Usuario Seguro","email":"secure.user@local.dev","username":"secure_user","password":"%s","password_confirm":"%s","role":"user"}`, integrationStrongPassword, integrationStrongPassword),
+		fmt.Sprintf(`{"name":"Usuario Seguro","email":"secure.user@local.dev","username":"secure_user","password":"%s","password_confirm":"%s","role":"user","user_kind":"salesperson"}`, integrationStrongPassword, integrationStrongPassword),
 	)
 	if createUserResponse.Code != http.StatusCreated {
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, createUserResponse.Code)
@@ -564,7 +643,7 @@ func TestAuthChangePasswordShouldUnlockFirstAccessUser(t *testing.T) {
 		http.MethodPost,
 		"/users",
 		adminToken,
-		fmt.Sprintf(`{"name":"Primeiro Acesso","email":"first.access@local.dev","username":"first_access","password":"%s","password_confirm":"%s","role":"user"}`, integrationStrongPassword, integrationStrongPassword),
+		fmt.Sprintf(`{"name":"Primeiro Acesso","email":"first.access@local.dev","username":"first_access","password":"%s","password_confirm":"%s","role":"user","user_kind":"salesperson"}`, integrationStrongPassword, integrationStrongPassword),
 	)
 	if createUserResponse.Code != http.StatusCreated {
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, createUserResponse.Code)
@@ -679,7 +758,7 @@ func TestUsersAdminUpdateRoutesShouldProtectLastAdminAndRespectAuthorization(t *
 		http.MethodPatch,
 		"/users/1/role",
 		adminToken,
-		`{"role":"user"}`,
+		`{"role":"user","user_kind":"salesperson"}`,
 	)
 	if lastAdminRoleResponse.Code != http.StatusForbidden {
 		t.Fatalf("expected status %d, got %d", http.StatusForbidden, lastAdminRoleResponse.Code)

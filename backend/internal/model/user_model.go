@@ -9,6 +9,13 @@ const (
 	RoleUser  UserRole = "user"
 )
 
+type UserKind string
+
+const (
+	UserKindSalesperson UserKind = "salesperson"
+	UserKindEstimator   UserKind = "estimator"
+)
+
 type UserModel struct {
 	ID                 int64
 	Name               string
@@ -16,6 +23,7 @@ type UserModel struct {
 	Username           string
 	PasswordHash       string
 	Role               UserRole
+	UserKind           UserKind
 	Active             bool
 	MustChangePassword bool
 	CreatedAt          time.Time

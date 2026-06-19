@@ -14,6 +14,7 @@ const defaultUserFormValues: UserFormValues = {
   password: "",
   passwordConfirm: "",
   role: "user",
+  userKind: "salesperson",
   username: "",
 };
 
@@ -52,6 +53,7 @@ export function UserEditPage() {
       password: "",
       passwordConfirm: "",
       role: currentUser.role,
+      userKind: currentUser.userKind ?? "salesperson",
       username: currentUser.username,
     };
   }, [currentUser]);

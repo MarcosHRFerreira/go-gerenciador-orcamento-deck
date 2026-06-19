@@ -6,6 +6,10 @@ import type {
   BudgetListItem,
 } from "../../budgets/types/budget";
 import type {
+  DashboardClosingTimeItem,
+  DashboardEstimatorSummary,
+  DashboardEntityPerformanceItem,
+  DashboardLossReasonItem,
   DashboardMonthlyEvolutionItem,
   DashboardSalespeopleData,
   DashboardSalespeopleFilters,
@@ -13,6 +17,8 @@ import type {
   DashboardSalespersonSummary,
   DashboardStaleBudgetItem,
   DashboardSummary,
+  DashboardTechnicalOverview,
+  DashboardTechnicalSummary,
 } from "../types/dashboard";
 
 const monthLabels = [
@@ -37,6 +43,7 @@ type DashboardSummaryApiResponse = {
   average_ticket: number;
   total_negotiation_gross_value: number;
   conversion_rate: number;
+  value_conversion_rate: number;
   won_budgets: number;
   negotiation_budgets: number;
   lost_budgets: number;
@@ -44,6 +51,19 @@ type DashboardSummaryApiResponse = {
 };
 
 type DashboardSalespersonSummaryApiResponse = {
+  label: string;
+  budget_count: number;
+  gross_value: number;
+  negotiation_budget_count: number;
+  negotiation_gross_value: number;
+  won_budget_count: number;
+  stalled_budget_count: number;
+  average_ticket: number;
+  conversion_rate: number;
+  last_activity_at?: string | null;
+};
+
+type DashboardEstimatorSummaryApiResponse = {
   label: string;
   budget_count: number;
   gross_value: number;
@@ -86,6 +106,55 @@ type DashboardMonthlyEvolutionApiResponse = {
   won_gross_value: number;
 };
 
+type DashboardEntityPerformanceApiResponse = {
+  label: string;
+  budget_count: number;
+  won_budget_count: number;
+  lost_budget_count: number;
+  gross_value: number;
+  won_gross_value: number;
+  conversion_rate: number;
+  value_conversion_rate: number;
+  last_activity_at?: string | null;
+};
+
+type DashboardLossReasonApiResponse = {
+  label: string;
+  lost_budget_count: number;
+  gross_value: number;
+  average_ticket: number;
+};
+
+type DashboardClosingTimeApiResponse = {
+  label: string;
+  budget_count: number;
+  average_closing_days: number;
+  gross_value: number;
+};
+
+type DashboardTechnicalSummaryApiResponse = {
+  active_estimators: number;
+  budgets_with_estimator: number;
+  budgets_without_estimator: number;
+  coverage_rate: number;
+  total_gross_value: number;
+  average_ticket: number;
+  total_negotiation_gross_value: number;
+  won_budgets: number;
+  negotiation_budgets: number;
+  lost_budgets: number;
+  stalled_budgets_count: number;
+  conversion_rate: number;
+};
+
+type DashboardTechnicalOverviewApiResponse = {
+  summary: DashboardTechnicalSummaryApiResponse;
+  top_estimators_by_value: DashboardEstimatorSummaryApiResponse[];
+  top_estimators_by_budget_count: DashboardEstimatorSummaryApiResponse[];
+  top_estimators_by_average_ticket: DashboardEstimatorSummaryApiResponse[];
+  recent_estimators: DashboardEstimatorSummaryApiResponse[];
+};
+
 type DashboardSalespeopleApiResponse = {
   available_years: number[];
   summary: DashboardSummaryApiResponse;
@@ -98,6 +167,11 @@ type DashboardSalespeopleApiResponse = {
   salesperson_funnel: DashboardSalespersonFunnelApiResponse[];
   stale_budgets: DashboardStaleBudgetApiResponse[];
   monthly_evolution: DashboardMonthlyEvolutionApiResponse[];
+  top_construction_companies: DashboardEntityPerformanceApiResponse[];
+  top_projects: DashboardEntityPerformanceApiResponse[];
+  top_loss_reasons: DashboardLossReasonApiResponse[];
+  average_closing_times: DashboardClosingTimeApiResponse[];
+  technical_overview: DashboardTechnicalOverviewApiResponse;
 };
 
 function mapSummary(response: DashboardSummaryApiResponse): DashboardSummary {
@@ -111,6 +185,7 @@ function mapSummary(response: DashboardSummaryApiResponse): DashboardSummary {
     totalBudgets: response.total_budgets,
     totalGrossValue: response.total_gross_value,
     totalNegotiationGrossValue: response.total_negotiation_gross_value,
+    valueConversionRate: response.value_conversion_rate,
     wonBudgets: response.won_budgets,
   };
 }
@@ -118,6 +193,23 @@ function mapSummary(response: DashboardSummaryApiResponse): DashboardSummary {
 function mapSalespersonSummary(
   response: DashboardSalespersonSummaryApiResponse,
 ): DashboardSalespersonSummary {
+  return {
+    averageTicket: response.average_ticket,
+    budgetCount: response.budget_count,
+    conversionRate: response.conversion_rate,
+    grossValue: response.gross_value,
+    label: response.label,
+    lastActivityAt: response.last_activity_at ?? null,
+    negotiationBudgetCount: response.negotiation_budget_count,
+    negotiationGrossValue: response.negotiation_gross_value,
+    stalledBudgetCount: response.stalled_budget_count,
+    wonBudgetCount: response.won_budget_count,
+  };
+}
+
+function mapEstimatorSummary(
+  response: DashboardEstimatorSummaryApiResponse,
+): DashboardEstimatorSummary {
   return {
     averageTicket: response.average_ticket,
     budgetCount: response.budget_count,
@@ -174,6 +266,83 @@ function mapMonthlyEvolution(
   };
 }
 
+function mapEntityPerformance(
+  response: DashboardEntityPerformanceApiResponse,
+): DashboardEntityPerformanceItem {
+  return {
+    budgetCount: response.budget_count,
+    conversionRate: response.conversion_rate,
+    grossValue: response.gross_value,
+    label: response.label,
+    lastActivityAt: response.last_activity_at ?? null,
+    lostBudgetCount: response.lost_budget_count,
+    valueConversionRate: response.value_conversion_rate,
+    wonBudgetCount: response.won_budget_count,
+    wonGrossValue: response.won_gross_value,
+  };
+}
+
+function mapLossReasonSummary(
+  response: DashboardLossReasonApiResponse,
+): DashboardLossReasonItem {
+  return {
+    averageTicket: response.average_ticket,
+    grossValue: response.gross_value,
+    label: response.label,
+    lostBudgetCount: response.lost_budget_count,
+  };
+}
+
+function mapClosingTimeSummary(
+  response: DashboardClosingTimeApiResponse,
+): DashboardClosingTimeItem {
+  return {
+    averageClosingDays: response.average_closing_days,
+    budgetCount: response.budget_count,
+    grossValue: response.gross_value,
+    label: response.label,
+  };
+}
+
+function mapTechnicalSummary(
+  response?: DashboardTechnicalSummaryApiResponse,
+): DashboardTechnicalSummary {
+  return {
+    activeEstimators: response?.active_estimators ?? 0,
+    averageTicket: response?.average_ticket ?? 0,
+    budgetsWithEstimator: response?.budgets_with_estimator ?? 0,
+    budgetsWithoutEstimator: response?.budgets_without_estimator ?? 0,
+    conversionRate: response?.conversion_rate ?? 0,
+    coverageRate: response?.coverage_rate ?? 0,
+    lostBudgets: response?.lost_budgets ?? 0,
+    negotiationBudgets: response?.negotiation_budgets ?? 0,
+    stalledBudgetsCount: response?.stalled_budgets_count ?? 0,
+    totalGrossValue: response?.total_gross_value ?? 0,
+    totalNegotiationGrossValue: response?.total_negotiation_gross_value ?? 0,
+    wonBudgets: response?.won_budgets ?? 0,
+  };
+}
+
+function mapTechnicalOverview(
+  response?: DashboardTechnicalOverviewApiResponse,
+): DashboardTechnicalOverview {
+  return {
+    recentEstimators: (response?.recent_estimators ?? []).map(
+      mapEstimatorSummary,
+    ),
+    summary: mapTechnicalSummary(response?.summary),
+    topEstimatorsByAverageTicket: (
+      response?.top_estimators_by_average_ticket ?? []
+    ).map(mapEstimatorSummary),
+    topEstimatorsByBudgetCount: (
+      response?.top_estimators_by_budget_count ?? []
+    ).map(mapEstimatorSummary),
+    topEstimatorsByValue: (response?.top_estimators_by_value ?? []).map(
+      mapEstimatorSummary,
+    ),
+  };
+}
+
 function buildDashboardParams(filters: DashboardSalespeopleFilters) {
   return {
     month: filters.month || undefined,
@@ -193,6 +362,7 @@ function buildLegacyDashboardBudgetFilters(
     pageSize: 100,
     projectName: "",
     salespersonId: filters.salespersonId,
+    estimatorId: "",
     sentAtFrom: "",
     sentAtTo: "",
     sortBy: "updated_at",
@@ -282,7 +452,29 @@ function sortSalespersonSummaries(
   return [...items].sort(compare).slice(0, 10);
 }
 
-function getComparableSalespersonSummaries(items: DashboardSalespersonSummary[]) {
+function sortEstimatorSummaries(
+  items: DashboardEstimatorSummary[],
+  compare: (
+    firstItem: DashboardEstimatorSummary,
+    secondItem: DashboardEstimatorSummary,
+  ) => number,
+) {
+  return [...items].sort(compare).slice(0, 10);
+}
+
+function sortEntityPerformance(
+  items: DashboardEntityPerformanceItem[],
+  compare: (
+    firstItem: DashboardEntityPerformanceItem,
+    secondItem: DashboardEntityPerformanceItem,
+  ) => number,
+) {
+  return [...items].sort(compare).slice(0, 10);
+}
+
+function getComparableSalespersonSummaries(
+  items: DashboardSalespersonSummary[],
+) {
   const comparableItems = items.filter((item) => item.budgetCount >= 2);
 
   if (comparableItems.length > 0) {
@@ -290,6 +482,190 @@ function getComparableSalespersonSummaries(items: DashboardSalespersonSummary[])
   }
 
   return items;
+}
+
+function getComparableEstimatorSummaries(items: DashboardEstimatorSummary[]) {
+  const comparableItems = items.filter((item) => item.budgetCount >= 2);
+
+  if (comparableItems.length > 0) {
+    return comparableItems;
+  }
+
+  return items;
+}
+
+function buildEntityPerformanceFromBudgetItems(
+  budgetItems: BudgetListItem[],
+  getLabel: (budget: BudgetListItem) => string,
+) {
+  const entityMap = budgetItems.reduce<
+    Map<string, DashboardEntityPerformanceItem>
+  >((currentMap, budget) => {
+    const label = getLabel(budget);
+    const statusCategory = getStatusCategory(budget.statusName);
+    const lastActivityDate = getLastActivityDate(budget);
+    const existingItem = currentMap.get(label);
+
+    if (existingItem) {
+      existingItem.budgetCount += 1;
+      existingItem.grossValue += budget.grossValue;
+      if (statusCategory === "won") {
+        existingItem.wonBudgetCount += 1;
+        existingItem.wonGrossValue += budget.grossValue;
+      }
+      if (statusCategory === "lost") {
+        existingItem.lostBudgetCount += 1;
+      }
+      if (
+        lastActivityDate !== null &&
+        (existingItem.lastActivityAt === null ||
+          lastActivityDate.getTime() >
+            new Date(existingItem.lastActivityAt).getTime())
+      ) {
+        existingItem.lastActivityAt = lastActivityDate.toISOString();
+      }
+      return currentMap;
+    }
+
+    currentMap.set(label, {
+      budgetCount: 1,
+      conversionRate: 0,
+      grossValue: budget.grossValue,
+      label,
+      lastActivityAt: lastActivityDate?.toISOString() ?? null,
+      lostBudgetCount: statusCategory === "lost" ? 1 : 0,
+      valueConversionRate: 0,
+      wonBudgetCount: statusCategory === "won" ? 1 : 0,
+      wonGrossValue: statusCategory === "won" ? budget.grossValue : 0,
+    });
+    return currentMap;
+  }, new Map<string, DashboardEntityPerformanceItem>());
+
+  return Array.from(entityMap.values()).map((item) => ({
+    ...item,
+    conversionRate:
+      item.budgetCount === 0
+        ? 0
+        : (item.wonBudgetCount / item.budgetCount) * 100,
+    valueConversionRate:
+      item.grossValue === 0 ? 0 : (item.wonGrossValue / item.grossValue) * 100,
+  }));
+}
+
+function buildLossReasonSummariesFromBudgetItems(
+  budgetItems: BudgetListItem[],
+) {
+  const lossReasonMap = budgetItems
+    .filter((budget) => getStatusCategory(budget.statusName) === "lost")
+    .reduce<Map<string, DashboardLossReasonItem>>((currentMap, budget) => {
+      const label = normalizeDisplayValue(
+        budget.lossReasonName,
+        "Motivo nao informado",
+      );
+      const existingItem = currentMap.get(label);
+      if (existingItem) {
+        existingItem.lostBudgetCount += 1;
+        existingItem.grossValue += budget.grossValue;
+        return currentMap;
+      }
+
+      currentMap.set(label, {
+        averageTicket: 0,
+        grossValue: budget.grossValue,
+        label,
+        lostBudgetCount: 1,
+      });
+      return currentMap;
+    }, new Map<string, DashboardLossReasonItem>());
+
+  return Array.from(lossReasonMap.values())
+    .map((item) => ({
+      ...item,
+      averageTicket:
+        item.lostBudgetCount === 0 ? 0 : item.grossValue / item.lostBudgetCount,
+    }))
+    .sort((firstItem, secondItem) => {
+      if (secondItem.grossValue !== firstItem.grossValue) {
+        return secondItem.grossValue - firstItem.grossValue;
+      }
+      return secondItem.lostBudgetCount - firstItem.lostBudgetCount;
+    })
+    .slice(0, 10);
+}
+
+function buildClosingTimeSummariesFromBudgetItems(
+  budgetItems: BudgetListItem[],
+) {
+  const closedBudgets = budgetItems
+    .map((budget) => {
+      const statusCategory = getStatusCategory(budget.statusName);
+      if (statusCategory !== "won" && statusCategory !== "lost") {
+        return null;
+      }
+
+      const sentAtDate = new Date(budget.sentAt);
+      const closingDate = getLastActivityDate(budget);
+      if (
+        Number.isNaN(sentAtDate.getTime()) ||
+        closingDate === null ||
+        Number.isNaN(closingDate.getTime())
+      ) {
+        return null;
+      }
+
+      return {
+        closingDays: getDaysSince(sentAtDate, closingDate),
+        grossValue: budget.grossValue,
+        statusCategory,
+      };
+    })
+    .filter(
+      (
+        item,
+      ): item is {
+        closingDays: number;
+        grossValue: number;
+        statusCategory: "won" | "lost";
+      } => item !== null,
+    );
+
+  const buildSummary = (
+    label: string,
+    items: typeof closedBudgets,
+  ): DashboardClosingTimeItem | null => {
+    if (items.length === 0) {
+      return null;
+    }
+
+    const budgetCount = items.length;
+    const grossValue = items.reduce(
+      (currentTotal, item) => currentTotal + item.grossValue,
+      0,
+    );
+    const totalClosingDays = items.reduce(
+      (currentTotal, item) => currentTotal + item.closingDays,
+      0,
+    );
+
+    return {
+      averageClosingDays: totalClosingDays / budgetCount,
+      budgetCount,
+      grossValue,
+      label,
+    };
+  };
+
+  return [
+    buildSummary("Geral", closedBudgets),
+    buildSummary(
+      "Pedidos",
+      closedBudgets.filter((item) => item.statusCategory === "won"),
+    ),
+    buildSummary(
+      "Cancelados",
+      closedBudgets.filter((item) => item.statusCategory === "lost"),
+    ),
+  ].filter((item): item is DashboardClosingTimeItem => item !== null);
 }
 
 function buildDashboardFromBudgetItems(
@@ -331,6 +707,13 @@ function buildDashboardFromBudgetItems(
     (currentTotal, budget) => currentTotal + budget.grossValue,
     0,
   );
+  const wonGrossValue = filteredBudgetItems.reduce(
+    (currentTotal, budget) =>
+      getStatusCategory(budget.statusName) === "won"
+        ? currentTotal + budget.grossValue
+        : currentTotal,
+    0,
+  );
   const wonBudgets = filteredBudgetItems.filter(
     (budget) => getStatusCategory(budget.statusName) === "won",
   ).length;
@@ -350,6 +733,8 @@ function buildDashboardFromBudgetItems(
   const averageTicket = totalBudgets === 0 ? 0 : totalGrossValue / totalBudgets;
   const conversionRate =
     totalBudgets === 0 ? 0 : (wonBudgets / totalBudgets) * 100;
+  const valueConversionRate =
+    totalGrossValue === 0 ? 0 : (wonGrossValue / totalGrossValue) * 100;
 
   const salespersonSummaryMap = filteredBudgetItems.reduce<
     Map<string, DashboardSalespersonSummary>
@@ -404,6 +789,77 @@ function buildDashboardFromBudgetItems(
   }, new Map<string, DashboardSalespersonSummary>());
 
   const salespersonSummaries = Array.from(salespersonSummaryMap.values())
+    .map((item) => ({
+      ...item,
+      averageTicket:
+        item.budgetCount === 0 ? 0 : item.grossValue / item.budgetCount,
+      conversionRate:
+        item.budgetCount === 0
+          ? 0
+          : (item.wonBudgetCount / item.budgetCount) * 100,
+    }))
+    .sort((firstItem, secondItem) =>
+      firstItem.label.localeCompare(secondItem.label),
+    );
+  const estimatorSummaryMap = filteredBudgetItems.reduce<
+    Map<string, DashboardEstimatorSummary>
+  >((currentMap, budget) => {
+    if (budget.estimatorId === null) {
+      return currentMap;
+    }
+
+    const label = normalizeDisplayValue(
+      budget.estimatorName,
+      "Orcamentista sem nome",
+    );
+    const existingItem = currentMap.get(label);
+    const statusCategory = getStatusCategory(budget.statusName);
+    const lastActivityDate = getLastActivityDate(budget);
+    const lastActivityAt = lastActivityDate?.toISOString() ?? null;
+    const stalledDays =
+      lastActivityDate === null ? 0 : getDaysSince(lastActivityDate, now);
+    const isStalled = statusCategory === "negotiation" && stalledDays >= 7;
+
+    if (existingItem) {
+      existingItem.budgetCount += 1;
+      existingItem.grossValue += budget.grossValue;
+      if (statusCategory === "negotiation") {
+        existingItem.negotiationBudgetCount += 1;
+        existingItem.negotiationGrossValue += budget.grossValue;
+      }
+      if (statusCategory === "won") {
+        existingItem.wonBudgetCount += 1;
+      }
+      if (isStalled) {
+        existingItem.stalledBudgetCount += 1;
+      }
+      if (
+        lastActivityAt !== null &&
+        (existingItem.lastActivityAt === null ||
+          new Date(lastActivityAt).getTime() >
+            new Date(existingItem.lastActivityAt).getTime())
+      ) {
+        existingItem.lastActivityAt = lastActivityAt;
+      }
+      return currentMap;
+    }
+
+    currentMap.set(label, {
+      averageTicket: 0,
+      budgetCount: 1,
+      conversionRate: 0,
+      grossValue: budget.grossValue,
+      label,
+      lastActivityAt,
+      negotiationBudgetCount: statusCategory === "negotiation" ? 1 : 0,
+      negotiationGrossValue:
+        statusCategory === "negotiation" ? budget.grossValue : 0,
+      stalledBudgetCount: isStalled ? 1 : 0,
+      wonBudgetCount: statusCategory === "won" ? 1 : 0,
+    });
+    return currentMap;
+  }, new Map<string, DashboardEstimatorSummary>());
+  const estimatorSummaries = Array.from(estimatorSummaryMap.values())
     .map((item) => ({
       ...item,
       averageTicket:
@@ -508,9 +964,69 @@ function buildDashboardFromBudgetItems(
       firstItem.monthKey.localeCompare(secondItem.monthKey),
     )
     .slice(-12);
-  const efficiencyBase = getComparableSalespersonSummaries(salespersonSummaries);
+  const efficiencyBase =
+    getComparableSalespersonSummaries(salespersonSummaries);
+  const constructionCompanyPerformance = buildEntityPerformanceFromBudgetItems(
+    filteredBudgetItems,
+    (budget) =>
+      normalizeDisplayValue(
+        budget.constructionCompany,
+        "Construtora nao informada",
+      ),
+  );
+  const projectPerformance = buildEntityPerformanceFromBudgetItems(
+    filteredBudgetItems,
+    (budget) => normalizeDisplayValue(budget.projectName, "Sem obra vinculada"),
+  );
+  const topLossReasons =
+    buildLossReasonSummariesFromBudgetItems(filteredBudgetItems);
+  const averageClosingTimes =
+    buildClosingTimeSummariesFromBudgetItems(filteredBudgetItems);
+  const technicalEfficiencyBase =
+    getComparableEstimatorSummaries(estimatorSummaries);
+  const budgetsWithEstimator = estimatorSummaries.reduce(
+    (currentTotal, item) => currentTotal + item.budgetCount,
+    0,
+  );
+  const technicalGrossValue = estimatorSummaries.reduce(
+    (currentTotal, item) => currentTotal + item.grossValue,
+    0,
+  );
+  const technicalNegotiationGrossValue = estimatorSummaries.reduce(
+    (currentTotal, item) => currentTotal + item.negotiationGrossValue,
+    0,
+  );
+  const technicalWonBudgets = estimatorSummaries.reduce(
+    (currentTotal, item) => currentTotal + item.wonBudgetCount,
+    0,
+  );
+  const technicalNegotiationBudgets = estimatorSummaries.reduce(
+    (currentTotal, item) => currentTotal + item.negotiationBudgetCount,
+    0,
+  );
+  const technicalStalledBudgetsCount = estimatorSummaries.reduce(
+    (currentTotal, item) => currentTotal + item.stalledBudgetCount,
+    0,
+  );
+  const budgetsWithoutEstimator = Math.max(
+    0,
+    totalBudgets - budgetsWithEstimator,
+  );
+  const technicalLostBudgets = Math.max(
+    0,
+    budgetsWithEstimator - technicalNegotiationBudgets - technicalWonBudgets,
+  );
+  const technicalAverageTicket =
+    budgetsWithEstimator === 0 ? 0 : technicalGrossValue / budgetsWithEstimator;
+  const technicalCoverageRate =
+    totalBudgets === 0 ? 0 : (budgetsWithEstimator / totalBudgets) * 100;
+  const technicalConversionRate =
+    budgetsWithEstimator === 0
+      ? 0
+      : (technicalWonBudgets / budgetsWithEstimator) * 100;
 
   return {
+    averageClosingTimes,
     availableYears,
     monthlyEvolution,
     negotiationPipeline: sortSalespersonSummaries(
@@ -564,8 +1080,77 @@ function buildDashboardFromBudgetItems(
       totalBudgets,
       totalGrossValue,
       totalNegotiationGrossValue,
+      valueConversionRate,
       wonBudgets,
     },
+    technicalOverview: {
+      recentEstimators: sortEstimatorSummaries(
+        estimatorSummaries.filter((item) => item.lastActivityAt !== null),
+        (firstItem, secondItem) =>
+          new Date(secondItem.lastActivityAt ?? 0).getTime() -
+          new Date(firstItem.lastActivityAt ?? 0).getTime(),
+      ),
+      summary: {
+        activeEstimators: estimatorSummaries.length,
+        averageTicket: technicalAverageTicket,
+        budgetsWithEstimator,
+        budgetsWithoutEstimator,
+        conversionRate: technicalConversionRate,
+        coverageRate: technicalCoverageRate,
+        lostBudgets: technicalLostBudgets,
+        negotiationBudgets: technicalNegotiationBudgets,
+        stalledBudgetsCount: technicalStalledBudgetsCount,
+        totalGrossValue: technicalGrossValue,
+        totalNegotiationGrossValue: technicalNegotiationGrossValue,
+        wonBudgets: technicalWonBudgets,
+      },
+      topEstimatorsByAverageTicket: sortEstimatorSummaries(
+        technicalEfficiencyBase,
+        (firstItem, secondItem) => {
+          if (secondItem.averageTicket !== firstItem.averageTicket) {
+            return secondItem.averageTicket - firstItem.averageTicket;
+          }
+          return secondItem.grossValue - firstItem.grossValue;
+        },
+      ),
+      topEstimatorsByBudgetCount: sortEstimatorSummaries(
+        estimatorSummaries,
+        (firstItem, secondItem) => {
+          if (secondItem.budgetCount !== firstItem.budgetCount) {
+            return secondItem.budgetCount - firstItem.budgetCount;
+          }
+          return secondItem.grossValue - firstItem.grossValue;
+        },
+      ),
+      topEstimatorsByValue: sortEstimatorSummaries(
+        estimatorSummaries,
+        (firstItem, secondItem) => {
+          if (secondItem.grossValue !== firstItem.grossValue) {
+            return secondItem.grossValue - firstItem.grossValue;
+          }
+          return secondItem.budgetCount - firstItem.budgetCount;
+        },
+      ),
+    },
+    topConstructionCompanies: sortEntityPerformance(
+      constructionCompanyPerformance,
+      (firstItem, secondItem) => {
+        if (secondItem.grossValue !== firstItem.grossValue) {
+          return secondItem.grossValue - firstItem.grossValue;
+        }
+        return secondItem.budgetCount - firstItem.budgetCount;
+      },
+    ),
+    topLossReasons,
+    topProjects: sortEntityPerformance(
+      projectPerformance,
+      (firstItem, secondItem) => {
+        if (secondItem.grossValue !== firstItem.grossValue) {
+          return secondItem.grossValue - firstItem.grossValue;
+        }
+        return secondItem.budgetCount - firstItem.budgetCount;
+      },
+    ),
     topSalespeopleByAverageTicket: sortSalespersonSummaries(
       efficiencyBase,
       (firstItem, secondItem) => {
@@ -637,8 +1222,19 @@ export async function getSalespeopleDashboardRequest(
       salespersonFunnel: (response.data.salesperson_funnel ?? []).map(
         mapSalespersonFunnel,
       ),
+      averageClosingTimes: (response.data.average_closing_times ?? []).map(
+        mapClosingTimeSummary,
+      ),
       staleBudgets: (response.data.stale_budgets ?? []).map(mapStaleBudget),
       summary: mapSummary(response.data.summary),
+      technicalOverview: mapTechnicalOverview(response.data.technical_overview),
+      topConstructionCompanies: (
+        response.data.top_construction_companies ?? []
+      ).map(mapEntityPerformance),
+      topLossReasons: (response.data.top_loss_reasons ?? []).map(
+        mapLossReasonSummary,
+      ),
+      topProjects: (response.data.top_projects ?? []).map(mapEntityPerformance),
       topSalespeopleByAverageTicket: (
         response.data.top_salespeople_by_average_ticket ?? []
       ).map(mapSalespersonSummary),

@@ -32,13 +32,17 @@ func JSONError(c *gin.Context, statusCode int, message string) {
 }
 
 func JSONAppError(c *gin.Context, err error) {
-	statusCode := apperror.StatusCode(err)
+	statusCode := StatusCodeFromError(err)
 	if statusCode >= http.StatusInternalServerError {
 		JSONError(c, statusCode, "Erro interno do servidor")
 		return
 	}
 
 	JSONError(c, statusCode, err.Error())
+}
+
+func StatusCodeFromError(err error) int {
+	return apperror.StatusCode(err)
 }
 
 func AbortJSONError(c *gin.Context, statusCode int, message string) {

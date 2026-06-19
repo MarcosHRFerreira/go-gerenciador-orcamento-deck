@@ -16,6 +16,7 @@ type CreateBudgetRequest struct {
 	ProductLineID        *int64    `json:"product_line_id"`
 	ProjectID            *int64    `json:"project_id"`
 	SalespersonID        *int64    `json:"salesperson_id"`
+	EstimatorID          *int64    `json:"estimator_id"`
 	ContactID            *int64    `json:"contact_id"`
 	LossReasonID         *int64    `json:"loss_reason_id"`
 	ConstructionCompany  string    `json:"construction_company" validate:"max=200"`
@@ -40,6 +41,7 @@ type UpdateBudgetRequest struct {
 	ProductLineID        *int64    `json:"product_line_id"`
 	ProjectID            *int64    `json:"project_id"`
 	SalespersonID        *int64    `json:"salesperson_id"`
+	EstimatorID          *int64    `json:"estimator_id"`
 	ContactID            *int64    `json:"contact_id"`
 	LossReasonID         *int64    `json:"loss_reason_id"`
 	ConstructionCompany  string    `json:"construction_company" validate:"max=200"`
@@ -56,7 +58,9 @@ type ListBudgetsFilters struct {
 	YearBudget              *int
 	StatusID                *int64
 	SalespersonID           *int64
+	EstimatorID             *int64
 	RestrictedSalespersonID *int64
+	RestrictedEstimatorID   *int64
 	InstallerID             *int64
 	PriorityID              *int64
 	ProductLineID           *int64
@@ -90,6 +94,7 @@ type BudgetResponse struct {
 	ProductLineID        *int64    `json:"product_line_id,omitempty"`
 	ProjectID            *int64    `json:"project_id,omitempty"`
 	SalespersonID        *int64    `json:"salesperson_id,omitempty"`
+	EstimatorID          *int64    `json:"estimator_id,omitempty"`
 	ContactID            *int64    `json:"contact_id,omitempty"`
 	LossReasonID         *int64    `json:"loss_reason_id,omitempty"`
 	ConstructionCompany  string    `json:"construction_company"`
@@ -104,6 +109,7 @@ type BudgetResponse struct {
 	ProductLineName      *string   `json:"product_line_name,omitempty"`
 	ProjectName          *string   `json:"project_name,omitempty"`
 	SalespersonName      *string   `json:"salesperson_name,omitempty"`
+	EstimatorName        *string   `json:"estimator_name,omitempty"`
 	ContactName          *string   `json:"contact_name,omitempty"`
 	LossReasonName       *string   `json:"loss_reason_name,omitempty"`
 	SpecificationDetails string    `json:"specification_details"`

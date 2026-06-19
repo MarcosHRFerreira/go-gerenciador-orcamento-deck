@@ -30,6 +30,8 @@ type userRepositoryStub struct {
 	createUserErr                  error
 	getUserByEmailItem             *model.UserModel
 	getUserByEmailErr              error
+	getUserByUsernameItem          *model.UserModel
+	getUserByUsernameErr           error
 	getUserByEmailOrUsernameItem   *model.UserModel
 	getUserByEmailOrUsernameErr    error
 	getUserByIDItem                *model.UserModel
@@ -50,6 +52,7 @@ type userRepositoryStub struct {
 	updatedUsername                string
 	updatedUserUserID              int64
 	updatedUserRole                model.UserRole
+	updatedUserKind                model.UserKind
 	updatedUserRoleUserID          int64
 	updatedUserActive              bool
 	updatedUserActiveUserID        int64
@@ -76,7 +79,7 @@ func (s *userRepositoryStub) GetUserByEmail(_ context.Context, _ string) (*model
 }
 
 func (s *userRepositoryStub) GetUserByUsername(_ context.Context, _ string) (*model.UserModel, error) {
-	return nil, nil
+	return s.getUserByUsernameItem, s.getUserByUsernameErr
 }
 
 func (s *userRepositoryStub) GetUserByEmailOrUsername(_ context.Context, _, _ string) (*model.UserModel, error) {
@@ -91,18 +94,20 @@ func (s *userRepositoryStub) ListUsers(_ context.Context) ([]model.UserModel, er
 	return s.listUsersItems, s.listUsersErr
 }
 
-func (s *userRepositoryStub) UpdateUser(_ context.Context, userID int64, name string, email string, username string, role model.UserRole, _ time.Time) error {
+func (s *userRepositoryStub) UpdateUser(_ context.Context, userID int64, name string, email string, username string, role model.UserRole, userKind model.UserKind, _ time.Time) error {
 	s.updatedUserUserID = userID
 	s.updatedUserName = name
 	s.updatedUserEmail = email
 	s.updatedUsername = username
 	s.updatedUserRole = role
+	s.updatedUserKind = userKind
 	return nil
 }
 
-func (s *userRepositoryStub) UpdateUserRole(_ context.Context, userID int64, role model.UserRole, _ time.Time) error {
+func (s *userRepositoryStub) UpdateUserRole(_ context.Context, userID int64, role model.UserRole, userKind model.UserKind, _ time.Time) error {
 	s.updatedUserRoleUserID = userID
 	s.updatedUserRole = role
+	s.updatedUserKind = userKind
 	return nil
 }
 
@@ -389,6 +394,7 @@ func TestUserServiceCreateShouldReturnConflictWhenUserAlreadyExists(t *testing.T
 		Password:        testStrongPassword,
 		PasswordConfirm: testStrongPassword,
 		Role:            "user",
+		UserKind:        stringPointer(string(model.UserKindSalesperson)),
 	})
 
 	assertAppError(t, err, 409, "Usuario ja existe")
@@ -407,6 +413,7 @@ func TestUserServiceCreateShouldHashPasswordAndCreateUser(t *testing.T) {
 		Password:        testStrongPassword,
 		PasswordConfirm: testStrongPassword,
 		Role:            "user",
+		UserKind:        stringPointer(string(model.UserKindSalesperson)),
 	})
 
 	if err != nil {
@@ -420,6 +427,9 @@ func TestUserServiceCreateShouldHashPasswordAndCreateUser(t *testing.T) {
 	}
 	if repo.capturedCreateUser.Role != model.RoleUser {
 		t.Fatalf("expected role user, got %s", repo.capturedCreateUser.Role)
+	}
+	if repo.capturedCreateUser.UserKind != model.UserKindSalesperson {
+		t.Fatalf("expected default salesperson kind for user role, got %s", repo.capturedCreateUser.UserKind)
 	}
 	if !repo.capturedCreateUser.MustChangePassword {
 		t.Fatal("expected admin-created user to require password change on first access")
@@ -439,6 +449,7 @@ func TestUserServiceCreateShouldRejectWeakPassword(t *testing.T) {
 		Password:        testWeakPassword,
 		PasswordConfirm: testWeakPassword,
 		Role:            "user",
+		UserKind:        stringPointer(string(model.UserKindSalesperson)),
 	})
 
 	assertAppError(t, err, 400, "A senha deve conter pelo menos 8 caracteres, letra maiuscula, letra minuscula, numero e caractere especial")
@@ -471,6 +482,9 @@ func TestUserServiceListShouldMapResponse(t *testing.T) {
 	}
 	if users[0].Role != "admin" {
 		t.Fatalf("expected role admin, got %s", users[0].Role)
+	}
+	if users[0].UserKind != nil {
+		t.Fatalf("expected admin user kind to be nil, got %v", *users[0].UserKind)
 	}
 }
 
@@ -616,6 +630,7 @@ func TestUserServiceUpdateShouldUpdateUserData(t *testing.T) {
 		Email:    "new.user@local.dev",
 		Username: "new_user",
 		Role:     "admin",
+		UserKind: nil,
 	})
 
 	if err != nil {
@@ -635,6 +650,9 @@ func TestUserServiceUpdateShouldUpdateUserData(t *testing.T) {
 	}
 	if repo.updatedUserRole != model.RoleAdmin {
 		t.Fatalf("expected updated role admin, got %s", repo.updatedUserRole)
+	}
+	if repo.updatedUserKind != "" {
+		t.Fatalf("expected updated user kind to be cleared for admin, got %s", repo.updatedUserKind)
 	}
 }
 
@@ -659,6 +677,7 @@ func TestUserServiceUpdateShouldRejectDuplicatedEmail(t *testing.T) {
 		Email:    "duplicated@local.dev",
 		Username: "current_user",
 		Role:     "user",
+		UserKind: stringPointer(string(model.UserKindSalesperson)),
 	})
 
 	assertAppError(t, err, 409, "E-mail ja esta em uso")
@@ -705,6 +724,76 @@ func TestUserServiceUpdateRoleShouldUpdateRole(t *testing.T) {
 	if repo.updatedUserRole != model.RoleAdmin {
 		t.Fatalf("expected role admin, got %s", repo.updatedUserRole)
 	}
+	if repo.updatedUserKind != "" {
+		t.Fatalf("expected user kind to be cleared for admin role update, got %s", repo.updatedUserKind)
+	}
+}
+
+func TestUserServiceCreateShouldRequireUserKindWhenRoleIsUser(t *testing.T) {
+	service := userservice.NewService(&userRepositoryStub{})
+
+	_, err := service.Create(context.Background(), &dto.CreateUserRequest{
+		Name:            "User",
+		Email:           "user@example.com",
+		Username:        "user",
+		Password:        testStrongPassword,
+		PasswordConfirm: testStrongPassword,
+		Role:            "user",
+	})
+
+	assertAppError(t, err, 400, "user_kind e obrigatorio para perfil user")
+}
+
+func TestUserServiceUpdateRoleShouldRequireUserKindWhenChangingToUser(t *testing.T) {
+	service := userservice.NewService(&userRepositoryStub{
+		countActiveAdminsResult: 2,
+		getUserByIDItem: &model.UserModel{
+			ID:     9,
+			Role:   model.RoleAdmin,
+			Active: true,
+		},
+	})
+
+	err := service.UpdateRole(context.Background(), 1, 9, &dto.UpdateUserRoleRequest{
+		Role: "user",
+	})
+
+	assertAppError(t, err, 400, "user_kind e obrigatorio para perfil user")
+}
+
+func TestUserServiceUpdateShouldPersistEstimatorUserKind(t *testing.T) {
+	repo := &userRepositoryStub{
+		getUserByEmailItem: nil,
+		getUserByIDItem: &model.UserModel{
+			ID:       9,
+			Name:     "Usuario Atual",
+			Email:    "current@local.dev",
+			Username: "current_user",
+			Role:     model.RoleUser,
+			UserKind: model.UserKindSalesperson,
+			Active:   true,
+		},
+	}
+	service := userservice.NewService(repo)
+
+	err := service.Update(context.Background(), 1, 9, &dto.UpdateUserRequest{
+		Name:     "Usuario Atual",
+		Email:    "current@local.dev",
+		Username: "current_user",
+		Role:     "user",
+		UserKind: stringPointer(string(model.UserKindEstimator)),
+	})
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if repo.updatedUserKind != model.UserKindEstimator {
+		t.Fatalf("expected updated user kind estimator, got %s", repo.updatedUserKind)
+	}
+}
+
+func stringPointer(value string) *string {
+	return &value
 }
 
 func TestUserServiceUpdateActiveShouldPreventSelfDeactivation(t *testing.T) {

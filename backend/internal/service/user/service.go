@@ -41,6 +41,11 @@ func (s *service) Create(ctx context.Context, req *dto.CreateUserRequest) (int64
 		logUserWarn(ctx, "Criacao de usuario bloqueada por perfil invalido", slog.String("user_action", "create_user"), slog.String("reason", "invalid_role"))
 		return 0, err
 	}
+	userKind, err := normalizeUserKind(role, req.UserKind)
+	if err != nil {
+		logUserWarn(ctx, "Criacao de usuario bloqueada por tipo funcional invalido", slog.String("user_action", "create_user"), slog.String("reason", "invalid_user_kind"))
+		return 0, err
+	}
 
 	existingUser, err := s.userRepo.GetUserByEmailOrUsername(ctx, req.Email, req.Username)
 	if err != nil {
@@ -70,6 +75,7 @@ func (s *service) Create(ctx context.Context, req *dto.CreateUserRequest) (int64
 		Username:           req.Username,
 		PasswordHash:       string(passwordHash),
 		Role:               role,
+		UserKind:           userKind,
 		Active:             true,
 		MustChangePassword: true,
 		CreatedAt:          now,
@@ -178,12 +184,18 @@ func (s *service) Update(ctx context.Context, actorUserID int64, userID int64, r
 		}
 	}
 
-	if user.Name == name && user.Email == email && user.Username == username && user.Role == nextRole {
+	nextUserKind, err := normalizeUserKind(nextRole, req.UserKind)
+	if err != nil {
+		logUserWarn(ctx, "Atualizacao de usuario bloqueada por tipo funcional invalido", slog.String("user_action", "update_user"), slog.Int64("actor_user_id", actorUserID), slog.Int64("target_user_id", userID), slog.String("reason", "invalid_user_kind"))
+		return err
+	}
+
+	if user.Name == name && user.Email == email && user.Username == username && user.Role == nextRole && user.UserKind == nextUserKind {
 		logUserInfo(ctx, "Atualizacao de usuario ignorada por nao haver mudanca", slog.String("user_action", "update_user"), slog.Int64("actor_user_id", actorUserID), slog.Int64("target_user_id", userID))
 		return nil
 	}
 
-	if err := s.userRepo.UpdateUser(ctx, userID, name, email, username, nextRole, time.Now()); err != nil {
+	if err := s.userRepo.UpdateUser(ctx, userID, name, email, username, nextRole, nextUserKind, time.Now()); err != nil {
 		logUserError(ctx, "Falha ao atualizar usuario", err, slog.String("user_action", "update_user"), slog.Int64("actor_user_id", actorUserID), slog.Int64("target_user_id", userID), slog.String("username", username), slog.String("role", string(nextRole)))
 		return apperror.Internal("failed to update user", err)
 	}
@@ -223,11 +235,6 @@ func (s *service) UpdateRole(ctx context.Context, actorUserID int64, userID int6
 		return apperror.Forbidden("Nao e permitido alterar o proprio perfil")
 	}
 
-	if user.Role == nextRole {
-		logUserInfo(ctx, "Alteracao de perfil ignorada por nao haver mudanca", slog.String("user_action", "update_role"), slog.Int64("actor_user_id", actorUserID), slog.Int64("target_user_id", userID), slog.String("role", string(nextRole)))
-		return nil
-	}
-
 	if user.Role == model.RoleAdmin && nextRole != model.RoleAdmin {
 		activeAdminsCount, err := s.userRepo.CountActiveAdmins(ctx)
 		if err != nil {
@@ -240,7 +247,18 @@ func (s *service) UpdateRole(ctx context.Context, actorUserID int64, userID int6
 		}
 	}
 
-	if err := s.userRepo.UpdateUserRole(ctx, userID, nextRole, time.Now()); err != nil {
+	nextUserKind, err := normalizeUserKind(nextRole, req.UserKind)
+	if err != nil {
+		logUserWarn(ctx, "Alteracao de perfil bloqueada por tipo funcional invalido", slog.String("user_action", "update_role"), slog.Int64("actor_user_id", actorUserID), slog.Int64("target_user_id", userID), slog.String("reason", "invalid_user_kind"))
+		return err
+	}
+
+	if user.Role == nextRole && user.UserKind == nextUserKind {
+		logUserInfo(ctx, "Alteracao de perfil ignorada por nao haver mudanca", slog.String("user_action", "update_role"), slog.Int64("actor_user_id", actorUserID), slog.Int64("target_user_id", userID), slog.String("role", string(nextRole)))
+		return nil
+	}
+
+	if err := s.userRepo.UpdateUserRole(ctx, userID, nextRole, nextUserKind, time.Now()); err != nil {
 		logUserError(ctx, "Falha ao atualizar perfil do usuario", err, slog.String("user_action", "update_role"), slog.Int64("actor_user_id", actorUserID), slog.Int64("target_user_id", userID), slog.String("role", string(nextRole)))
 		return apperror.Internal("failed to update user role", err)
 	}
@@ -362,17 +380,45 @@ func normalizeRole(role string) (model.UserRole, error) {
 }
 
 func toResponse(user model.UserModel) dto.UserResponse {
+	var userKind *string
+	if user.UserKind != "" {
+		value := string(user.UserKind)
+		userKind = &value
+	}
+
 	return dto.UserResponse{
 		ID:                 user.ID,
 		Name:               user.Name,
 		Email:              user.Email,
 		Username:           user.Username,
 		Role:               string(user.Role),
+		UserKind:           userKind,
 		Active:             user.Active,
 		MustChangePassword: user.MustChangePassword,
 		CreatedAt:          user.CreatedAt,
 		UpdatedAt:          user.UpdatedAt,
 	}
+}
+
+func normalizeUserKind(role model.UserRole, userKind *string) (model.UserKind, error) {
+	if role == model.RoleAdmin {
+		if userKind != nil && strings.TrimSpace(*userKind) != "" {
+			return "", apperror.BadRequest("user_kind deve ser informado apenas para perfil user")
+		}
+
+		return "", nil
+	}
+
+	if userKind == nil {
+		return "", apperror.BadRequest("user_kind e obrigatorio para perfil user")
+	}
+
+	normalizedUserKind := model.UserKind(strings.TrimSpace(*userKind))
+	if normalizedUserKind != model.UserKindSalesperson && normalizedUserKind != model.UserKindEstimator {
+		return "", apperror.BadRequest("Tipo funcional invalido")
+	}
+
+	return normalizedUserKind, nil
 }
 
 func logUserInfo(ctx context.Context, message string, attrs ...slog.Attr) {

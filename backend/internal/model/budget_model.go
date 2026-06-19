@@ -20,6 +20,7 @@ type BudgetModel struct {
 	ProductLineID        sql.NullInt64
 	ProjectID            sql.NullInt64
 	SalespersonID        sql.NullInt64
+	EstimatorID          sql.NullInt64
 	ContactID            sql.NullInt64
 	LossReasonID         sql.NullInt64
 	ConstructionCompany  string
@@ -40,6 +41,7 @@ type BudgetModel struct {
 	ProductLineName      sql.NullString
 	ProjectName          sql.NullString
 	SalespersonName      sql.NullString
+	EstimatorName        sql.NullString
 	ContactName          sql.NullString
 	LossReasonName       sql.NullString
 }

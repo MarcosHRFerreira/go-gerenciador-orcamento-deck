@@ -15,23 +15,35 @@ import {
 import type {
   CreateUserPayload,
   UpdateUserPayload,
+  UserKind,
   UserRole,
 } from "../types/user";
 
-const baseUserFormSchema = z.object({
-  email: z.string().trim().email("Informe um e-mail valido"),
-  name: z
-    .string()
-    .trim()
-    .min(1, "Informe o nome")
-    .max(150, "O nome deve ter no maximo 150 caracteres"),
-  role: z.enum(["admin", "user"]),
-  username: z
-    .string()
-    .trim()
-    .min(1, "Informe o username")
-    .max(100, "O username deve ter no maximo 100 caracteres"),
-});
+const baseUserFormSchema = z
+  .object({
+    email: z.string().trim().email("Informe um e-mail valido"),
+    name: z
+      .string()
+      .trim()
+      .min(1, "Informe o nome")
+      .max(150, "O nome deve ter no maximo 150 caracteres"),
+    role: z.enum(["admin", "user"]),
+    userKind: z.enum(["salesperson", "estimator", ""]).default(""),
+    username: z
+      .string()
+      .trim()
+      .min(1, "Informe o username")
+      .max(100, "O username deve ter no maximo 100 caracteres"),
+  })
+  .superRefine((values, context) => {
+    if (values.role === "user" && values.userKind === "") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Selecione o tipo funcional",
+        path: ["userKind"],
+      });
+    }
+  });
 
 const createUserFormSchema = baseUserFormSchema
   .extend({
@@ -75,6 +87,10 @@ function getRoleLabel(role: UserRole) {
   return role === "admin" ? "Administrador" : "Usuario";
 }
 
+function getUserKindLabel(userKind: UserKind) {
+  return userKind === "estimator" ? "Orçamentista" : "Comercial";
+}
+
 function mapFormValuesToPayload(
   values: UserFormValues,
   mode: "create" | "edit",
@@ -83,6 +99,7 @@ function mapFormValuesToPayload(
     email: values.email.trim(),
     name: values.name.trim(),
     role: values.role,
+    userKind: values.role === "user" ? (values.userKind as UserKind) : undefined,
     username: values.username.trim(),
   };
 
@@ -116,10 +133,12 @@ export function UserForm({
     formState: { errors, isSubmitting },
     handleSubmit,
     register,
+    watch,
   } = useForm<UserFormValues>({
     defaultValues: initialValues,
     resolver: resolver as Resolver<UserFormValues>,
   });
+  const selectedRole = watch("role");
 
   const handleFormSubmit = async (values: UserFormValues) => {
     try {
@@ -211,6 +230,25 @@ export function UserForm({
                 </MenuItem>
               ))}
             </TextField>
+            {selectedRole === "user" ? (
+              <TextField
+                error={Boolean(errors.userKind)}
+                fullWidth
+                helperText={
+                  errors.userKind?.message ??
+                  "Defina se o usuario operacional atua no comercial ou como orçamentista."
+                }
+                label="Tipo funcional"
+                select
+                {...register("userKind")}
+              >
+                {(["salesperson", "estimator"] as const).map((userKind) => (
+                  <MenuItem key={userKind} value={userKind}>
+                    {getUserKindLabel(userKind)}
+                  </MenuItem>
+                ))}
+              </TextField>
+            ) : null}
             {mode === "create" ? (
               <TextField
                 error={Boolean(errors.password)}

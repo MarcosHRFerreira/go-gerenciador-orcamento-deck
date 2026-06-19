@@ -86,7 +86,7 @@ func TestBudgetFollowUpServiceCreateShouldTrimNotesAndSyncCurrentFollowUp(t *tes
 	budgetRepo := &budgetRepositoryStub{
 		getByIDItem: &model.BudgetModel{ID: 8},
 	}
-	service := budgetfollowupservice.NewService(followUpRepo, budgetRepo, &salespersonRepositoryStub{})
+	service := budgetfollowupservice.NewService(followUpRepo, budgetRepo, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
 	followUpAt := time.Date(2026, time.July, 1, 15, 0, 0, 0, time.UTC)
 
 	id, err := service.Create(context.Background(), 8, 21, model.RoleAdmin, "", &dto.CreateBudgetFollowUpRequest{
@@ -115,7 +115,7 @@ func TestBudgetFollowUpServiceCreateShouldTrimNotesAndSyncCurrentFollowUp(t *tes
 }
 
 func TestBudgetFollowUpServiceCreateShouldReturnNotFoundWhenBudgetDoesNotExist(t *testing.T) {
-	service := budgetfollowupservice.NewService(&budgetFollowUpRepositoryStub{}, &budgetRepositoryStub{}, &salespersonRepositoryStub{})
+	service := budgetfollowupservice.NewService(&budgetFollowUpRepositoryStub{}, &budgetRepositoryStub{}, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
 
 	_, err := service.Create(context.Background(), 8, 21, model.RoleAdmin, "", &dto.CreateBudgetFollowUpRequest{
 		Notes: "retorno",
@@ -125,7 +125,7 @@ func TestBudgetFollowUpServiceCreateShouldReturnNotFoundWhenBudgetDoesNotExist(t
 }
 
 func TestBudgetFollowUpServiceCreateShouldReturnUnauthorizedWhenUserIsMissing(t *testing.T) {
-	service := budgetfollowupservice.NewService(&budgetFollowUpRepositoryStub{}, &budgetRepositoryStub{}, &salespersonRepositoryStub{})
+	service := budgetfollowupservice.NewService(&budgetFollowUpRepositoryStub{}, &budgetRepositoryStub{}, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
 
 	_, err := service.Create(context.Background(), 8, 0, model.RoleAdmin, "", &dto.CreateBudgetFollowUpRequest{
 		Notes: "retorno",
@@ -148,7 +148,7 @@ func TestBudgetFollowUpServiceListShouldMapItems(t *testing.T) {
 		},
 	}, &budgetRepositoryStub{
 		getByIDItem: &model.BudgetModel{ID: 8},
-	}, &salespersonRepositoryStub{})
+	}, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
 
 	items, err := service.ListByBudgetID(context.Background(), 8, model.RoleAdmin, "")
 
@@ -178,7 +178,7 @@ func TestBudgetStatusHistoryServiceChangeStatusShouldCreateHistoryAndSyncBudget(
 		getByIDItem: &model.BudgetStatusModel{ID: 2},
 	}
 	historyRepo := &budgetStatusHistoryRepositoryStub{}
-	service := budgetstatushistoryservice.NewService(historyRepo, budgetRepo, statusRepo, &salespersonRepositoryStub{})
+	service := budgetstatushistoryservice.NewService(historyRepo, budgetRepo, statusRepo, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
 
 	id, err := service.ChangeStatus(context.Background(), 9, 30, model.RoleAdmin, "", &dto.ChangeBudgetStatusRequest{
 		StatusID: 2,
@@ -225,7 +225,7 @@ func TestBudgetStatusHistoryServiceChangeStatusShouldCancelOtherProjectBudgetsWh
 		getByIDItem:         &model.BudgetStatusModel{ID: 2, Code: "PEDIDO", Name: "Pedido"},
 		getByCodeOrNameItem: &model.BudgetStatusModel{ID: cancelledStatusID, Code: "CANCELADO", Name: "Cancelado"},
 	}
-	service := budgetstatushistoryservice.NewService(&budgetStatusHistoryRepositoryStub{}, budgetRepo, statusRepo, &salespersonRepositoryStub{})
+	service := budgetstatushistoryservice.NewService(&budgetStatusHistoryRepositoryStub{}, budgetRepo, statusRepo, &userRepositoryStub{}, &salespersonRepositoryStub{}, &estimatorRepositoryStub{})
 
 	id, err := service.ChangeStatus(context.Background(), 9, 30, model.RoleAdmin, "", &dto.ChangeBudgetStatusRequest{
 		StatusID: 2,
@@ -264,7 +264,9 @@ func TestBudgetStatusHistoryServiceChangeStatusShouldReturnConflictWhenProjectAl
 			getByIDItem:         &model.BudgetStatusModel{ID: 2, Code: "PEDIDO", Name: "Pedido"},
 			getByCodeOrNameItem: &model.BudgetStatusModel{ID: 3, Code: "CANCELADO", Name: "Cancelado"},
 		},
+		&userRepositoryStub{},
 		&salespersonRepositoryStub{},
+		&estimatorRepositoryStub{},
 	)
 
 	_, err := service.ChangeStatus(context.Background(), 9, 30, model.RoleAdmin, "", &dto.ChangeBudgetStatusRequest{
@@ -287,7 +289,9 @@ func TestBudgetStatusHistoryServiceChangeStatusShouldReturnBadRequestWhenCancell
 		&budgetStatusRepositoryStub{
 			getByIDItem: &model.BudgetStatusModel{ID: 2, Code: "PEDIDO", Name: "Pedido"},
 		},
+		&userRepositoryStub{},
 		&salespersonRepositoryStub{},
+		&estimatorRepositoryStub{},
 	)
 
 	_, err := service.ChangeStatus(context.Background(), 9, 30, model.RoleAdmin, "", &dto.ChangeBudgetStatusRequest{
@@ -309,7 +313,9 @@ func TestBudgetStatusHistoryServiceChangeStatusShouldReturnConflictWhenStatusIsT
 		&budgetStatusRepositoryStub{
 			getByIDItem: &model.BudgetStatusModel{ID: 2},
 		},
+		&userRepositoryStub{},
 		&salespersonRepositoryStub{},
+		&estimatorRepositoryStub{},
 	)
 
 	_, err := service.ChangeStatus(context.Background(), 9, 30, model.RoleAdmin, "", &dto.ChangeBudgetStatusRequest{
@@ -329,7 +335,9 @@ func TestBudgetStatusHistoryServiceChangeStatusShouldReturnBadRequestWhenStatusD
 			},
 		},
 		&budgetStatusRepositoryStub{},
+		&userRepositoryStub{},
 		&salespersonRepositoryStub{},
+		&estimatorRepositoryStub{},
 	)
 
 	_, err := service.ChangeStatus(context.Background(), 9, 30, model.RoleAdmin, "", &dto.ChangeBudgetStatusRequest{
@@ -358,7 +366,9 @@ func TestBudgetStatusHistoryServiceListShouldMapItems(t *testing.T) {
 			getByIDItem: &model.BudgetModel{ID: 9},
 		},
 		&budgetStatusRepositoryStub{},
+		&userRepositoryStub{},
 		&salespersonRepositoryStub{},
+		&estimatorRepositoryStub{},
 	)
 
 	items, err := service.ListByBudgetID(context.Background(), 9, model.RoleAdmin, "")

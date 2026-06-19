@@ -6,6 +6,7 @@ import { BudgetForm } from "../components/BudgetForm";
 import { createDefaultBudgetFormValues } from "../components/budgetFormValues";
 import type { BudgetCreatePayload } from "../types/budget";
 import { getProjectByIdRequest } from "../../projects/api/projects";
+import { useAuth } from "../../auth/hooks/useAuth";
 
 function parseOptionalProjectId(value: string | null) {
   if (value === null || value.trim() === "") {
@@ -24,9 +25,13 @@ function parseOptionalProjectId(value: string | null) {
 export function BudgetCreatePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const projectId = parseOptionalProjectId(searchParams.get("projectId"));
   const returnToProject = searchParams.get("returnTo") === "project";
+  const canCreateBudget =
+    user?.role === "admin" ||
+    (user?.role === "user" && user.user_kind === "estimator");
   const projectQuery = useQuery({
     enabled: projectId !== null,
     queryFn: () => getProjectByIdRequest(projectId as number),
@@ -43,10 +48,16 @@ export function BudgetCreatePage() {
   };
 
   const handleSubmit = async (payload: BudgetCreatePayload) => {
+    if (!canCreateBudget) {
+      return;
+    }
+
     await createBudgetRequest(payload);
     await queryClient.invalidateQueries({ queryKey: ["budgets"] });
     if (projectId !== null) {
-      await queryClient.invalidateQueries({ queryKey: ["project-budgets", projectId] });
+      await queryClient.invalidateQueries({
+        queryKey: ["project-budgets", projectId],
+      });
     }
     navigateBack();
   };
@@ -63,8 +74,9 @@ export function BudgetCreatePage() {
     };
   })();
 
-  const initialDataError =
-    searchParams.get("projectId") !== null && projectId === null
+  const initialDataError = !canCreateBudget
+    ? "Seu perfil nao possui permissao para criar orcamentos."
+    : searchParams.get("projectId") !== null && projectId === null
       ? "Obra informada para o novo orcamento e invalida."
       : projectQuery.isError
         ? "Nao foi possivel carregar a obra informada para o novo orcamento."

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -165,9 +166,14 @@ func (s *budgetImportProjectRepositoryStub) Create(_ context.Context, item *mode
 	id := int64(len(s.items) + 1)
 	s.items = append(s.items, model.ProjectModel{
 		ID:   id,
+		Code: item.Code,
 		Name: item.Name,
 	})
 	return id, nil
+}
+
+func (s *budgetImportProjectRepositoryStub) GetNextCode(_ context.Context) (string, error) {
+	return fmt.Sprintf("OBR-%06d", len(s.items)+1), nil
 }
 
 func (s *budgetImportProjectRepositoryStub) List(_ context.Context) ([]model.ProjectModel, error) {
@@ -368,8 +374,8 @@ func TestBudgetImportPreviewShouldParseWorkbookAndSummarizeCatalogActions(t *tes
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if response.SheetName != "ORCAMENTOS" {
-		t.Fatalf("expected sheet ORCAMENTOS, got %s", response.SheetName)
+	if response.SheetName != "Rocktec" {
+		t.Fatalf("expected sheet Rocktec, got %s", response.SheetName)
 	}
 	if response.Summary.RowsRead != 1 {
 		t.Fatalf("expected rows_read 1, got %d", response.Summary.RowsRead)
@@ -392,14 +398,11 @@ func TestBudgetImportPreviewShouldParseWorkbookAndSummarizeCatalogActions(t *tes
 	if response.CatalogActions.ProjectsToCreate < 1 {
 		t.Fatalf("expected at least one project to create, got %d", response.CatalogActions.ProjectsToCreate)
 	}
-	if response.CatalogActions.ProjectTypesToCreate < 1 {
-		t.Fatalf("expected at least one project type to create, got %d", response.CatalogActions.ProjectTypesToCreate)
+	if response.CatalogActions.ProductLinesToCreate < 1 {
+		t.Fatalf("expected at least one product line to create, got %d", response.CatalogActions.ProductLinesToCreate)
 	}
 	if response.CatalogActions.SalespeopleToCreate < 1 {
 		t.Fatalf("expected at least one salesperson to create, got %d", response.CatalogActions.SalespeopleToCreate)
-	}
-	if response.CatalogActions.LossReasonsToCreate < 1 {
-		t.Fatalf("expected at least one loss reason to create, got %d", response.CatalogActions.LossReasonsToCreate)
 	}
 	if response.CatalogActions.PrioritiesToCreate < 1 {
 		t.Fatalf("expected at least one priority to create, got %d", response.CatalogActions.PrioritiesToCreate)
@@ -1082,14 +1085,17 @@ func TestBudgetImportExecuteShouldNormalizeCatalogNamesAndReuseSalespersonByFirs
 	if !budgetRepo.capturedCreateItem.SalespersonID.Valid || budgetRepo.capturedCreateItem.SalespersonID.Int64 != 7 {
 		t.Fatalf("expected salesperson id 7 to be reused by first name, got %+v", budgetRepo.capturedCreateItem.SalespersonID)
 	}
-	if budgetRepo.capturedCreateItem.CompetitorName != "Concorrente Xpto" {
-		t.Fatalf("expected normalized competitor name, got %s", budgetRepo.capturedCreateItem.CompetitorName)
+	if budgetRepo.capturedCreateItem.ConstructionCompany != "Concorrente Xpto" {
+		t.Fatalf("expected construction company Concorrente Xpto, got %s", budgetRepo.capturedCreateItem.ConstructionCompany)
 	}
-	if budgetRepo.capturedCreateItem.ProjetistaName != "Projetista Sul" {
-		t.Fatalf("expected normalized projetista name, got %s", budgetRepo.capturedCreateItem.ProjetistaName)
+	if budgetRepo.capturedCreateItem.ProductLineID.Valid {
+		t.Fatalf("expected product line id to remain null in create item, got %+v", budgetRepo.capturedCreateItem.ProductLineID)
 	}
-	if budgetRepo.capturedCreateItem.SpecificationDetails != "Detalhe Tecnico Final" {
-		t.Fatalf("expected normalized specification, got %s", budgetRepo.capturedCreateItem.SpecificationDetails)
+	if budgetRepo.capturedCreateItem.ProjetistaName != "Nao informado" {
+		t.Fatalf("expected projetista name Nao informado, got %s", budgetRepo.capturedCreateItem.ProjetistaName)
+	}
+	if budgetRepo.capturedCreateItem.SpecificationDetails != "Nao informado" {
+		t.Fatalf("expected specification Nao informado, got %s", budgetRepo.capturedCreateItem.SpecificationDetails)
 	}
 	if budgetRepo.capturedCreateItem.CurrentFollowUp != "Em Negociacao" {
 		t.Fatalf("expected normalized current follow-up, got %s", budgetRepo.capturedCreateItem.CurrentFollowUp)
@@ -1099,6 +1105,9 @@ func TestBudgetImportExecuteShouldNormalizeCatalogNamesAndReuseSalespersonByFirs
 	}
 	if len(projectRepo.items) != 2 || projectRepo.items[1].Name != "Obra Central Norte" {
 		t.Fatalf("expected normalized project creation, got %+v", projectRepo.items)
+	}
+	if projectRepo.items[1].Code != "OBR-000002" {
+		t.Fatalf("expected imported project code OBR-000002, got %s", projectRepo.items[1].Code)
 	}
 	if len(installerRepo.items) != 2 || installerRepo.items[1].Name != "Instalador Alfa" {
 		t.Fatalf("expected normalized installer creation, got %+v", installerRepo.items)
@@ -1123,7 +1132,7 @@ func TestBudgetImportPreviewShouldRejectWorkbookWithoutRocktecSheet(t *testing.T
 		context.Background(),
 		"orcamentos.xlsx",
 		buildImportWorkbookWithOptions(t, importWorkbookFixtureOptions{
-			sheetName: "Capa",
+			sheetName: "Resumo",
 			rowValues: []map[string]string{
 				{
 					"A": "45660",
@@ -1458,9 +1467,77 @@ func TestBudgetImportExecuteShouldCreateBudgetFromTroxPreview(t *testing.T) {
 func buildImportWorkbook(t *testing.T, rowValues []map[string]string) []byte {
 	t.Helper()
 
+	normalizedRows := make([]map[string]string, 0, len(rowValues))
+	for _, rowValue := range rowValues {
+		normalizedRows = append(normalizedRows, normalizeRocktecFixtureRow(rowValue))
+	}
+
 	return buildImportWorkbookWithOptions(t, importWorkbookFixtureOptions{
-		rowValues: rowValues,
+		headers:   defaultStructuredImportWorkbookHeaders(),
+		headerRow: 1,
+		rowValues: normalizedRows,
+		sheetName: "Rocktec",
 	})
+}
+
+func normalizeRocktecFixtureRow(rowValue map[string]string) map[string]string {
+	if len(rowValue) == 0 {
+		return rowValue
+	}
+
+	if _, hasLegacyBudgetNumber := rowValue["B"]; !hasLegacyBudgetNumber {
+		return rowValue
+	}
+
+	statusValue := rowValue["M"]
+	if strings.TrimSpace(statusValue) == "" || statusValue == "-" {
+		statusValue = rowValue["L"]
+	}
+
+	customerNameValue := rowValue["N"]
+	if strings.TrimSpace(customerNameValue) == "" || customerNameValue == "-" {
+		customerNameValue = rowValue["D"]
+	}
+
+	return map[string]string{
+		"A": rowValue["B"],
+		"B": rowValue["C"],
+		"C": formatFixtureDateBR(rowValue["A"]),
+		"D": fallbackFixtureValue(rowValue["F"], "Consulta de preco"),
+		"E": fallbackFixtureValue(statusValue, "Nao informado"),
+		"F": fallbackFixtureValue(rowValue["H"], "-"),
+		"G": fallbackFixtureValue(rowValue["F"], "Nao informado"),
+		"H": "BR-TESTE-001",
+		"I": fallbackFixtureValue(customerNameValue, "Cliente teste"),
+		"J": fallbackFixtureValue(rowValue["E"], "-"),
+		"K": fallbackFixtureValue(rowValue["G"], "-"),
+		"L": fallbackFixtureValue(rowValue["D"], "-"),
+		"M": fallbackFixtureValue(rowValue["I"], "0"),
+		"N": fallbackFixtureValue(rowValue["J"], "1"),
+	}
+}
+
+func formatFixtureDateBR(raw string) string {
+	if strings.Contains(raw, "/") {
+		return raw
+	}
+
+	serialNumber, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err == nil {
+		baseDate := time.Date(1899, time.December, 30, 0, 0, 0, 0, time.UTC)
+		return baseDate.AddDate(0, 0, serialNumber).Format("02/01/2006")
+	}
+
+	return raw
+}
+
+func fallbackFixtureValue(value string, fallback string) string {
+	trimmedValue := strings.TrimSpace(value)
+	if trimmedValue == "" {
+		return fallback
+	}
+
+	return trimmedValue
 }
 
 func buildTroxWorkbook(t *testing.T, rowValues []map[string]string) []byte {
@@ -1506,12 +1583,12 @@ func buildImportWorkbookWithOptions(t *testing.T, options importWorkbookFixtureO
 
 	headerRow := options.headerRow
 	if headerRow == 0 {
-		headerRow = 10
+		headerRow = 1
 	}
 
 	sheetName := options.sheetName
 	if sheetName == "" {
-		sheetName = "ORCAMENTOS"
+		sheetName = "Rocktec"
 	}
 
 	var buffer bytes.Buffer
@@ -1543,25 +1620,25 @@ func writeZipFile(t *testing.T, zipWriter *zip.Writer, name string, content stri
 }
 
 func defaultImportWorkbookHeaders() []string {
+	return defaultStructuredImportWorkbookHeaders()
+}
+
+func defaultStructuredImportWorkbookHeaders() []string {
 	return []string{
-		"DATA",
-		"NÂº DE ORCA",
-		"REV.",
-		"INSTALADOR",
-		"NOME DA OBRA",
-		"TIPO DE OBRA",
-		"VENDEDOR",
-		"CONTATO",
-		"VALOR BRUTO",
-		"COMISSAO",
-		"M2",
-		"PRIORIDADE",
-		"STATUS",
-		"CONCORRENTE",
-		"MOTIVO",
-		"VALOR CONCORRENTE",
-		"PROJETISTA",
-		"ESPECIFICACOES",
+		"Or\u00e7amento",
+		"Revis\u00e3o",
+		"Data de Emiss\u00e3o",
+		"Tipo",
+		"Status",
+		"Contato",
+		"Linha de produtos",
+		"C\u00f3digo Cliente",
+		"Nome Cliente",
+		"Obra",
+		"Vendedor",
+		"Instalador",
+		"Total do or\u00e7amento",
+		"Fator M\u00e9dio",
 	}
 }
 

@@ -30,10 +30,13 @@ func NewHandler(router gin.IRouter, validate *validator.Validate, service contac
 }
 
 func (h *Handler) RouteList() {
+	protectedRoutes := h.router.Group("/contacts")
+	protectedRoutes.Use(middleware.Auth(h.secretKey))
+	protectedRoutes.GET("", h.List)
+
 	adminRoutes := h.router.Group("/contacts")
 	adminRoutes.Use(middleware.Auth(h.secretKey))
 	adminRoutes.Use(middleware.RequireRoles(model.RoleAdmin))
-	adminRoutes.GET("", h.List)
 	adminRoutes.GET("/:contact_id", h.GetByID)
 	adminRoutes.POST("", h.Create)
 	adminRoutes.PUT("/:contact_id", h.Update)

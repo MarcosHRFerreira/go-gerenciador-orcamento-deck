@@ -48,6 +48,7 @@ import { useAuth } from "../../auth/hooks/useAuth";
 import {
   deleteBudgetRequest,
   getBudgetCatalogsRequest,
+  getBudgetManagementCatalogsRequest,
   getBudgetListCatalogsRequest,
   getBudgetListRequest,
   getBudgetProjectListRequest,
@@ -89,6 +90,7 @@ const defaultFilters: BudgetListFilters = {
   installerId: "",
   projectName: "",
   salespersonId: "",
+  estimatorId: "",
   sentAtFrom: "",
   sentAtTo: "",
   page: 1,
@@ -139,6 +141,7 @@ function getFiltersFromSearchParams(
     projectName: searchParams.get("projectName") ?? defaultFilters.projectName,
     salespersonId:
       searchParams.get("salespersonId") ?? defaultFilters.salespersonId,
+    estimatorId: searchParams.get("estimatorId") ?? defaultFilters.estimatorId,
     sentAtFrom: searchParams.get("sentAtFrom") ?? defaultFilters.sentAtFrom,
     sentAtTo: searchParams.get("sentAtTo") ?? defaultFilters.sentAtTo,
     page: parsePositiveInteger(searchParams.get("page"), defaultFilters.page),
@@ -174,6 +177,9 @@ function buildSearchParams(filters: BudgetListFilters) {
   }
   if (filters.salespersonId) {
     nextSearchParams.set("salespersonId", filters.salespersonId);
+  }
+  if (filters.estimatorId) {
+    nextSearchParams.set("estimatorId", filters.estimatorId);
   }
   if (filters.sentAtFrom) {
     nextSearchParams.set("sentAtFrom", filters.sentAtFrom);
@@ -366,19 +372,25 @@ export function BudgetListPage() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const isAdmin = user?.role === "admin";
+  const isEstimatorUser =
+    user?.role === "user" && user.user_kind === "estimator";
+  const canManageBudgetScreen = isAdmin || isEstimatorUser;
+  const canCreateBudget = isAdmin || isEstimatorUser;
+  const canDeleteBudget = isAdmin || isEstimatorUser;
   const filters = useMemo(
     () => getFiltersFromSearchParams(searchParams),
     [searchParams],
   );
   const effectiveFilters = useMemo(
     () =>
-      isAdmin
+      canManageBudgetScreen
         ? filters
         : {
             ...filters,
             salespersonId: "",
+            estimatorId: "",
           },
-    [filters, isAdmin],
+    [canManageBudgetScreen, filters],
   );
   const [budgetPendingDelete, setBudgetPendingDelete] = useState<{
     id: number;
@@ -396,18 +408,28 @@ export function BudgetListPage() {
     installerId: effectiveFilters.installerId,
     projectName: effectiveFilters.projectName,
     salespersonId: effectiveFilters.salespersonId,
+    estimatorId: effectiveFilters.estimatorId,
     sentAtFrom: effectiveFilters.sentAtFrom,
     sentAtTo: effectiveFilters.sentAtTo,
   }));
   const [viewMode, setViewMode] = useState<BudgetViewMode>("list");
 
   useEffect(() => {
-    if (isAdmin || !filters.salespersonId) {
+    if (
+      canManageBudgetScreen ||
+      (!filters.salespersonId && !filters.estimatorId)
+    ) {
       return;
     }
 
     setSearchParams(buildSearchParams(effectiveFilters), { replace: true });
-  }, [effectiveFilters, filters.salespersonId, isAdmin, setSearchParams]);
+  }, [
+    effectiveFilters,
+    filters.estimatorId,
+    filters.salespersonId,
+    canManageBudgetScreen,
+    setSearchParams,
+  ]);
 
   const budgetListQuery = useQuery({
     queryKey: ["budgets", user?.id ?? "anonymous", effectiveFilters],
@@ -435,7 +457,9 @@ export function BudgetListPage() {
   });
   const budgetCatalogsQuery = useQuery({
     queryKey: ["budget-catalogs", user?.id ?? "anonymous"],
-    queryFn: isAdmin ? getBudgetCatalogsRequest : getBudgetListCatalogsRequest,
+    queryFn: canManageBudgetScreen
+      ? getBudgetManagementCatalogsRequest
+      : getBudgetListCatalogsRequest,
     staleTime: 1000 * 60 * 5,
   });
   const deleteBudgetMutation = useMutation({
@@ -471,6 +495,10 @@ export function BudgetListPage() {
     () => createCatalogMap(budgetCatalogsQuery.data?.installers ?? []),
     [budgetCatalogsQuery.data?.installers],
   );
+  const productLineMap = useMemo(
+    () => createCatalogMap(budgetCatalogsQuery.data?.productLines ?? []),
+    [budgetCatalogsQuery.data?.productLines],
+  );
   const projectMap = useMemo(
     () => createCatalogMap(budgetCatalogsQuery.data?.projects ?? []),
     [budgetCatalogsQuery.data?.projects],
@@ -478,6 +506,10 @@ export function BudgetListPage() {
   const salespersonMap = useMemo(
     () => createCatalogMap(budgetCatalogsQuery.data?.salespeople ?? []),
     [budgetCatalogsQuery.data?.salespeople],
+  );
+  const estimatorMap = useMemo(
+    () => createCatalogMap(budgetCatalogsQuery.data?.estimators ?? []),
+    [budgetCatalogsQuery.data?.estimators],
   );
   const contactMap = useMemo(
     () => createCatalogMap(budgetCatalogsQuery.data?.contacts ?? []),
@@ -616,7 +648,7 @@ export function BudgetListPage() {
 
       return firstGroup.projectName.localeCompare(secondGroup.projectName);
     });
-  }, [projectBudgetItems, projectMap, statusMap]);
+  }, [estimatorMap, projectBudgetItems, projectMap, statusMap]);
   const groupedProjectsCount = useMemo(
     () => projectGroups.length,
     [projectGroups],
@@ -655,7 +687,8 @@ export function BudgetListPage() {
       ...effectiveFilters,
       ...draftFilters,
       page: 1,
-      salespersonId: isAdmin ? draftFilters.salespersonId : "",
+      salespersonId: canManageBudgetScreen ? draftFilters.salespersonId : "",
+      estimatorId: canManageBudgetScreen ? draftFilters.estimatorId : "",
     };
 
     setSearchParams(buildSearchParams(nextFilters));
@@ -669,14 +702,18 @@ export function BudgetListPage() {
       statusId: defaultFilters.statusId,
       installerId: defaultFilters.installerId,
       projectName: defaultFilters.projectName,
-      salespersonId: isAdmin ? defaultFilters.salespersonId : "",
+      salespersonId: canManageBudgetScreen ? defaultFilters.salespersonId : "",
+      estimatorId: canManageBudgetScreen ? defaultFilters.estimatorId : "",
       sentAtFrom: defaultFilters.sentAtFrom,
       sentAtTo: defaultFilters.sentAtTo,
     });
     setSearchParams(
       buildSearchParams({
         ...defaultFilters,
-        salespersonId: isAdmin ? defaultFilters.salespersonId : "",
+        salespersonId: canManageBudgetScreen
+          ? defaultFilters.salespersonId
+          : "",
+        estimatorId: canManageBudgetScreen ? defaultFilters.estimatorId : "",
       }),
     );
   };
@@ -774,7 +811,7 @@ export function BudgetListPage() {
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-      {isAdmin ? (
+      {canCreateBudget ? (
         <Box
           sx={{
             display: "flex",
@@ -785,13 +822,15 @@ export function BudgetListPage() {
             width: "100%",
           }}
         >
-          <Button
-            onClick={() => navigate("/budgets/import")}
-            startIcon={<UploadFileRoundedIcon />}
-            variant="outlined"
-          >
-            Importar planilha
-          </Button>
+          {isAdmin ? (
+            <Button
+              onClick={() => navigate("/budgets/import")}
+              startIcon={<UploadFileRoundedIcon />}
+              variant="outlined"
+            >
+              Importar planilha
+            </Button>
+          ) : null}
           <Button
             onClick={() => navigate("/budgets/new")}
             startIcon={<AddRoundedIcon />}
@@ -811,7 +850,7 @@ export function BudgetListPage() {
             display: "grid",
             gap: 2,
             gridTemplateColumns: {
-              lg: "minmax(220px, 280px) minmax(100px, 120px) minmax(140px, 170px) minmax(130px, 160px) minmax(140px, 180px) minmax(180px, 240px) minmax(140px, 180px)",
+              lg: "minmax(220px, 280px) minmax(100px, 120px) minmax(140px, 170px) minmax(130px, 160px) minmax(140px, 180px) minmax(180px, 240px) minmax(140px, 180px) minmax(160px, 190px)",
               md: "repeat(2, minmax(0, 1fr))",
               xs: "minmax(0, 1fr)",
             },
@@ -898,7 +937,7 @@ export function BudgetListPage() {
             sx={compactFilterFieldSx}
             value={draftFilters.projectName}
           />
-          {isAdmin ? (
+          {canManageBudgetScreen ? (
             <TextField
               label="Vendedor"
               onChange={(event) =>
@@ -917,6 +956,25 @@ export function BudgetListPage() {
                   </MenuItem>
                 ),
               )}
+            </TextField>
+          ) : null}
+          {canManageBudgetScreen ? (
+            <TextField
+              label="Orçamentista"
+              onChange={(event) =>
+                handleDraftChange("estimatorId", event.target.value)
+              }
+              select
+              size="small"
+              sx={compactFilterFieldSx}
+              value={draftFilters.estimatorId}
+            >
+              <MenuItem value="">Todos</MenuItem>
+              {(budgetCatalogsQuery.data?.estimators ?? []).map((estimator) => (
+                <MenuItem key={estimator.id} value={String(estimator.id)}>
+                  {estimator.name}
+                </MenuItem>
+              ))}
             </TextField>
           ) : null}
           <Box
@@ -1389,6 +1447,21 @@ export function BudgetListPage() {
                                       color="text.secondary"
                                       variant="caption"
                                     >
+                                      Orçamentista
+                                    </Typography>
+                                    <Typography variant="body2">
+                                      {formatResolvedCatalogName(
+                                        budget.estimatorId,
+                                        budget.estimatorName,
+                                        estimatorMap,
+                                      )}
+                                    </Typography>
+                                  </Box>
+                                  <Box>
+                                    <Typography
+                                      color="text.secondary"
+                                      variant="caption"
+                                    >
                                       Contato
                                     </Typography>
                                     <Typography variant="body2">
@@ -1486,7 +1559,7 @@ export function BudgetListPage() {
                                     >
                                       Editar
                                     </Button>
-                                    {isAdmin ? (
+                                    {canDeleteBudget ? (
                                       <Button
                                         color="error"
                                         onClick={() =>
@@ -1539,7 +1612,7 @@ export function BudgetListPage() {
                     sx={{
                       borderCollapse: "separate",
                       borderSpacing: 0,
-                      minWidth: 1740,
+                      minWidth: 1860,
                       "& .MuiTableCell-stickyHeader": {
                         backgroundColor: "background.paper",
                         top: 0,
@@ -1565,9 +1638,13 @@ export function BudgetListPage() {
                         <TableCell sx={tableHeadCellSx}>Status</TableCell>
                         <TableCell sx={tableHeadCellSx}>Prioridade</TableCell>
                         <TableCell sx={tableHeadCellSx}>Instalador</TableCell>
+                        <TableCell sx={tableHeadCellSx}>
+                          Linha de produtos
+                        </TableCell>
                         <TableCell sx={tableHeadCellSx}>Obra</TableCell>
                         <TableCell sx={tableHeadCellSx}>Construtora</TableCell>
                         <TableCell sx={tableHeadCellSx}>Vendedor</TableCell>
+                        <TableCell sx={tableHeadCellSx}>Orçamentista</TableCell>
                         <TableCell sx={tableHeadCellSx}>Contato</TableCell>
                         <TableCell sx={tableHeadCellSx}>
                           Motivo de perda
@@ -1712,6 +1789,20 @@ export function BudgetListPage() {
                           <TableCell
                             sx={singleLineTableCellSx}
                             title={formatResolvedCatalogName(
+                              budget.productLineId,
+                              budget.productLineName,
+                              productLineMap,
+                            )}
+                          >
+                            {formatResolvedCatalogName(
+                              budget.productLineId,
+                              budget.productLineName,
+                              productLineMap,
+                            )}
+                          </TableCell>
+                          <TableCell
+                            sx={singleLineTableCellSx}
+                            title={formatResolvedCatalogName(
                               budget.projectId,
                               budget.projectName,
                               projectMap,
@@ -1743,6 +1834,20 @@ export function BudgetListPage() {
                               budget.salespersonId,
                               budget.salespersonName,
                               salespersonMap,
+                            )}
+                          </TableCell>
+                          <TableCell
+                            sx={singleLineTableCellSx}
+                            title={formatResolvedCatalogName(
+                              budget.estimatorId,
+                              budget.estimatorName,
+                              estimatorMap,
+                            )}
+                          >
+                            {formatResolvedCatalogName(
+                              budget.estimatorId,
+                              budget.estimatorName,
+                              estimatorMap,
                             )}
                           </TableCell>
                           <TableCell
@@ -1839,7 +1944,7 @@ export function BudgetListPage() {
                               >
                                 Editar
                               </Button>
-                              {isAdmin ? (
+                              {canDeleteBudget ? (
                                 <Button
                                   color="error"
                                   onClick={() =>

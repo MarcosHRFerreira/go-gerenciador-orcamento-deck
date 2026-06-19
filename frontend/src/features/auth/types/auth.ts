@@ -31,6 +31,7 @@ export type AuthUser = {
   email: string;
   username: string;
   role: "admin" | "user";
+  user_kind?: "salesperson" | "estimator" | null;
   active: boolean;
   must_change_password: boolean;
   created_at: string;
