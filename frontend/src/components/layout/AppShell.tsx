@@ -56,7 +56,6 @@ const autoCollapseDelayMs = 15_000;
 const notificationToneDurationSeconds = 0.12;
 const notificationToneFrequencyHz = 880;
 const notificationToneGain = 0.02;
-const shellBlue = "#1E3A8A";
 const shellSidebarBackground =
   "linear-gradient(180deg, #0F172A 0%, #162456 45%, #1E3A8A 100%)";
 
@@ -512,7 +511,13 @@ export function AppShell() {
               />
               <Box>
                 <Typography
-                  sx={{ color: shellBlue, fontWeight: 800 }}
+                  sx={{
+                    color:
+                      theme.palette.mode === "dark"
+                        ? theme.palette.primary.light
+                        : theme.palette.primary.dark,
+                    fontWeight: 800,
+                  }}
                   variant="h5"
                 >
                   {currentPageLabel}

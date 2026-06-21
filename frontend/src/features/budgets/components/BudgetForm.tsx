@@ -29,7 +29,7 @@ import type { BudgetFormValues } from "./budgetFormValues";
 import { z as schema } from "zod";
 import type { ReactNode } from "react";
 
-const budgetGridBlue = "#1E3A8A";
+const budgetGridBlue = "var(--app-accent-text)";
 const budgetFormSectionCardSx = {
   background: (theme: {
     palette: {

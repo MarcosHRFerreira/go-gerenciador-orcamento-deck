@@ -216,7 +216,7 @@ const premiumDialogTitleSx = {
   background:
     "linear-gradient(135deg, rgba(30,58,138,0.09) 0%, rgba(14,165,233,0.045) 100%)",
   borderBottom: "1px solid rgba(30, 58, 138, 0.1)",
-  color: "#1E3A8A",
+  color: "var(--app-accent-text)",
   fontWeight: 800,
   px: 3,
   py: 2.25,

@@ -2,8 +2,6 @@ import { Box, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import type { PropsWithChildren, ReactNode } from "react";
 
-const pageHeaderBlue = "#1E3A8A";
-
 type PageHeaderProps = PropsWithChildren<{
   title: string;
   description?: string;
@@ -36,7 +34,14 @@ export function PageHeader({
           p: { md: 3.5, xs: 2.75 },
           position: "relative",
           "&::before": {
-            background: `linear-gradient(90deg, ${pageHeaderBlue} 0%, ${alpha(pageHeaderBlue, 0.2)} 100%)`,
+            background: (theme) => {
+              const accentColor =
+                theme.palette.mode === "dark"
+                  ? theme.palette.primary.light
+                  : theme.palette.primary.dark;
+
+              return `linear-gradient(90deg, ${accentColor} 0%, ${alpha(accentColor, 0.2)} 100%)`;
+            },
             content: '""',
             height: 4,
             left: 0,
@@ -49,7 +54,10 @@ export function PageHeader({
         <Box sx={{ flex: "1 1 auto", minWidth: 0, pr: { md: 2, xs: 0 } }}>
           <Typography
             sx={{
-              color: pageHeaderBlue,
+              color: (theme) =>
+                theme.palette.mode === "dark"
+                  ? theme.palette.primary.light
+                  : theme.palette.primary.dark,
               fontWeight: 850,
               letterSpacing: "-0.03em",
               lineHeight: 1.05,

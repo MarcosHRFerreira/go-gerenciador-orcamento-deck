@@ -27,9 +27,10 @@ Nesta primeira etapa o projeto ja possui:
 ## Como Rodar
 
 1. Copie `.env.example` para `.env`
-2. Suba o banco com `docker compose up -d`
-3. Aplique as migrations da pasta `db/migrations`
-4. Rode `go run ./cmd`
+2. Ajuste `DB_USER`, `DB_PASSWORD`, `DATABASE_URL`, `SECRET_JWT` e `INITIAL_ADMIN_SETUP_TOKEN` com valores locais
+3. Suba o banco com `docker compose up -d`
+4. Aplique as migrations da pasta `db/migrations`
+5. Rode `go run ./cmd`
 
 ## Testes
 
@@ -83,8 +84,8 @@ Nesta primeira etapa o projeto ja possui:
 - host: `127.0.0.1`
 - porta: `5433`
 - database: `budget_management`
-- usuario: `postgres`
-- senha: `postgres`
+- usuario: definido no seu `.env` local
+- senha: definida no seu `.env` local
 
 ## Endpoints Iniciais
 

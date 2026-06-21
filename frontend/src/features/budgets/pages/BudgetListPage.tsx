@@ -89,7 +89,7 @@ const decimalFormatter = new Intl.NumberFormat("pt-BR", {
 });
 
 const defaultPageSize = 50;
-const budgetGridBlue = "#1E3A8A";
+const budgetGridBlue = "var(--app-accent-text)";
 
 const defaultFilters: BudgetListFilters = {
   budgetNumber: "",

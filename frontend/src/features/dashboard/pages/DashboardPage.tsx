@@ -2507,7 +2507,7 @@ export function DashboardPage() {
                 </Typography>
                 <Typography
                   sx={{
-                    color: "#1E3A8A",
+                    color: "var(--app-accent-text)",
                     fontWeight: 850,
                     letterSpacing: "-0.03em",
                   }}
@@ -2597,7 +2597,7 @@ export function DashboardPage() {
                 </Typography>
                 <Typography
                   sx={{
-                    color: "#1E3A8A",
+                    color: "var(--app-accent-text)",
                     fontWeight: 850,
                     letterSpacing: "-0.03em",
                   }}

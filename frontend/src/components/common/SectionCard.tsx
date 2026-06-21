@@ -3,8 +3,6 @@ import type { SxProps, Theme } from "@mui/material/styles";
 import { alpha } from "@mui/material/styles";
 import type { PropsWithChildren } from "react";
 
-const sectionCardBlue = "#1E3A8A";
-
 type SectionCardProps = PropsWithChildren<{
   title?: string;
   description?: string;
@@ -59,7 +57,10 @@ export function SectionCard({
           >
             <Typography
               sx={{
-                color: sectionCardBlue,
+                color: (theme) =>
+                  theme.palette.mode === "dark"
+                    ? theme.palette.primary.light
+                    : theme.palette.primary.dark,
                 fontWeight: 850,
                 letterSpacing: "-0.02em",
               }}

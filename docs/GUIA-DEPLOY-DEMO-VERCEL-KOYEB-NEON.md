@@ -1,11 +1,11 @@
-# Guia de Deploy Demo com Vercel, Koyeb e Neon
+# Guia de Deploy Demo com Vercel, Render e Neon
 
 ## Objetivo
 
 Este guia mostra como publicar uma versao de demonstracao do sistema usando:
 
 - `Frontend`: Vercel
-- `Backend`: Koyeb
+- `Backend`: Render
 - `Banco PostgreSQL`: Neon
 
 O foco aqui e colocar uma demo funcional no ar para apresentacao ao cliente, com o menor atrito possivel.
@@ -13,9 +13,9 @@ O foco aqui e colocar uma demo funcional no ar para apresentacao ao cliente, com
 ## Arquitetura Recomendada
 
 - `Vercel`: hospeda o frontend React/Vite
-- `Koyeb`: publica a API em Go
+- `Render`: publica a API em Go
 - `Neon`: fornece o PostgreSQL gerenciado
-- `Vercel Rewrite`: faz proxy de `/api/*` para a API no Koyeb
+- `Vercel Proxy`: encaminha `/api/*` para a API no Render
 
 Esse proxy no Vercel e importante porque o sistema usa cookie de refresh token. Com frontend e backend em dominios diferentes, voce pode ter problema de autenticacao em navegadores. Com o proxy, o frontend fala com `/api` no mesmo host e a demo fica mais estavel.
 
@@ -25,21 +25,21 @@ Antes de comecar, tenha em maos:
 
 - conta no GitHub com o projeto publicado
 - conta no Vercel
-- conta no Koyeb
+- conta no Render
 - conta no Neon
 - Docker funcionando na sua maquina local
 
-## Estrategia de Publicacao
+## Estrategia De Publicacao
 
 1. Criar o banco no Neon
 2. Aplicar as migrations do projeto no banco novo
-3. Publicar o backend no Koyeb
+3. Publicar o backend no Render
 4. Publicar o frontend no Vercel
 5. Configurar o frontend para chamar a API via `/api`
 6. Criar o primeiro usuario admin
 7. Validar login, orcamentos, dashboards e comunicacao
 
-## 1. Criar o Banco no Neon
+## 1. Criar O Banco No Neon
 
 1. Acesse o painel do Neon
 2. Crie um novo projeto
@@ -61,7 +61,7 @@ Anote tambem os valores separados, porque o backend precisa de:
 - `DB_NAME`
 - `DATABASE_URL`
 
-## 2. Aplicar as Migrations no Neon
+## 2. Aplicar As Migrations No Neon
 
 Este projeto nao roda migrations automaticamente ao iniciar a API. Entao, antes do deploy da aplicacao, aplique todas as migrations no banco do Neon.
 
@@ -71,13 +71,19 @@ Abra um terminal na pasta `backend` do projeto e execute:
 
 ```powershell
 $env:DATABASE_URL="COLE_AQUI_A_CONNECTION_STRING_DO_NEON"
-$backendPath = (Get-Location).Path
 
 Get-ChildItem .\db\migrations\*.sql |
   Sort-Object Name |
   ForEach-Object {
-    docker run --rm -v "${backendPath}:/work" postgres:17 `
-      psql "$env:DATABASE_URL" -v ON_ERROR_STOP=1 -f "/work/db/migrations/$($_.Name)"
+    $content = Get-Content $_.FullName -Raw
+    $up = (($content -split '-- migrate:down')[0] -replace '-- migrate:up', '').Trim()
+
+    if ([string]::IsNullOrWhiteSpace($up)) {
+      throw "Migration sem bloco UP: $($_.Name)"
+    }
+
+    $up | docker run --rm -i postgres:17 `
+      psql -d "$env:DATABASE_URL" -v ON_ERROR_STOP=1
   }
 ```
 
@@ -91,30 +97,30 @@ Depois, voce pode validar conectando no editor SQL do Neon e executando algo sim
 select now();
 ```
 
-## 3. Publicar o Backend no Koyeb
+## 3. Publicar O Backend No Render
 
-1. Entre no Koyeb
+1. Entre no Render
 2. Crie um novo `Web Service`
 3. Escolha o repositorio GitHub deste projeto
-4. Aponte o service para a pasta `backend`
+4. Se o `Root Directory` nao funcionar, deixe vazio e use os comandos com `cd backend`
 
-Se o painel pedir os comandos manualmente, use:
+Use:
 
-- `Build command`:
+- `Build Command`:
 
 ```bash
-go build -o app ./cmd
+cd backend && go build -o app ./cmd
 ```
 
-- `Run command`:
+- `Start Command`:
 
 ```bash
-./app
+cd backend && ./app
 ```
 
 ### Variaveis de ambiente do backend
 
-Cadastre no Koyeb:
+Cadastre no Render:
 
 ```text
 APP_ENV=production
@@ -129,8 +135,8 @@ DB_PORT=5432
 DB_USER=usuario-do-neon
 DB_PASSWORD=senha-do-neon
 DB_NAME=budget_management
-DATABASE_URL=postgres://usuario:senha@host/budget_management?sslmode=require
-ALLOWED_ORIGINS=https://SEU-FRONTEND.vercel.app
+DATABASE_URL=postgres://usuario:senha@host-do-neon/budget_management?sslmode=require&channel_binding=require
+ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://SEU-FRONTEND.vercel.app
 ```
 
 Observacoes:
@@ -141,10 +147,10 @@ Observacoes:
 
 ### Validar o backend
 
-Depois do deploy, abra a URL publica do Koyeb e teste:
+Depois do deploy, abra a URL publica do Render e teste:
 
 ```text
-https://SEU-BACKEND.koyeb.app/check-health
+https://SEU-BACKEND.onrender.com/check-health
 ```
 
 O retorno esperado e:
@@ -153,9 +159,9 @@ O retorno esperado e:
 {"message":"service is healthy"}
 ```
 
-## 4. Configurar o Frontend para Usar Proxy `/api`
+## 4. Configurar O Frontend Para Usar Proxy `/api`
 
-Para evitar problemas de cookie e refresh token em dominios diferentes, o frontend deve chamar a API por `/api`, e o Vercel deve encaminhar isso para o backend do Koyeb.
+Para evitar problemas de cookie e refresh token em dominios diferentes, o frontend deve chamar a API por `/api`, e o Vercel deve encaminhar isso para o backend do Render.
 
 ### 4.1 Criar o arquivo `frontend/vercel.json`
 
@@ -163,16 +169,23 @@ Crie o arquivo `frontend/vercel.json` com este conteudo:
 
 ```json
 {
-  "rewrites": [
+  "routes": [
     {
-      "source": "/api/(.*)",
-      "destination": "https://SEU-BACKEND.koyeb.app/$1"
+      "src": "/api/(.*)",
+      "dest": "https://SEU-BACKEND.onrender.com/$1"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ]
 }
 ```
 
-Troque `SEU-BACKEND.koyeb.app` pela URL real do seu backend.
+Troque `SEU-BACKEND.onrender.com` pela URL real do seu backend.
 
 ### 4.2 Ajustar a variavel do frontend
 
@@ -188,7 +201,7 @@ Voce tambem pode definir:
 VITE_APP_NAME=Gestao de Orcamentos
 ```
 
-## 5. Publicar o Frontend no Vercel
+## 5. Publicar O Frontend No Vercel
 
 1. Entre no Vercel
 2. Importe o mesmo repositorio GitHub
@@ -224,7 +237,7 @@ VITE_APP_NAME=Gestao de Orcamentos
 
 Depois disso, publique o projeto.
 
-## 6. Criar o Primeiro Usuario Admin
+## 6. Criar O Primeiro Usuario Admin
 
 O primeiro usuario nao e criado pela interface. Ele precisa ser criado via API, usando o header `X-Setup-Token`.
 
@@ -252,7 +265,7 @@ $body = @{
 } | ConvertTo-Json
 
 Invoke-WebRequest `
-  -Uri "https://SEU-BACKEND.koyeb.app/auth/register" `
+  -Uri "https://SEU-BACKEND.onrender.com/auth/register" `
   -Method POST `
   -Headers $headers `
   -Body $body
@@ -265,7 +278,7 @@ Depois disso:
 - o primeiro usuario admin passa a existir
 - a rota de bootstrap inicial deixa de aceitar novos cadastros publicos
 
-## 7. Validacao Final da Demo
+## 7. Validacao Final Da Demo
 
 Depois dos deploys e do primeiro usuario criado, valide este fluxo:
 
@@ -278,7 +291,7 @@ Depois dos deploys e do primeiro usuario criado, valide este fluxo:
 7. validar os catalogos administrativos
 8. testar logout e novo login
 
-## 8. Checklist de Apresentacao
+## 8. Checklist De Apresentacao
 
 Antes de apresentar ao cliente:
 
@@ -301,7 +314,7 @@ Causa comum:
 Correcao:
 
 - usar `VITE_API_URL=/api`
-- configurar `frontend/vercel.json` com rewrite para o Koyeb
+- configurar `frontend/vercel.json` com proxy para o Render
 
 ### CORS bloqueado no navegador
 
@@ -336,7 +349,17 @@ Correcao:
 - revisar `INITIAL_ADMIN_SETUP_TOKEN`
 - revisar se o banco ja possui usuarios
 
-## 10. Limites do Plano Gratis
+### Rotas como `/login` ou `/dashboard` retornam `404` no Vercel
+
+Causa comum:
+
+- falta de fallback SPA no `frontend/vercel.json`
+
+Correcao:
+
+- usar a configuracao com `routes`, `handle: filesystem` e fallback para `/index.html`
+
+## 10. Limites Do Plano Gratis
 
 Para demo e apresentacao, esse stack atende bem. Mas considere:
 
@@ -345,7 +368,7 @@ Para demo e apresentacao, esse stack atende bem. Mas considere:
 - o banco gratis tem limites
 - esse ambiente nao deve ser tratado como producao
 
-## 11. Proximo Passo Quando o Cliente Aprovar
+## 11. Proximo Passo Quando O Cliente Aprovar
 
 Depois da aprovacao, o ideal e montar a esteira correta:
 
@@ -364,7 +387,7 @@ Se quiser a versao curta:
 
 1. criar banco no Neon
 2. aplicar migrations
-3. publicar backend no Koyeb
+3. publicar backend no Render
 4. configurar `ALLOWED_ORIGINS`
 5. criar `frontend/vercel.json`
 6. publicar frontend no Vercel com `VITE_API_URL=/api`

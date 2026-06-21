@@ -1,12 +1,16 @@
 import { alpha, createTheme } from "@mui/material/styles";
 import type { PaletteMode } from "@mui/material";
 
-const primaryMain = "#2563EB";
 const lightSidebarBackground = "#0F172A";
 const darkSidebarBackground = "#020617";
 
 export function createAppTheme(mode: PaletteMode) {
   const isDarkMode = mode === "dark";
+  const primaryMain = isDarkMode ? "#60A5FA" : "#2563EB";
+  const primaryDark = isDarkMode ? "#3B82F6" : "#1D4ED8";
+  const primaryLight = isDarkMode ? "#BFDBFE" : "#DBEAFE";
+  const infoMain = isDarkMode ? "#38BDF8" : "#0284C7";
+  const accentTextColor = isDarkMode ? "#BFDBFE" : "#1E3A8A";
   const sidebarBackground = isDarkMode
     ? darkSidebarBackground
     : lightSidebarBackground;
@@ -27,8 +31,8 @@ export function createAppTheme(mode: PaletteMode) {
       mode,
       primary: {
         main: primaryMain,
-        dark: "#1D4ED8",
-        light: "#DBEAFE",
+        dark: primaryDark,
+        light: primaryLight,
       },
       success: {
         main: "#16A34A",
@@ -40,7 +44,7 @@ export function createAppTheme(mode: PaletteMode) {
         main: "#DC2626",
       },
       info: {
-        main: "#0284C7",
+        main: infoMain,
       },
       text: {
         primary: textPrimary,
@@ -91,6 +95,7 @@ export function createAppTheme(mode: PaletteMode) {
       MuiCssBaseline: {
         styleOverrides: {
           body: {
+            "--app-accent-text": accentTextColor,
             backgroundColor: backgroundDefault,
           },
         },

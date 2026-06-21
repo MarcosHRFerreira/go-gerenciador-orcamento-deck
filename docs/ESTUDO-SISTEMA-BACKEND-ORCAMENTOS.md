@@ -915,13 +915,13 @@ Para o novo projeto, a adaptacao recomendada e:
 
 ```env
 PORT=8080
-SECRET_JWT=local-dev-secret
+SECRET_JWT=defina-um-segredo-local-forte
 DB_HOST=localhost
 DB_PORT=5432
-DB_USER=postgres
-DB_PASSWORD=postgres
+DB_USER=seu_usuario_local
+DB_PASSWORD=sua_senha_local
 DB_NAME=budget_management
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/budget_management?sslmode=disable
+DATABASE_URL=postgres://seu_usuario_local:sua_senha_local@localhost:5432/budget_management?sslmode=disable
 ```
 
 ## Exemplo De Docker Compose Para PostgreSQL

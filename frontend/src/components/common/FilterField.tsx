@@ -3,8 +3,6 @@ import { alpha } from "@mui/material/styles";
 import type { SxProps, Theme } from "@mui/material/styles";
 import type { PropsWithChildren } from "react";
 
-const filterBlue = "#1E3A8A";
-
 export const compactFilterFieldSx = {
   width: "100%",
   "& .MuiFormHelperText-root": {
@@ -31,7 +29,10 @@ export const compactFilterFieldSx = {
       boxShadow: "0 16px 30px rgba(30, 58, 138, 0.14)",
     },
     "&.Mui-focused fieldset": {
-      borderColor: filterBlue,
+      borderColor: (theme: Theme) =>
+        theme.palette.mode === "dark"
+          ? theme.palette.primary.light
+          : theme.palette.primary.dark,
       borderWidth: "1px",
     },
   },
@@ -44,7 +45,10 @@ export const filterFieldContainerSx = {
 } as const;
 
 export const filterFieldLabelSx = {
-  color: filterBlue,
+  color: (theme: Theme) =>
+    theme.palette.mode === "dark"
+      ? theme.palette.primary.light
+      : theme.palette.primary.dark,
   fontSize: "0.78rem",
   fontWeight: 800,
   letterSpacing: "0.04em",
@@ -81,7 +85,10 @@ export const filterGroupSx: SxProps<Theme> = {
 };
 
 export const filterGroupTitleSx = {
-  color: filterBlue,
+  color: (theme: Theme) =>
+    theme.palette.mode === "dark"
+      ? theme.palette.primary.light
+      : theme.palette.primary.dark,
   fontWeight: 850,
   letterSpacing: "-0.01em",
 } as const;
@@ -94,7 +101,10 @@ export const filterSectionCardSx: SxProps<Theme> = {
   boxShadow: (theme) =>
     `0 12px 24px ${alpha(theme.palette.primary.main, 0.07)}`,
   "& .MuiTypography-h5": {
-    color: filterBlue,
+    color: (theme: Theme) =>
+      theme.palette.mode === "dark"
+        ? theme.palette.primary.light
+        : theme.palette.primary.dark,
     fontWeight: 800,
   },
   "& .MuiTypography-body2": {
