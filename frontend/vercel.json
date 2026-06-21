@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://go-gerenciador-orcamento-api.onrender.com/$1"
+    }
+  ]
+}
