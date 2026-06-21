@@ -11,6 +11,8 @@ import { BudgetImportPage } from "../../features/budgets/pages/BudgetImportPage"
 import { BudgetListPage } from "../../features/budgets/pages/BudgetListPage";
 import { CommunicationPage } from "../../features/communication/pages/CommunicationPage";
 import { DashboardPage } from "../../features/dashboard/pages/DashboardPage";
+import EstimatorCreatePage from "../../features/estimators/pages/EstimatorCreatePage";
+import EstimatorEditRoutePage from "../../features/estimators/pages/EstimatorEditRoutePage";
 import EstimatorListPage from "../../features/estimators/pages/EstimatorListPage";
 import ProjectCreatePage from "../../features/projects/pages/ProjectCreatePage";
 import ProjectDetailPage from "../../features/projects/pages/ProjectDetailPage";
@@ -48,6 +50,11 @@ export function AppRouter() {
             <Route path="/budgets/new" element={<BudgetCreatePage />} />
             <Route path="/salespeople" element={<SalespersonListPage />} />
             <Route path="/estimators" element={<EstimatorListPage />} />
+            <Route path="/estimators/new" element={<EstimatorCreatePage />} />
+            <Route
+              path="/estimators/:estimatorId/edit"
+              element={<EstimatorEditRoutePage />}
+            />
             <Route path="/system-types" element={<SystemTypeListPage />} />
             <Route path="/users" element={<UserListPage />} />
             <Route path="/users/new" element={<UserCreatePage />} />

@@ -284,9 +284,8 @@ export function CommunicationPage() {
   const requestedTab = searchParams.get("tab");
   const autoMarkedConversationKeyRef = useRef<string | null>(null);
   const autoMarkedNoticeIdsRef = useRef<Set<number>>(new Set());
-  const [activeTab, setActiveTab] = useState<CommunicationTab>(
-    requestedTab === "conversations" ? "conversations" : "notices",
-  );
+  const activeTab: CommunicationTab =
+    requestedTab === "conversations" ? "conversations" : "notices";
   const [statusFilter, setStatusFilter] = useState<NoticeStatusFilter>("all");
   const [activeConversationId, setActiveConversationId] = useState<
     number | null
@@ -360,21 +359,38 @@ export function CommunicationPage() {
     );
   }, [contextualProjectId, conversationsQuery.data, hasContextualProject]);
 
+  const resolvedActiveConversationId = useMemo(() => {
+    if (visibleConversations.length === 0) {
+      return null;
+    }
+
+    const hasSelectedConversation = visibleConversations.some(
+      (conversation) => conversation.id === activeConversationId,
+    );
+
+    if (hasSelectedConversation) {
+      return activeConversationId;
+    }
+
+    return visibleConversations[0]?.id ?? null;
+  }, [activeConversationId, visibleConversations]);
   const activeConversation = useMemo(
     () =>
       visibleConversations.find(
-        (conversation) => conversation.id === activeConversationId,
+        (conversation) => conversation.id === resolvedActiveConversationId,
       ) ?? null,
-    [activeConversationId, visibleConversations],
+    [resolvedActiveConversationId, visibleConversations],
   );
 
   const conversationMessagesQuery = useQuery({
-    queryKey: communicationQueryKeys.conversationMessages(activeConversationId),
+    queryKey: communicationQueryKeys.conversationMessages(
+      resolvedActiveConversationId,
+    ),
     queryFn: async () =>
-      listConversationMessagesRequest(activeConversationId ?? 0),
-    enabled: activeConversationId !== null,
+      listConversationMessagesRequest(resolvedActiveConversationId ?? 0),
+    enabled: resolvedActiveConversationId !== null,
     refetchInterval:
-      activeTab === "conversations" && activeConversationId !== null
+      activeTab === "conversations" && resolvedActiveConversationId !== null
         ? communicationPollingIntervals.messagesMs
         : false,
     refetchIntervalInBackground: true,
@@ -447,7 +463,9 @@ export function CommunicationPage() {
       await queryClient.invalidateQueries({
         queryKey: communicationQueryKeys.conversationUnreadCount(),
       });
-      setActiveTab("conversations");
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set("tab", "conversations");
+      setSearchParams(nextParams, { replace: true });
       setActiveConversationId(response.id);
       setCreateConversationDialogOpen(false);
       setCreateConversationFormState(defaultCreateConversationFormState);
@@ -464,17 +482,21 @@ export function CommunicationPage() {
 
   const sendConversationMessageMutation = useMutation({
     mutationFn: async (payload: SendConversationMessagePayload) => {
-      if (activeConversationId === null) {
+      if (resolvedActiveConversationId === null) {
         throw new Error("Conversa não selecionada");
       }
 
-      return sendConversationMessageRequest(activeConversationId, payload);
+      return sendConversationMessageRequest(
+        resolvedActiveConversationId,
+        payload,
+      );
     },
     onSuccess: async () => {
-      if (activeConversationId !== null) {
+      if (resolvedActiveConversationId !== null) {
         await queryClient.invalidateQueries({
-          queryKey:
-            communicationQueryKeys.conversationMessages(activeConversationId),
+          queryKey: communicationQueryKeys.conversationMessages(
+            resolvedActiveConversationId,
+          ),
         });
       }
       await queryClient.invalidateQueries({
@@ -532,36 +554,6 @@ export function CommunicationPage() {
   const unreadNoticesCount = noticeUnreadCountQuery.data ?? 0;
   const unreadConversationsCount = conversationUnreadCountQuery.data ?? 0;
   const contextualProject = contextualProjectQuery.data ?? null;
-
-  useEffect(() => {
-    if (requestedTab === "conversations") {
-      setActiveTab("conversations");
-    }
-  }, [requestedTab]);
-
-  useEffect(() => {
-    setCreateConversationFormState((currentState) => ({
-      ...currentState,
-      projectId: hasContextualProject ? contextualProjectId : null,
-    }));
-  }, [contextualProjectId, hasContextualProject]);
-
-  useEffect(() => {
-    const conversationItems = visibleConversations;
-    if (conversationItems.length === 0) {
-      if (activeConversationId !== null) {
-        setActiveConversationId(null);
-      }
-      return;
-    }
-
-    const hasActiveConversation = conversationItems.some(
-      (item) => item.id === activeConversationId,
-    );
-    if (!hasActiveConversation) {
-      setActiveConversationId(conversationItems[0].id);
-    }
-  }, [activeConversationId, visibleConversations]);
 
   useEffect(() => {
     if (activeTab !== "notices" || !noticesQuery.isSuccess) {
@@ -701,7 +693,7 @@ export function CommunicationPage() {
   };
 
   const handleSendConversationMessage = () => {
-    if (activeConversationId === null) {
+    if (resolvedActiveConversationId === null) {
       return;
     }
 
@@ -907,7 +899,6 @@ export function CommunicationPage() {
             },
           }}
           onChange={(_, value: CommunicationTab) => {
-            setActiveTab(value);
             const nextParams = new URLSearchParams(searchParams);
             nextParams.set("tab", value);
             setSearchParams(nextParams, { replace: true });
@@ -1258,7 +1249,9 @@ export function CommunicationPage() {
                     <ConversationListItemCard
                       key={conversation.id}
                       conversation={conversation}
-                      isSelected={conversation.id === activeConversationId}
+                      isSelected={
+                        conversation.id === resolvedActiveConversationId
+                      }
                       onClick={() => setActiveConversationId(conversation.id)}
                     />
                   ))}
