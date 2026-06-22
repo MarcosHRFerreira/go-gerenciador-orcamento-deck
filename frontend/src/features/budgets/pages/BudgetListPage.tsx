@@ -35,6 +35,7 @@ import {
   Typography,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
+import type { Theme } from "@mui/material/styles";
 import {
   keepPreviousData,
   useMutation,
@@ -342,11 +343,20 @@ function getBudgetStatusCategory(statusName: string): BudgetStatusCategory {
 }
 
 const tableHeadCellSx = {
-  backgroundColor: "#DBEAFE",
-  borderBottomColor: budgetGridBlue,
+  backgroundColor: (theme: Theme) =>
+    theme.palette.mode === "dark"
+      ? alpha(theme.palette.primary.light, 0.16)
+      : "#DBEAFE",
+  borderBottomColor: (theme: Theme) =>
+    theme.palette.mode === "dark"
+      ? theme.palette.primary.light
+      : budgetGridBlue,
   borderBottomStyle: "solid",
   borderBottomWidth: 2,
-  color: budgetGridBlue,
+  color: (theme: Theme) =>
+    theme.palette.mode === "dark"
+      ? theme.palette.primary.light
+      : budgetGridBlue,
   fontSize: "0.75rem",
   fontWeight: 800,
   letterSpacing: "0.05em",
@@ -2042,11 +2052,16 @@ export function BudgetListPage() {
                         zIndex: 3,
                       },
                       "& .MuiTableCell-stickyHeader": {
-                        backgroundColor: "background.paper",
-                        backgroundImage:
-                          "linear-gradient(180deg, rgba(219, 234, 254, 0.98) 0%, rgba(191, 219, 254, 0.98) 100%)",
-                        boxShadow:
-                          "inset 0 -1px 0 rgba(30, 58, 138, 0.22), 0 10px 18px rgba(15, 23, 42, 0.08)",
+                        backgroundColor: (theme) =>
+                          theme.palette.background.paper,
+                        backgroundImage: (theme) =>
+                          theme.palette.mode === "dark"
+                            ? `linear-gradient(180deg, ${alpha(theme.palette.background.paper, 0.98)} 0%, ${alpha(theme.palette.primary.light, 0.12)} 100%)`
+                            : "linear-gradient(180deg, rgba(219, 234, 254, 0.98) 0%, rgba(191, 219, 254, 0.98) 100%)",
+                        boxShadow: (theme) =>
+                          theme.palette.mode === "dark"
+                            ? `inset 0 -1px 0 ${alpha(theme.palette.primary.light, 0.26)}, 0 10px 18px rgba(2, 6, 23, 0.28)`
+                            : "inset 0 -1px 0 rgba(30, 58, 138, 0.22), 0 10px 18px rgba(15, 23, 42, 0.08)",
                         top: 0,
                         zIndex: 4,
                       },
