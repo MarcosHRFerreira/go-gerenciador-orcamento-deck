@@ -287,6 +287,7 @@ func parseListFilters(c *gin.Context) (*dto.ListBudgetsFilters, error) {
 		PriorityID:     priorityID,
 		ProjectID:      projectID,
 		ProjectCode:    c.Query("project_code"),
+		ProjectName:    c.Query("project_name"),
 		ProjectTypeID:  projectTypeID,
 		ProjetistaName: c.Query("projetista_name"),
 		CompetitorName: c.Query("competitor_name"),

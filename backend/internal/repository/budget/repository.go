@@ -339,6 +339,13 @@ func buildListWhereClause(filters *dto.ListBudgetsFilters) (string, []interface{
 			args = append(args, "%"+strings.TrimSpace(filters.ProjectCode)+"%")
 			conditions = append(conditions, fmt.Sprintf("p.code ILIKE $%d", len(args)))
 		}
+		if filters.ProjectName != "" {
+			args = append(args, "%"+strings.TrimSpace(filters.ProjectName)+"%")
+			conditions = append(
+				conditions,
+				fmt.Sprintf("(p.name ILIKE $%d OR p.code ILIKE $%d)", len(args), len(args)),
+			)
+		}
 		if filters.SourceCompany != "" {
 			args = append(args, strings.TrimSpace(filters.SourceCompany))
 			conditions = append(

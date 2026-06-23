@@ -1,6 +1,8 @@
 export type DashboardSalespeopleFilters = {
   sourceCompany: string;
   salespersonId: string;
+  installerId: string;
+  statusId: string;
   year: string;
   month: string;
 };
@@ -77,6 +79,7 @@ export type DashboardMonthlyEvolutionItem = {
 
 export type DashboardEntityPerformanceItem = {
   label: string;
+  projectId?: number | null;
   budgetCount: number;
   wonBudgetCount: number;
   lostBudgetCount: number;

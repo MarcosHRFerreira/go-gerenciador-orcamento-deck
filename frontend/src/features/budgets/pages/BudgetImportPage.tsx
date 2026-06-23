@@ -18,10 +18,18 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
+import type { Theme } from "@mui/material/styles";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  compactFilterFieldSx,
+  FilterField,
+  filterGroupSx,
+  filterGroupTitleSx,
+} from "../../../components/common/FilterField";
 import { PageHeader } from "../../../components/common/PageHeader";
 import { SectionCard } from "../../../components/common/SectionCard";
 import {
@@ -161,6 +169,93 @@ function getImportProgressValue(
 
   return Math.min(100, Math.round((rowsProcessed / rowsExpected) * 100));
 }
+
+const budgetImportTintedDarkText = "#020617";
+
+const budgetImportSectionCardSx = {
+  background: (theme: Theme) =>
+    theme.palette.mode === "dark"
+      ? `linear-gradient(135deg, ${alpha(theme.palette.primary.light, 0.16)} 0%, ${alpha(theme.palette.info.light, 0.08)} 100%)`
+      : `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.06)} 0%, ${alpha(theme.palette.info.main, 0.03)} 100%)`,
+  border: "1px solid",
+  borderColor: (theme: Theme) =>
+    theme.palette.mode === "dark"
+      ? alpha(theme.palette.primary.light, 0.2)
+      : alpha(theme.palette.primary.main, 0.16),
+  boxShadow: (theme: Theme) =>
+    theme.palette.mode === "dark"
+      ? "0 16px 32px rgba(2, 6, 23, 0.22)"
+      : `0 12px 24px ${alpha(theme.palette.primary.main, 0.07)}`,
+  "& .MuiTypography-h5": {
+    color: (theme: Theme) =>
+      theme.palette.mode === "dark"
+        ? theme.palette.primary.light
+        : theme.palette.primary.dark,
+    fontWeight: 800,
+  },
+  "& .MuiTypography-body2": {
+    color: "text.primary",
+  },
+} as const;
+
+const budgetImportFileInfoSx = {
+  alignItems: "center",
+  backgroundColor: (theme: Theme) =>
+    theme.palette.mode === "dark"
+      ? alpha(theme.palette.primary.light, 0.9)
+      : alpha(theme.palette.primary.main, 0.06),
+  border: "1px solid",
+  borderColor: (theme: Theme) =>
+    theme.palette.mode === "dark"
+      ? alpha(budgetImportTintedDarkText, 0.18)
+      : alpha(theme.palette.primary.main, 0.12),
+  borderRadius: 3,
+  color: (theme: Theme) =>
+    theme.palette.mode === "dark"
+      ? budgetImportTintedDarkText
+      : theme.palette.text.primary,
+  display: "flex",
+  fontWeight: 700,
+  minHeight: 42,
+  px: 1.5,
+} as const;
+
+const budgetImportOptionToggleSx = {
+  alignItems: "center",
+  backgroundColor: (theme: Theme) =>
+    theme.palette.mode === "dark"
+      ? alpha(theme.palette.primary.light, 0.88)
+      : alpha(theme.palette.primary.main, 0.05),
+  border: "1px solid",
+  borderColor: (theme: Theme) =>
+    theme.palette.mode === "dark"
+      ? alpha(budgetImportTintedDarkText, 0.16)
+      : alpha(theme.palette.primary.main, 0.12),
+  borderRadius: 3,
+  m: 0,
+  minHeight: 44,
+  px: 1.25,
+  py: 0.35,
+  "& .MuiCheckbox-root": {
+    color: (theme: Theme) =>
+      theme.palette.mode === "dark"
+        ? budgetImportTintedDarkText
+        : theme.palette.primary.main,
+  },
+  "& .MuiCheckbox-root.Mui-checked": {
+    color: (theme: Theme) =>
+      theme.palette.mode === "dark"
+        ? budgetImportTintedDarkText
+        : theme.palette.primary.main,
+  },
+  "& .MuiFormControlLabel-label": {
+    color: (theme: Theme) =>
+      theme.palette.mode === "dark"
+        ? budgetImportTintedDarkText
+        : theme.palette.text.primary,
+    fontWeight: 700,
+  },
+} as const;
 
 export function BudgetImportPage() {
   const navigate = useNavigate();
@@ -383,6 +478,7 @@ export function BudgetImportPage() {
 
       <SectionCard
         description="A importação identifica automaticamente o layout compatível e exige um arquivo .xlsx."
+        sx={budgetImportSectionCardSx}
         title="Arquivo e opções"
       >
         <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
@@ -409,9 +505,15 @@ export function BudgetImportPage() {
             >
               Selecionar planilha
             </Button>
-            <Typography color="text.secondary" variant="body2">
-              {selectedFile?.name ?? "Nenhum arquivo selecionado."}
-            </Typography>
+            <Box sx={budgetImportFileInfoSx}>
+              <Typography
+                color="inherit"
+                sx={{ fontWeight: 700 }}
+                variant="body2"
+              >
+                {selectedFile?.name ?? "Nenhum arquivo selecionado."}
+              </Typography>
+            </Box>
           </Box>
 
           <Box
@@ -424,13 +526,20 @@ export function BudgetImportPage() {
               },
             }}
           >
-            <TextField
-              helperText="Configuração fixa para proteger ajustes manuais já feitos no sistema."
-              label="Duplicidade"
-              size="small"
-              slotProps={{ input: { readOnly: true } }}
-              value="Ignorar existente"
-            />
+            <Box sx={filterGroupSx}>
+              <Typography sx={filterGroupTitleSx} variant="subtitle2">
+                Regras da importação
+              </Typography>
+              <FilterField label="Duplicidade">
+                <TextField
+                  helperText="Configuração fixa para proteger ajustes manuais já feitos no sistema."
+                  size="small"
+                  slotProps={{ input: { readOnly: true } }}
+                  sx={compactFilterFieldSx}
+                  value="Ignorar existente"
+                />
+              </FilterField>
+            </Box>
             <FormControlLabel
               control={
                 <Checkbox
@@ -444,6 +553,7 @@ export function BudgetImportPage() {
                 />
               }
               label="Criar catálogos ausentes"
+              sx={budgetImportOptionToggleSx}
             />
             <FormControlLabel
               control={
@@ -458,6 +568,7 @@ export function BudgetImportPage() {
                 />
               }
               label="Usar Não informado"
+              sx={budgetImportOptionToggleSx}
             />
           </Box>
 

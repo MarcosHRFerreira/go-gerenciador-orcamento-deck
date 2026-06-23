@@ -5,6 +5,8 @@ import "time"
 type DashboardSalespeopleFilters struct {
 	SourceCompany           string
 	SalespersonID           *int64
+	InstallerID             *int64
+	StatusID                *int64
 	RestrictedSalespersonID *int64
 	Year                    *int
 	Month                   *int
@@ -82,6 +84,7 @@ type DashboardMonthlyEvolutionResponse struct {
 
 type DashboardEntityPerformanceResponse struct {
 	Label               string     `json:"label"`
+	ProjectID           *int64     `json:"project_id,omitempty"`
 	BudgetCount         int        `json:"budget_count"`
 	WonBudgetCount      int        `json:"won_budget_count"`
 	LostBudgetCount     int        `json:"lost_budget_count"`

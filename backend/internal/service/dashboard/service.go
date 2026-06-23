@@ -161,6 +161,12 @@ func normalizeDashboardFilters(
 	if normalized.SalespersonID != nil && *normalized.SalespersonID <= 0 {
 		return nil, apperror.BadRequest("salesperson_id deve ser maior que zero")
 	}
+	if normalized.InstallerID != nil && *normalized.InstallerID <= 0 {
+		return nil, apperror.BadRequest("installer_id deve ser maior que zero")
+	}
+	if normalized.StatusID != nil && *normalized.StatusID <= 0 {
+		return nil, apperror.BadRequest("status_id deve ser maior que zero")
+	}
 	if normalized.Year != nil && *normalized.Year <= 0 {
 		return nil, apperror.BadRequest("year deve ser maior que zero")
 	}

@@ -35,7 +35,7 @@ import {
   Typography,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import type { Theme } from "@mui/material/styles";
+import type { SxProps, Theme } from "@mui/material/styles";
 import {
   keepPreviousData,
   useMutation,
@@ -49,6 +49,7 @@ import {
   compactFilterFieldSx,
   FilterField,
   filterGroupSx,
+  filterSectionCardSx,
   filterGroupTitleSx,
 } from "../../../components/common/FilterField";
 import { PageHeader } from "../../../components/common/PageHeader";
@@ -91,6 +92,7 @@ const decimalFormatter = new Intl.NumberFormat("pt-BR", {
 
 const defaultPageSize = 50;
 const budgetGridBlue = "var(--app-accent-text)";
+const budgetTintedDarkText = "#020617";
 
 const defaultFilters: BudgetListFilters = {
   budgetNumber: "",
@@ -100,6 +102,8 @@ const defaultFilters: BudgetListFilters = {
   installerId: "",
   systemTypeId: "",
   projectCode: "",
+  projectId: "",
+  projectName: "",
   salespersonId: "",
   estimatorId: "",
   sentAtFrom: "",
@@ -152,6 +156,8 @@ function getFiltersFromSearchParams(
     systemTypeId:
       searchParams.get("systemTypeId") ?? defaultFilters.systemTypeId,
     projectCode: searchParams.get("projectCode") ?? defaultFilters.projectCode,
+    projectId: searchParams.get("projectId") ?? defaultFilters.projectId,
+    projectName: searchParams.get("projectName") ?? defaultFilters.projectName,
     salespersonId:
       searchParams.get("salespersonId") ?? defaultFilters.salespersonId,
     estimatorId: searchParams.get("estimatorId") ?? defaultFilters.estimatorId,
@@ -190,6 +196,12 @@ function buildSearchParams(filters: BudgetListFilters) {
   }
   if (filters.projectCode) {
     nextSearchParams.set("projectCode", filters.projectCode);
+  }
+  if (filters.projectId) {
+    nextSearchParams.set("projectId", filters.projectId);
+  }
+  if (filters.projectName) {
+    nextSearchParams.set("projectName", filters.projectName);
   }
   if (filters.salespersonId) {
     nextSearchParams.set("salespersonId", filters.salespersonId);
@@ -393,6 +405,195 @@ const premiumBudgetAlertSx = {
   },
 } as const;
 
+const budgetActionPanelSx = {
+  backgroundColor: (theme: Theme) =>
+    theme.palette.mode === "dark"
+      ? alpha(theme.palette.primary.light, 0.9)
+      : alpha(theme.palette.common.white, 0.42),
+  border: "1px solid",
+  borderColor: (theme: Theme) =>
+    theme.palette.mode === "dark"
+      ? alpha(theme.palette.primary.dark, 0.22)
+      : alpha(theme.palette.primary.main, 0.14),
+  borderRadius: 4,
+  boxShadow: (theme: Theme) =>
+    theme.palette.mode === "dark"
+      ? "0 18px 34px rgba(2, 6, 23, 0.22)"
+      : `0 14px 28px ${alpha(theme.palette.primary.main, 0.06)}`,
+  display: "flex",
+  flexDirection: "column",
+  gap: 2,
+  p: 2.25,
+} as const;
+
+const budgetActionPanelTitleSx = {
+  color: (theme: Theme) =>
+    theme.palette.mode === "dark"
+      ? budgetTintedDarkText
+      : theme.palette.primary.dark,
+  fontSize: "0.8rem",
+  fontWeight: 800,
+  letterSpacing: "0.04em",
+  lineHeight: 1.2,
+  textTransform: "uppercase",
+} as const;
+
+const budgetActionPanelBodySx = {
+  color: (theme: Theme) =>
+    theme.palette.mode === "dark"
+      ? alpha(budgetTintedDarkText, 0.82)
+      : theme.palette.text.secondary,
+  fontWeight: 600,
+} as const;
+
+const budgetFiltersGridSx = {
+  display: "grid",
+  gap: 2,
+  gridTemplateColumns: {
+    xl: "minmax(0, 1.45fr) minmax(0, 1fr)",
+    lg: "repeat(2, minmax(0, 1fr))",
+    xs: "minmax(0, 1fr)",
+  },
+} as const;
+
+const budgetIdentificationGridSx = {
+  display: "grid",
+  gap: 2,
+  gridTemplateColumns: {
+    xl: "repeat(4, minmax(0, 1fr))",
+    lg: "repeat(3, minmax(0, 1fr))",
+    sm: "repeat(2, minmax(0, 1fr))",
+    xs: "minmax(0, 1fr)",
+  },
+} as const;
+
+const budgetSecondaryFiltersGridSx = {
+  display: "grid",
+  gap: 2,
+  gridTemplateColumns: {
+    sm: "repeat(2, minmax(0, 1fr))",
+    xs: "minmax(0, 1fr)",
+  },
+} as const;
+
+const budgetWideFilterGroupSx: SxProps<Theme> = {
+  ...(filterGroupSx as Record<string, unknown>),
+  gridColumn: {
+    xl: "span 2",
+    xs: "auto",
+  },
+};
+
+const budgetActionPanelContentSx = {
+  alignItems: {
+    xl: "start",
+    xs: "stretch",
+  },
+  columnGap: 2.5,
+  display: "grid",
+  gridTemplateColumns: {
+    xl: "minmax(0, 1.5fr) minmax(320px, 0.9fr)",
+    xs: "minmax(0, 1fr)",
+  },
+  rowGap: 2.25,
+} as const;
+
+const budgetActionControlsSx = {
+  alignItems: "end",
+  display: "grid",
+  gap: 1.5,
+  gridTemplateColumns: {
+    sm: "repeat(2, minmax(0, 1fr))",
+    xs: "minmax(0, 1fr)",
+  },
+} as const;
+
+const budgetPrimaryActionButtonSx = {
+  boxShadow: (theme: Theme) =>
+    theme.palette.mode === "dark"
+      ? "0 16px 28px rgba(2, 6, 23, 0.2)"
+      : `0 14px 28px ${alpha(theme.palette.primary.main, 0.22)}`,
+  color: (theme: Theme) =>
+    theme.palette.mode === "dark" ? budgetTintedDarkText : undefined,
+  fontWeight: 800,
+  minHeight: 44,
+  minWidth: 148,
+} as const;
+
+const budgetSecondaryActionButtonSx = {
+  backgroundColor: (theme: Theme) =>
+    theme.palette.mode === "dark"
+      ? alpha(theme.palette.common.white, 0.2)
+      : "transparent",
+  borderColor: (theme: Theme) =>
+    theme.palette.mode === "dark"
+      ? alpha(budgetTintedDarkText, 0.28)
+      : alpha(theme.palette.primary.main, 0.28),
+  color: (theme: Theme) =>
+    theme.palette.mode === "dark" ? budgetTintedDarkText : budgetGridBlue,
+  fontWeight: 800,
+  minHeight: 44,
+  minWidth: 128,
+  "&:hover": {
+    backgroundColor: (theme: Theme) =>
+      theme.palette.mode === "dark"
+        ? alpha(theme.palette.common.white, 0.3)
+        : alpha(theme.palette.primary.main, 0.04),
+    borderColor: (theme: Theme) =>
+      theme.palette.mode === "dark"
+        ? alpha(budgetTintedDarkText, 0.4)
+        : alpha(theme.palette.primary.main, 0.36),
+  },
+} as const;
+
+const budgetViewToggleSx = {
+  backgroundColor: (theme: Theme) =>
+    theme.palette.mode === "dark"
+      ? alpha(theme.palette.primary.light, 0.88)
+      : alpha(theme.palette.common.white, 0.46),
+  borderRadius: 999,
+  boxShadow: (theme: Theme) =>
+    theme.palette.mode === "dark"
+      ? "0 14px 28px rgba(2, 6, 23, 0.18)"
+      : `0 12px 24px ${alpha(theme.palette.primary.main, 0.08)}`,
+  p: 0.35,
+  "& .MuiToggleButton-root": {
+    borderColor: (theme: Theme) =>
+      theme.palette.mode === "dark"
+        ? alpha(budgetTintedDarkText, 0.2)
+        : alpha(theme.palette.primary.main, 0.24),
+    borderRadius: 999,
+    color: (theme: Theme) =>
+      theme.palette.mode === "dark" ? budgetTintedDarkText : budgetGridBlue,
+    fontWeight: 800,
+    px: 1.75,
+  },
+  "& .Mui-selected": {
+    backgroundColor: (theme: Theme) =>
+      theme.palette.mode === "dark"
+        ? alpha(theme.palette.common.white, 0.32)
+        : alpha(theme.palette.primary.main, 0.14),
+    boxShadow: (theme: Theme) =>
+      theme.palette.mode === "dark"
+        ? "0 10px 18px rgba(2, 6, 23, 0.16)"
+        : `0 10px 18px ${alpha(theme.palette.primary.main, 0.12)}`,
+    color: (theme: Theme) =>
+      theme.palette.mode === "dark" ? budgetTintedDarkText : budgetGridBlue,
+  },
+} as const;
+
+const budgetPaginationSx = {
+  "& .MuiPaginationItem-root": {
+    color: "text.primary",
+    fontWeight: 700,
+  },
+  "& .Mui-selected": {
+    color: (theme: Theme) =>
+      theme.palette.mode === "dark" ? budgetTintedDarkText : undefined,
+  },
+} as const;
+
+const rowNumberColumnWidth = 68;
 const budgetNumberColumnWidth = 140;
 const floatingBudgetMirrorColumnWidth = 156;
 const tableMaxHeight = "calc(100vh - 280px)";
@@ -439,6 +640,7 @@ export function BudgetListPage() {
     installerId: effectiveFilters.installerId,
     systemTypeId: effectiveFilters.systemTypeId,
     projectCode: effectiveFilters.projectCode,
+    projectName: effectiveFilters.projectName,
     salespersonId: effectiveFilters.salespersonId,
     estimatorId: effectiveFilters.estimatorId,
     sentAtFrom: effectiveFilters.sentAtFrom,
@@ -559,6 +761,18 @@ export function BudgetListPage() {
     () => createCatalogMap(budgetCatalogsQuery.data?.lossReasons ?? []),
     [budgetCatalogsQuery.data?.lossReasons],
   );
+  const selectedProjectFilterLabel = useMemo(() => {
+    if (!effectiveFilters.projectId) {
+      return effectiveFilters.projectName.trim();
+    }
+
+    return formatCatalogName(
+      Number(effectiveFilters.projectId),
+      projectMap,
+      effectiveFilters.projectName.trim() ||
+        `Obra #${effectiveFilters.projectId}`,
+    );
+  }, [effectiveFilters.projectId, effectiveFilters.projectName, projectMap]);
   const appliedFilterChips = useMemo(() => {
     const chips: string[] = [];
 
@@ -573,6 +787,12 @@ export function BudgetListPage() {
     }
     if (effectiveFilters.projectCode.trim()) {
       chips.push(`Obra ${effectiveFilters.projectCode.trim()}`);
+    }
+    if (effectiveFilters.projectId) {
+      chips.push(`Obra vinculada ${selectedProjectFilterLabel}`);
+    }
+    if (effectiveFilters.projectName.trim()) {
+      chips.push(`Nome da obra ${effectiveFilters.projectName.trim()}`);
     }
     if (effectiveFilters.statusId) {
       chips.push(
@@ -611,6 +831,8 @@ export function BudgetListPage() {
     effectiveFilters.yearBudget,
     effectiveFilters.sourceCompany,
     effectiveFilters.projectCode,
+    effectiveFilters.projectId,
+    effectiveFilters.projectName,
     effectiveFilters.statusId,
     effectiveFilters.installerId,
     effectiveFilters.systemTypeId,
@@ -620,6 +842,7 @@ export function BudgetListPage() {
     effectiveFilters.sentAtTo,
     estimatorMap,
     installerMap,
+    selectedProjectFilterLabel,
     salespersonMap,
     statusMap,
     systemTypeMap,
@@ -818,6 +1041,7 @@ export function BudgetListPage() {
       installerId: defaultFilters.installerId,
       systemTypeId: defaultFilters.systemTypeId,
       projectCode: defaultFilters.projectCode,
+      projectName: defaultFilters.projectName,
       salespersonId: canManageBudgetScreen ? defaultFilters.salespersonId : "",
       estimatorId: canManageBudgetScreen ? defaultFilters.estimatorId : "",
       sentAtFrom: defaultFilters.sentAtFrom,
@@ -942,6 +1166,7 @@ export function BudgetListPage() {
                 <Button
                   onClick={() => navigate("/budgets/import")}
                   startIcon={<UploadFileRoundedIcon />}
+                  sx={budgetSecondaryActionButtonSx}
                   variant="outlined"
                 >
                   Importar planilha
@@ -963,21 +1188,7 @@ export function BudgetListPage() {
 
       <SectionCard
         description="Filtre por identificação, classificação, responsáveis e período para localizar rapidamente os orçamentos certos."
-        sx={{
-          background: (theme) =>
-            `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.08)} 0%, ${alpha(theme.palette.info.main, 0.04)} 100%)`,
-          border: "1px solid",
-          borderColor: (theme) => alpha(theme.palette.primary.main, 0.18),
-          boxShadow: (theme) =>
-            `0 14px 28px ${alpha(theme.palette.primary.main, 0.08)}`,
-          "& .MuiTypography-h5": {
-            color: budgetGridBlue,
-            fontWeight: 800,
-          },
-          "& .MuiTypography-body2": {
-            color: "text.primary",
-          },
-        }}
+        sx={filterSectionCardSx}
         title="Filtros"
       >
         <Box
@@ -986,31 +1197,36 @@ export function BudgetListPage() {
             gap: 2.5,
           }}
         >
-          <Box
-            sx={{
-              display: "grid",
-              gap: 2,
-              gridTemplateColumns: {
-                lg: "minmax(0, 1.25fr) minmax(0, 1.1fr) minmax(0, 1.2fr)",
-                md: "repeat(2, minmax(0, 1fr))",
-                xs: "minmax(0, 1fr)",
-              },
-            }}
-          >
-            <Box sx={filterGroupSx}>
+          <Box sx={budgetFiltersGridSx}>
+            <Box sx={budgetWideFilterGroupSx}>
               <Typography sx={filterGroupTitleSx} variant="subtitle2">
                 Identificação
               </Typography>
-              <Box
-                sx={{
-                  display: "grid",
-                  gap: 2,
-                  gridTemplateColumns: {
-                    sm: "repeat(2, minmax(0, 1fr))",
-                    xs: "minmax(0, 1fr)",
-                  },
-                }}
-              >
+              <Typography sx={budgetActionPanelBodySx} variant="body2">
+                Use o campo `Obra` para buscar por qualquer parte do nome ou do
+                código e localizar rapidamente os orçamentos relacionados.
+              </Typography>
+              <Box sx={budgetIdentificationGridSx}>
+                <Box
+                  sx={{
+                    gridColumn: {
+                      xl: "span 2",
+                      xs: "auto",
+                    },
+                  }}
+                >
+                  <FilterField label="Obra">
+                    <TextField
+                      onChange={(event) =>
+                        handleDraftChange("projectName", event.target.value)
+                      }
+                      placeholder="Digite parte do nome ou codigo da obra"
+                      size="small"
+                      sx={compactFilterFieldSx}
+                      value={draftFilters.projectName}
+                    />
+                  </FilterField>
+                </Box>
                 <FilterField label="Número do orçamento">
                   <TextField
                     onChange={(event) =>
@@ -1068,16 +1284,7 @@ export function BudgetListPage() {
               <Typography sx={filterGroupTitleSx} variant="subtitle2">
                 Classificação
               </Typography>
-              <Box
-                sx={{
-                  display: "grid",
-                  gap: 2,
-                  gridTemplateColumns: {
-                    sm: "repeat(2, minmax(0, 1fr))",
-                    xs: "minmax(0, 1fr)",
-                  },
-                }}
-              >
+              <Box sx={budgetSecondaryFiltersGridSx}>
                 <FilterField label="Status">
                   <TextField
                     onChange={(event) =>
@@ -1151,16 +1358,7 @@ export function BudgetListPage() {
               <Typography sx={filterGroupTitleSx} variant="subtitle2">
                 Responsáveis e período
               </Typography>
-              <Box
-                sx={{
-                  display: "grid",
-                  gap: 2,
-                  gridTemplateColumns: {
-                    sm: "repeat(2, minmax(0, 1fr))",
-                    xs: "minmax(0, 1fr)",
-                  },
-                }}
-              >
+              <Box sx={budgetSecondaryFiltersGridSx}>
                 {canManageBudgetScreen ? (
                   <FilterField label="Vendedor">
                     <TextField
@@ -1237,124 +1435,118 @@ export function BudgetListPage() {
             </Box>
           </Box>
 
-          <Box
-            sx={{
-              backgroundColor: (theme) =>
-                alpha(theme.palette.common.white, 0.42),
-              border: "1px solid",
-              borderColor: (theme) => alpha(theme.palette.primary.main, 0.14),
-              borderRadius: 4,
-              boxShadow: (theme) =>
-                `0 14px 28px ${alpha(theme.palette.primary.main, 0.06)}`,
-              display: "flex",
-              flexDirection: "column",
-              gap: 2,
-              p: 2.25,
-            }}
-          >
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              <Typography sx={filterGroupTitleSx} variant="subtitle2">
-                Filtros ativos
-              </Typography>
-              {appliedFilterChips.length > 0 ? (
-                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
-                  {appliedFilterChips.map((item) => (
-                    <Chip
-                      key={item}
-                      label={item}
-                      size="small"
-                      sx={{
-                        "& .MuiChip-label": { fontWeight: 700 },
-                        backgroundColor: (theme) =>
-                          alpha(theme.palette.primary.main, 0.09),
-                        borderColor: (theme) =>
-                          alpha(theme.palette.primary.main, 0.18),
-                        color: budgetGridBlue,
-                      }}
-                      variant="outlined"
-                    />
-                  ))}
-                </Box>
-              ) : (
-                <Typography color="text.secondary" variant="body2">
-                  Nenhum filtro aplicado no momento. Use os campos acima para
-                  refinar a consulta.
+          <Box sx={budgetActionPanelSx}>
+            <Box sx={budgetActionPanelContentSx}>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                <Typography sx={budgetActionPanelTitleSx} variant="subtitle2">
+                  Filtros ativos
                 </Typography>
-              )}
-            </Box>
+                {effectiveFilters.projectId ? (
+                  <Alert
+                    severity="info"
+                    sx={{
+                      borderRadius: 3,
+                      fontWeight: 700,
+                      "& .MuiAlert-message": {
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 0.3,
+                      },
+                    }}
+                  >
+                    <Typography sx={{ fontWeight: 800 }} variant="body2">
+                      Exibindo somente os orçamentos da obra selecionada.
+                    </Typography>
+                    <Typography variant="body2">
+                      {selectedProjectFilterLabel}
+                    </Typography>
+                  </Alert>
+                ) : null}
+                {appliedFilterChips.length > 0 ? (
+                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+                    {appliedFilterChips.map((item) => (
+                      <Chip
+                        key={item}
+                        label={item}
+                        size="small"
+                        sx={{
+                          "& .MuiChip-label": { fontWeight: 700 },
+                          backgroundColor: (theme) =>
+                            theme.palette.mode === "dark"
+                              ? alpha(theme.palette.common.white, 0.28)
+                              : alpha(theme.palette.primary.main, 0.09),
+                          borderColor: (theme) =>
+                            theme.palette.mode === "dark"
+                              ? alpha(budgetTintedDarkText, 0.2)
+                              : alpha(theme.palette.primary.main, 0.18),
+                          color: (theme) =>
+                            theme.palette.mode === "dark"
+                              ? budgetTintedDarkText
+                              : budgetGridBlue,
+                        }}
+                        variant="outlined"
+                      />
+                    ))}
+                  </Box>
+                ) : (
+                  <Typography sx={budgetActionPanelBodySx} variant="body2">
+                    Nenhum filtro aplicado no momento. Use os campos acima para
+                    refinar a consulta.
+                  </Typography>
+                )}
+              </Box>
 
-            <Box
-              sx={{
-                alignItems: "end",
-                display: "grid",
-                gap: 2,
-                gridTemplateColumns: {
-                  lg: "minmax(0, 220px) minmax(0, 180px) auto auto",
-                  md: "repeat(2, minmax(0, 1fr))",
-                  xs: "minmax(0, 1fr)",
-                },
-              }}
-            >
-              <FilterField label="Ordenar por">
-                <TextField
-                  onChange={(event) =>
-                    handleSortByChange(event.target.value as BudgetSortBy)
-                  }
-                  select
-                  size="small"
-                  sx={compactFilterFieldSx}
-                  value={filters.sortBy}
+              <Box sx={budgetActionControlsSx}>
+                <FilterField label="Ordenar por">
+                  <TextField
+                    onChange={(event) =>
+                      handleSortByChange(event.target.value as BudgetSortBy)
+                    }
+                    select
+                    size="small"
+                    sx={compactFilterFieldSx}
+                    value={filters.sortBy}
+                  >
+                    <MenuItem value="sent_at">Data de envio</MenuItem>
+                    <MenuItem value="gross_value">Valor bruto</MenuItem>
+                    <MenuItem value="created_at">Criado em</MenuItem>
+                    <MenuItem value="updated_at">Atualizado em</MenuItem>
+                    <MenuItem value="year_budget">Ano</MenuItem>
+                    <MenuItem value="budget_number">Número</MenuItem>
+                  </TextField>
+                </FilterField>
+                <FilterField label="Ordem">
+                  <TextField
+                    onChange={(event) =>
+                      handleSortOrderChange(
+                        event.target.value as BudgetSortOrder,
+                      )
+                    }
+                    select
+                    size="small"
+                    sx={compactFilterFieldSx}
+                    value={filters.sortOrder}
+                  >
+                    <MenuItem value="desc">Decrescente</MenuItem>
+                    <MenuItem value="asc">Crescente</MenuItem>
+                  </TextField>
+                </FilterField>
+                <Button
+                  onClick={handleApplyFilters}
+                  startIcon={<SearchRoundedIcon />}
+                  sx={budgetPrimaryActionButtonSx}
+                  variant="contained"
                 >
-                  <MenuItem value="sent_at">Data de envio</MenuItem>
-                  <MenuItem value="gross_value">Valor bruto</MenuItem>
-                  <MenuItem value="created_at">Criado em</MenuItem>
-                  <MenuItem value="updated_at">Atualizado em</MenuItem>
-                  <MenuItem value="year_budget">Ano</MenuItem>
-                  <MenuItem value="budget_number">Número</MenuItem>
-                </TextField>
-              </FilterField>
-              <FilterField label="Ordem">
-                <TextField
-                  onChange={(event) =>
-                    handleSortOrderChange(event.target.value as BudgetSortOrder)
-                  }
-                  select
-                  size="small"
-                  sx={compactFilterFieldSx}
-                  value={filters.sortOrder}
+                  Filtrar
+                </Button>
+                <Button
+                  onClick={handleClearFilters}
+                  sx={budgetSecondaryActionButtonSx}
+                  variant="outlined"
                 >
-                  <MenuItem value="desc">Decrescente</MenuItem>
-                  <MenuItem value="asc">Crescente</MenuItem>
-                </TextField>
-              </FilterField>
-              <Button
-                onClick={handleApplyFilters}
-                startIcon={<SearchRoundedIcon />}
-                sx={{
-                  boxShadow: (theme) =>
-                    `0 14px 28px ${alpha(theme.palette.primary.main, 0.22)}`,
-                  fontWeight: 700,
-                  minHeight: 44,
-                  minWidth: 148,
-                }}
-                variant="contained"
-              >
-                Filtrar
-              </Button>
-              <Button
-                onClick={handleClearFilters}
-                sx={{
-                  borderColor: (theme) =>
-                    alpha(theme.palette.primary.main, 0.28),
-                  color: budgetGridBlue,
-                  fontWeight: 700,
-                  minHeight: 44,
-                  minWidth: 128,
-                }}
-                variant="outlined"
-              >
-                Limpar
-              </Button>
+                  Limpar
+                </Button>
+              </Box>
             </Box>
           </Box>
         </Box>
@@ -1471,47 +1663,26 @@ export function BudgetListPage() {
                 }}
               >
                 {!isProjectView ? (
-                  <TextField
-                    label="Linhas por página"
-                    onChange={(event) =>
-                      handlePageSizeChange(Number(event.target.value))
-                    }
-                    select
-                    size="small"
-                    sx={{ ...compactFilterFieldSx, minWidth: 160 }}
-                    value={filters.pageSize}
-                  >
-                    <MenuItem value={50}>50</MenuItem>
-                    <MenuItem value={100}>100</MenuItem>
-                  </TextField>
+                  <FilterField label="Linhas por página">
+                    <TextField
+                      onChange={(event) =>
+                        handlePageSizeChange(Number(event.target.value))
+                      }
+                      select
+                      size="small"
+                      sx={{ ...compactFilterFieldSx, minWidth: 160 }}
+                      value={filters.pageSize}
+                    >
+                      <MenuItem value={50}>50</MenuItem>
+                      <MenuItem value={100}>100</MenuItem>
+                    </TextField>
+                  </FilterField>
                 ) : null}
                 <ToggleButtonGroup
                   exclusive
                   onChange={handleViewModeChange}
                   size="small"
-                  sx={{
-                    backgroundColor: (theme) =>
-                      alpha(theme.palette.common.white, 0.46),
-                    borderRadius: 999,
-                    boxShadow: (theme) =>
-                      `0 12px 24px ${alpha(theme.palette.primary.main, 0.08)}`,
-                    p: 0.35,
-                    "& .MuiToggleButton-root": {
-                      borderColor: (theme) =>
-                        alpha(theme.palette.primary.main, 0.24),
-                      borderRadius: 999,
-                      color: budgetGridBlue,
-                      fontWeight: 700,
-                      px: 1.75,
-                    },
-                    "& .Mui-selected": {
-                      backgroundColor: (theme) =>
-                        alpha(theme.palette.primary.main, 0.14),
-                      boxShadow: (theme) =>
-                        `0 10px 18px ${alpha(theme.palette.primary.main, 0.12)}`,
-                      color: budgetGridBlue,
-                    },
-                  }}
+                  sx={budgetViewToggleSx}
                   value={viewMode}
                 >
                   <ToggleButton value="project">
@@ -2074,6 +2245,16 @@ export function BudgetListPage() {
                     <TableHead>
                       <TableRow>
                         <TableCell
+                          align="center"
+                          sx={{
+                            ...tableHeadCellSx,
+                            minWidth: rowNumberColumnWidth,
+                            width: rowNumberColumnWidth,
+                          }}
+                        >
+                          #
+                        </TableCell>
+                        <TableCell
                           sx={{
                             ...tableHeadCellSx,
                             minWidth: budgetNumberColumnWidth,
@@ -2161,7 +2342,7 @@ export function BudgetListPage() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {budgetItems.map((budget) => (
+                      {budgetItems.map((budget, index) => (
                         <TableRow
                           hover
                           key={budget.id}
@@ -2172,6 +2353,18 @@ export function BudgetListPage() {
                             cursor: user ? "pointer" : "default",
                           }}
                         >
+                          <TableCell
+                            align="center"
+                            sx={{
+                              ...singleLineTableCellSx,
+                              fontWeight: 700,
+                              maxWidth: rowNumberColumnWidth,
+                              minWidth: rowNumberColumnWidth,
+                              width: rowNumberColumnWidth,
+                            }}
+                          >
+                            {(filters.page - 1) * filters.pageSize + index + 1}
+                          </TableCell>
                           <TableCell
                             sx={{
                               ...singleLineTableCellSx,
@@ -2519,6 +2712,7 @@ export function BudgetListPage() {
                   onChange={handlePageChange}
                   page={budgetListQuery.data?.page ?? filters.page}
                   shape="rounded"
+                  sx={budgetPaginationSx}
                 />
               ) : null}
             </Box>

@@ -108,6 +108,7 @@ type DashboardMonthlyEvolutionApiResponse = {
 
 type DashboardEntityPerformanceApiResponse = {
   label: string;
+  project_id?: number | null;
   budget_count: number;
   won_budget_count: number;
   lost_budget_count: number;
@@ -276,6 +277,7 @@ function mapEntityPerformance(
     label: response.label,
     lastActivityAt: response.last_activity_at ?? null,
     lostBudgetCount: response.lost_budget_count,
+    projectId: response.project_id ?? null,
     valueConversionRate: response.value_conversion_rate,
     wonBudgetCount: response.won_budget_count,
     wonGrossValue: response.won_gross_value,
@@ -345,9 +347,11 @@ function mapTechnicalOverview(
 
 function buildDashboardParams(filters: DashboardSalespeopleFilters) {
   return {
+    installer_id: filters.installerId || undefined,
     month: filters.month || undefined,
     salesperson_id: filters.salespersonId || undefined,
     source_company: filters.sourceCompany || undefined,
+    status_id: filters.statusId || undefined,
     year: filters.year || undefined,
   };
 }
@@ -357,10 +361,11 @@ function buildLegacyDashboardBudgetFilters(
 ): BudgetListFilters {
   return {
     budgetNumber: "",
-    installerId: "",
+    installerId: filters.installerId,
     page: 1,
     pageSize: 100,
     projectCode: "",
+    projectName: "",
     salespersonId: filters.salespersonId,
     estimatorId: "",
     sentAtFrom: "",
@@ -369,7 +374,7 @@ function buildLegacyDashboardBudgetFilters(
     sortBy: "updated_at",
     sortOrder: "desc",
     sourceCompany: filters.sourceCompany,
-    statusId: "",
+    statusId: filters.statusId,
     yearBudget: "",
   };
 }

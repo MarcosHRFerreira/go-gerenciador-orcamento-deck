@@ -65,6 +65,9 @@ type DashboardMetricCard = {
 
 type BudgetListNavigationOptions = {
   budgetNumber?: string;
+  installerId?: string;
+  projectId?: string;
+  projectName?: string;
   salespersonId?: string;
   sourceCompany: DashboardCompanyFilter;
   statusId?: string;
@@ -293,7 +296,10 @@ function getMonthDateRange(year: string, month: string) {
 
 function buildBudgetListSearchParams({
   budgetNumber,
+  installerId,
   month,
+  projectId,
+  projectName,
   salespersonId,
   sourceCompany,
   statusId,
@@ -303,6 +309,15 @@ function buildBudgetListSearchParams({
 
   if (budgetNumber) {
     searchParams.set("budgetNumber", budgetNumber);
+  }
+  if (installerId) {
+    searchParams.set("installerId", installerId);
+  }
+  if (projectId) {
+    searchParams.set("projectId", projectId);
+  }
+  if (projectName) {
+    searchParams.set("projectName", projectName);
   }
   if (sourceCompany) {
     searchParams.set("sourceCompany", sourceCompany);
@@ -1551,16 +1566,27 @@ export function DashboardPage() {
     useState<DashboardCompanyFilter>("");
   const [selectedYear, setSelectedYear] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("");
+  const [selectedInstallerId, setSelectedInstallerId] = useState("");
   const [selectedSalespersonId, setSelectedSalespersonId] = useState("");
+  const [selectedStatusId, setSelectedStatusId] = useState("");
 
   const dashboardFilters = useMemo<DashboardSalespeopleFilters>(
     () => ({
+      installerId: selectedInstallerId,
       sourceCompany,
       salespersonId: selectedSalespersonId,
+      statusId: selectedStatusId,
       year: selectedYear,
       month: selectedMonth,
     }),
-    [selectedMonth, selectedSalespersonId, selectedYear, sourceCompany],
+    [
+      selectedInstallerId,
+      selectedMonth,
+      selectedSalespersonId,
+      selectedStatusId,
+      selectedYear,
+      sourceCompany,
+    ],
   );
 
   const budgetCatalogsQuery = useQuery({
@@ -1623,6 +1649,18 @@ export function DashboardPage() {
     );
   }, [budgetCatalogsQuery.data?.salespeople]);
 
+  const installerOptions = useMemo<BudgetCatalogItem[]>(() => {
+    return [...(budgetCatalogsQuery.data?.installers ?? [])].sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+  }, [budgetCatalogsQuery.data?.installers]);
+
+  const statusOptions = useMemo<BudgetCatalogItem[]>(() => {
+    return [...(budgetCatalogsQuery.data?.statuses ?? [])].sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+  }, [budgetCatalogsQuery.data?.statuses]);
+
   const selectedSalespersonLabel = useMemo(() => {
     return (
       salespersonOptions.find(
@@ -1631,11 +1669,25 @@ export function DashboardPage() {
     );
   }, [selectedSalespersonId, salespersonOptions]);
 
+  const selectedInstallerLabel = useMemo(() => {
+    return (
+      installerOptions.find((item) => String(item.id) === selectedInstallerId)
+        ?.name ?? ""
+    );
+  }, [installerOptions, selectedInstallerId]);
+
   const selectedMonthLabel = useMemo(() => {
     return (
       monthOptions.find((item) => item.value === selectedMonth)?.label ?? ""
     );
   }, [selectedMonth]);
+
+  const selectedStatusLabel = useMemo(() => {
+    return (
+      statusOptions.find((item) => String(item.id) === selectedStatusId)
+        ?.name ?? ""
+    );
+  }, [selectedStatusId, statusOptions]);
 
   const salespersonIdByName = useMemo(() => {
     return salespersonOptions.reduce<Map<string, string>>(
@@ -1850,15 +1902,21 @@ export function DashboardPage() {
 
   const handleOpenBudgetList = ({
     budgetNumber,
+    installerId,
+    projectId,
+    projectName,
     salespersonId,
     statusId,
   }: Partial<BudgetListNavigationOptions> = {}) => {
     const searchParams = buildBudgetListSearchParams({
       budgetNumber,
+      installerId: installerId ?? selectedInstallerId,
       month: selectedMonth,
+      projectId,
+      projectName,
       salespersonId: salespersonId ?? selectedSalespersonId,
       sourceCompany,
-      statusId,
+      statusId: statusId ?? selectedStatusId,
       year: selectedYear,
     });
 
@@ -2223,89 +2281,122 @@ export function DashboardPage() {
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
       <PageHeader
-        action={
-          <Box
-            sx={{
-              display: "grid",
-              gap: 1.5,
-              gridTemplateColumns: {
-                lg: "repeat(4, minmax(180px, 220px))",
-                sm: "repeat(2, minmax(180px, 220px))",
-                xs: "minmax(0, 1fr)",
-              },
-              width: { md: "auto", xs: "100%" },
-            }}
-          >
-            <FilterField label="Empresa">
-              <TextField
-                onChange={(event) =>
-                  setSourceCompany(event.target.value as DashboardCompanyFilter)
-                }
-                select
-                size="small"
-                sx={compactFilterFieldSx}
-                value={sourceCompany}
-              >
-                <MenuItem value="">Todas as empresas</MenuItem>
-                <MenuItem value="Rocktec">ROCKTEC</MenuItem>
-                <MenuItem value="Trox">TROX</MenuItem>
-              </TextField>
-            </FilterField>
-            <FilterField label="Ano">
-              <TextField
-                onChange={(event) => setSelectedYear(event.target.value)}
-                select
-                size="small"
-                sx={compactFilterFieldSx}
-                value={selectedYear}
-              >
-                <MenuItem value="">Todos os anos</MenuItem>
-                {availableYears.map((year) => (
-                  <MenuItem key={year} value={year}>
-                    {year}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </FilterField>
-            <FilterField label="Mês">
-              <TextField
-                onChange={(event) => setSelectedMonth(event.target.value)}
-                select
-                size="small"
-                sx={compactFilterFieldSx}
-                value={selectedMonth}
-              >
-                <MenuItem value="">Todos os meses</MenuItem>
-                {monthOptions.map((month) => (
-                  <MenuItem key={month.value} value={month.value}>
-                    {month.label}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </FilterField>
-            <FilterField label="Vendedor">
-              <TextField
-                onChange={(event) =>
-                  setSelectedSalespersonId(event.target.value)
-                }
-                select
-                size="small"
-                sx={compactFilterFieldSx}
-                value={selectedSalespersonId}
-              >
-                <MenuItem value="">Todos os vendedores</MenuItem>
-                {salespersonOptions.map((salesperson) => (
-                  <MenuItem key={salesperson.id} value={String(salesperson.id)}>
-                    {salesperson.name}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </FilterField>
-          </Box>
-        }
         description="Painel administrativo com leitura comercial por vendedor e visão técnica separada por orçamentista."
         title="Dashboard administrativo"
       />
+
+      <SectionCard
+        description="Refine o recorte do dashboard sem apertar o cabeçalho da tela."
+        title="Filtros do dashboard"
+      >
+        <Box
+          sx={{
+            display: "grid",
+            gap: 1.5,
+            gridTemplateColumns: {
+              lg: "repeat(3, minmax(0, 1fr))",
+              md: "repeat(2, minmax(0, 1fr))",
+              xs: "minmax(0, 1fr)",
+            },
+          }}
+        >
+          <FilterField label="Empresa">
+            <TextField
+              onChange={(event) =>
+                setSourceCompany(event.target.value as DashboardCompanyFilter)
+              }
+              select
+              size="small"
+              sx={compactFilterFieldSx}
+              value={sourceCompany}
+            >
+              <MenuItem value="">Todas as empresas</MenuItem>
+              <MenuItem value="Rocktec">ROCKTEC</MenuItem>
+              <MenuItem value="Trox">TROX</MenuItem>
+            </TextField>
+          </FilterField>
+          <FilterField label="Ano">
+            <TextField
+              onChange={(event) => setSelectedYear(event.target.value)}
+              select
+              size="small"
+              sx={compactFilterFieldSx}
+              value={selectedYear}
+            >
+              <MenuItem value="">Todos os anos</MenuItem>
+              {availableYears.map((year) => (
+                <MenuItem key={year} value={year}>
+                  {year}
+                </MenuItem>
+              ))}
+            </TextField>
+          </FilterField>
+          <FilterField label="Mês">
+            <TextField
+              onChange={(event) => setSelectedMonth(event.target.value)}
+              select
+              size="small"
+              sx={compactFilterFieldSx}
+              value={selectedMonth}
+            >
+              <MenuItem value="">Todos os meses</MenuItem>
+              {monthOptions.map((month) => (
+                <MenuItem key={month.value} value={month.value}>
+                  {month.label}
+                </MenuItem>
+              ))}
+            </TextField>
+          </FilterField>
+          <FilterField label="Vendedor">
+            <TextField
+              onChange={(event) => setSelectedSalespersonId(event.target.value)}
+              select
+              size="small"
+              sx={compactFilterFieldSx}
+              value={selectedSalespersonId}
+            >
+              <MenuItem value="">Todos os vendedores</MenuItem>
+              {salespersonOptions.map((salesperson) => (
+                <MenuItem key={salesperson.id} value={String(salesperson.id)}>
+                  {salesperson.name}
+                </MenuItem>
+              ))}
+            </TextField>
+          </FilterField>
+          <FilterField label="Instalador">
+            <TextField
+              onChange={(event) => setSelectedInstallerId(event.target.value)}
+              select
+              size="small"
+              sx={compactFilterFieldSx}
+              value={selectedInstallerId}
+            >
+              <MenuItem value="">Todos os instaladores</MenuItem>
+              {installerOptions.map((installer) => (
+                <MenuItem key={installer.id} value={String(installer.id)}>
+                  {installer.name}
+                </MenuItem>
+              ))}
+            </TextField>
+          </FilterField>
+          <FilterField label="Status">
+            <TextField
+              onChange={(event) => setSelectedStatusId(event.target.value)}
+              select
+              size="small"
+              sx={compactFilterFieldSx}
+              value={selectedStatusId}
+            >
+              <MenuItem value="">Todos os status</MenuItem>
+              {statusOptions.map((status) => (
+                <MenuItem key={status.id} value={String(status.id)}>
+                  {status.name}
+                </MenuItem>
+              ))}
+            </TextField>
+          </FilterField>
+        </Box>
+      </SectionCard>
 
       {dashboardQuery.isLoading || isDashboardRefreshing ? (
         <LinearProgress sx={dashboardLoaderSx} />
@@ -2367,6 +2458,16 @@ export function DashboardPage() {
               />
               <Chip
                 label={`Vendedor ${selectedSalespersonLabel || "todos"}`}
+                size="small"
+                variant="outlined"
+              />
+              <Chip
+                label={`Instalador ${selectedInstallerLabel || "todos"}`}
+                size="small"
+                variant="outlined"
+              />
+              <Chip
+                label={`Status ${selectedStatusLabel || "todos"}`}
                 size="small"
                 variant="outlined"
               />
@@ -2972,14 +3073,64 @@ export function DashboardPage() {
                       justifyContent: "space-between",
                     }}
                   >
-                    <Typography sx={{ fontWeight: 700 }} variant="body2">
-                      {`${index + 1}. ${item.label}`}
-                    </Typography>
-                    <Chip
-                      label={`${item.budgetCount} orc.`}
+                    <Button
+                      onClick={() =>
+                        handleOpenBudgetList({
+                          projectId:
+                            item.projectId !== null &&
+                            item.projectId !== undefined
+                              ? String(item.projectId)
+                              : undefined,
+                          projectName:
+                            (item.projectId === null ||
+                              item.projectId === undefined) &&
+                            item.label.trim().toLowerCase() !==
+                              "sem obra vinculada"
+                              ? item.label
+                              : undefined,
+                        })
+                      }
                       size="small"
-                      variant="outlined"
-                    />
+                      sx={{
+                        fontWeight: 700,
+                        justifyContent: "flex-start",
+                        px: 0,
+                        textTransform: "none",
+                      }}
+                      variant="text"
+                    >
+                      {`${index + 1}. ${item.label}`}
+                    </Button>
+                    <Box sx={{ display: "flex", gap: 1 }}>
+                      <Chip
+                        label={`${item.budgetCount} orc.`}
+                        size="small"
+                        variant="outlined"
+                      />
+                      <Button
+                        onClick={() =>
+                          handleOpenBudgetList({
+                            projectId:
+                              item.projectId !== null &&
+                              item.projectId !== undefined
+                                ? String(item.projectId)
+                                : undefined,
+                            projectName:
+                              (item.projectId === null ||
+                                item.projectId === undefined) &&
+                              item.label.trim().toLowerCase() !==
+                                "sem obra vinculada"
+                                ? item.label
+                                : undefined,
+                          })
+                        }
+                        size="small"
+                        startIcon={<OpenInNewRoundedIcon />}
+                        variant="text"
+                      >
+                        Abrir
+                      </Button>
+                    </Box>
                   </Box>
                   <Box
                     sx={{
@@ -3038,14 +3189,51 @@ export function DashboardPage() {
                       justifyContent: "space-between",
                     }}
                   >
-                    <Typography sx={{ fontWeight: 700 }} variant="body2">
-                      {`${index + 1}. ${item.label}`}
-                    </Typography>
-                    <Chip
-                      label={`${item.budgetCount} orc.`}
+                    <Button
+                      onClick={() =>
+                        handleOpenBudgetList({
+                          projectId:
+                            item.projectId !== null &&
+                            item.projectId !== undefined
+                              ? String(item.projectId)
+                              : undefined,
+                        })
+                      }
                       size="small"
-                      variant="outlined"
-                    />
+                      sx={{
+                        fontWeight: 700,
+                        justifyContent: "flex-start",
+                        px: 0,
+                        textAlign: "left",
+                        textTransform: "none",
+                      }}
+                      variant="text"
+                    >
+                      {`${index + 1}. ${item.label}`}
+                    </Button>
+                    <Box sx={{ display: "flex", gap: 1 }}>
+                      <Chip
+                        label={`${item.budgetCount} orc.`}
+                        size="small"
+                        variant="outlined"
+                      />
+                      <Button
+                        onClick={() =>
+                          handleOpenBudgetList({
+                            projectId:
+                              item.projectId !== null &&
+                              item.projectId !== undefined
+                                ? String(item.projectId)
+                                : undefined,
+                          })
+                        }
+                        size="small"
+                        startIcon={<OpenInNewRoundedIcon />}
+                        variant="text"
+                      >
+                        Abrir
+                      </Button>
+                    </Box>
                   </Box>
                   <Box
                     sx={{

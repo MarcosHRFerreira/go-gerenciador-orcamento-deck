@@ -1,4 +1,4 @@
-﻿﻿import { api } from "../../../lib/axios/api";
+﻿import { api } from "../../../lib/axios/api";
 import type {
   BudgetCatalogItem,
   BudgetCatalogsResult,
@@ -364,6 +364,7 @@ function buildBudgetListParams(filters: BudgetListFilters) {
     installer_id: filters.installerId || undefined,
     system_type_id: filters.systemTypeId || undefined,
     project_code: filters.projectCode || undefined,
+    project_name: filters.projectName || undefined,
     salesperson_id: filters.salespersonId || undefined,
     estimator_id: filters.estimatorId || undefined,
     sent_at_from: filters.sentAtFrom || undefined,

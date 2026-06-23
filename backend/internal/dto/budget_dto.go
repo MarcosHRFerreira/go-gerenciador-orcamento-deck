@@ -73,6 +73,7 @@ type ListBudgetsFilters struct {
 	SystemTypeID            *int64
 	ProjectID               *int64
 	ProjectCode             string
+	ProjectName             string
 	ProjectTypeID           *int64
 	ProjetistaName          string
 	CompetitorName          string

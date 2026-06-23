@@ -357,9 +357,10 @@ func (r *repository) listEntityPerformance(
 	groupField string,
 	limit int,
 ) ([]dto.DashboardEntityPerformanceResponse, error) {
-	query, args := buildFilteredBudgetsCTE(filters, fmt.Sprintf(`
+	queryBody := fmt.Sprintf(`
 		SELECT
 			%[1]s AS label,
+			NULL::bigint AS project_id,
 			COUNT(*)::int AS budget_count,
 			COUNT(*) FILTER (WHERE status_category = 'won')::int AS won_budget_count,
 			COUNT(*) FILTER (WHERE status_category = 'lost')::int AS lost_budget_count,
@@ -372,7 +373,27 @@ func (r *repository) listEntityPerformance(
 		GROUP BY %[1]s
 		ORDER BY gross_value DESC, budget_count DESC
 		LIMIT %d
-	`, groupField, limit))
+	`, groupField, limit)
+	if groupField == "project_label" {
+		queryBody = fmt.Sprintf(`
+			SELECT
+				project_label AS label,
+				project_id,
+				COUNT(*)::int AS budget_count,
+				COUNT(*) FILTER (WHERE status_category = 'won')::int AS won_budget_count,
+				COUNT(*) FILTER (WHERE status_category = 'lost')::int AS lost_budget_count,
+				COALESCE(SUM(gross_value), 0)::double precision AS gross_value,
+				COALESCE(SUM(CASE WHEN status_category = 'won' THEN gross_value ELSE 0 END), 0)::double precision AS won_gross_value,
+				COALESCE((COUNT(*) FILTER (WHERE status_category = 'won')::double precision / NULLIF(COUNT(*), 0)) * 100, 0)::double precision AS conversion_rate,
+				COALESCE((SUM(CASE WHEN status_category = 'won' THEN gross_value ELSE 0 END) / NULLIF(SUM(gross_value), 0)) * 100, 0)::double precision AS value_conversion_rate,
+				MAX(last_activity_at) AS last_activity_at
+			FROM filtered_budgets
+			GROUP BY project_id, project_label
+			ORDER BY gross_value DESC, budget_count DESC
+			LIMIT %d
+		`, limit)
+	}
+	query, args := buildFilteredBudgetsCTE(filters, queryBody)
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -384,8 +405,10 @@ func (r *repository) listEntityPerformance(
 	for rows.Next() {
 		var item dto.DashboardEntityPerformanceResponse
 		var lastActivityAt sql.NullTime
+		var projectID sql.NullInt64
 		if err := rows.Scan(
 			&item.Label,
+			&projectID,
 			&item.BudgetCount,
 			&item.WonBudgetCount,
 			&item.LostBudgetCount,
@@ -401,6 +424,10 @@ func (r *repository) listEntityPerformance(
 		if lastActivityAt.Valid {
 			value := lastActivityAt.Time
 			item.LastActivityAt = &value
+		}
+		if projectID.Valid {
+			value := projectID.Int64
+			item.ProjectID = &value
 		}
 		items = append(items, item)
 	}
@@ -580,6 +607,8 @@ func withoutPeriodFilters(filters *dto.DashboardSalespeopleFilters) *dto.Dashboa
 	}
 
 	return &dto.DashboardSalespeopleFilters{
+		InstallerID:             filters.InstallerID,
+		StatusID:                filters.StatusID,
 		SourceCompany:           filters.SourceCompany,
 		SalespersonID:           filters.SalespersonID,
 		RestrictedSalespersonID: filters.RestrictedSalespersonID,
@@ -610,6 +639,20 @@ func buildWhereClause(filters *dto.DashboardSalespeopleFilters) (string, []inter
 			conditions = append(
 				conditions,
 				fmt.Sprintf("b.salesperson_id = $%d", len(args)),
+			)
+		}
+		if filters.InstallerID != nil {
+			args = append(args, *filters.InstallerID)
+			conditions = append(
+				conditions,
+				fmt.Sprintf("b.installer_id = $%d", len(args)),
+			)
+		}
+		if filters.StatusID != nil {
+			args = append(args, *filters.StatusID)
+			conditions = append(
+				conditions,
+				fmt.Sprintf("b.status_id = $%d", len(args)),
 			)
 		}
 		if filters.Year != nil {
@@ -675,6 +718,7 @@ func buildFilteredBudgetsCTE(
 				b.year_budget,
 				b.gross_value,
 				b.estimator_id,
+				b.project_id,
 				COALESCE(NULLIF(TRIM(b.construction_company), ''), 'Construtora nao informada') AS construction_company_label,
 				COALESCE(NULLIF(TRIM(lr.name), ''), 'Motivo nao informado') AS loss_reason_label,
 				GREATEST(

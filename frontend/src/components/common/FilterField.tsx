@@ -3,6 +3,26 @@ import { alpha } from "@mui/material/styles";
 import type { SxProps, Theme } from "@mui/material/styles";
 import type { PropsWithChildren } from "react";
 
+const tintedDarkFieldTextColor = "#020617";
+
+function getTintedFieldTextColor(theme: Theme) {
+  return theme.palette.mode === "dark"
+    ? tintedDarkFieldTextColor
+    : theme.palette.text.primary;
+}
+
+function getTintedFieldPlaceholderColor(theme: Theme) {
+  return theme.palette.mode === "dark"
+    ? alpha(tintedDarkFieldTextColor, 0.72)
+    : alpha(theme.palette.text.secondary, 0.94);
+}
+
+function getTintedFieldIconColor(theme: Theme) {
+  return theme.palette.mode === "dark"
+    ? tintedDarkFieldTextColor
+    : theme.palette.primary.dark;
+}
+
 export const compactFilterFieldSx = {
   width: "100%",
   "& .MuiFormHelperText-root": {
@@ -10,28 +30,67 @@ export const compactFilterFieldSx = {
     marginTop: 0.8,
   },
   "& .MuiOutlinedInput-root": {
-    backgroundColor: "rgba(255, 255, 255, 0.74)",
+    backgroundColor: (theme: Theme) =>
+      theme.palette.mode === "dark"
+        ? alpha(theme.palette.primary.light, 0.9)
+        : "rgba(255, 255, 255, 0.74)",
     borderRadius: 3,
-    boxShadow: "0 10px 22px rgba(30, 58, 138, 0.06)",
+    boxShadow: (theme: Theme) =>
+      theme.palette.mode === "dark"
+        ? "0 12px 24px rgba(2, 6, 23, 0.22)"
+        : "0 10px 22px rgba(30, 58, 138, 0.06)",
     transition:
       "box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease",
+    "& .MuiInputBase-input": {
+      WebkitTextFillColor: getTintedFieldTextColor,
+      color: getTintedFieldTextColor,
+      fontWeight: 600,
+      "&::placeholder": {
+        WebkitTextFillColor: getTintedFieldPlaceholderColor,
+        color: getTintedFieldPlaceholderColor,
+        opacity: 1,
+      },
+    },
+    "& .MuiSelect-select": {
+      WebkitTextFillColor: getTintedFieldTextColor,
+      color: getTintedFieldTextColor,
+      fontWeight: 600,
+    },
+    "& .MuiInputAdornment-root": {
+      color: getTintedFieldIconColor,
+    },
+    "& .MuiSvgIcon-root": {
+      color: getTintedFieldIconColor,
+    },
     "& fieldset": {
-      borderColor: "rgba(30, 58, 138, 0.16)",
+      borderColor: (theme: Theme) =>
+        theme.palette.mode === "dark"
+          ? alpha(theme.palette.primary.dark, 0.24)
+          : "rgba(30, 58, 138, 0.16)",
     },
     "&:hover": {
-      boxShadow: "0 14px 28px rgba(30, 58, 138, 0.1)",
+      boxShadow: (theme: Theme) =>
+        theme.palette.mode === "dark"
+          ? "0 16px 28px rgba(2, 6, 23, 0.28)"
+          : "0 14px 28px rgba(30, 58, 138, 0.1)",
       transform: "translateY(-1px)",
     },
     "&:hover fieldset": {
-      borderColor: "rgba(30, 58, 138, 0.28)",
+      borderColor: (theme: Theme) =>
+        theme.palette.mode === "dark"
+          ? alpha(theme.palette.primary.dark, 0.38)
+          : "rgba(30, 58, 138, 0.28)",
     },
     "&.Mui-focused": {
-      boxShadow: "0 16px 30px rgba(30, 58, 138, 0.14)",
+      boxShadow: (theme: Theme) =>
+        theme.palette.mode === "dark"
+          ? `0 18px 32px ${alpha(theme.palette.primary.dark, 0.18)}`
+          : "0 16px 30px rgba(30, 58, 138, 0.14)",
     },
     "&.Mui-focused fieldset": {
       borderColor: (theme: Theme) =>
         theme.palette.mode === "dark"
-          ? theme.palette.primary.light
+          ? theme.palette.primary.dark
           : theme.palette.primary.dark,
       borderWidth: "1px",
     },

@@ -49,7 +49,9 @@ func (h *Handler) GetSalespeopleDashboard(c *gin.Context) {
 		slog.String("username", middleware.Username(c)),
 		slog.String("role", string(middleware.Role(c))),
 		slog.String("source_company", filters.SourceCompany),
+		slog.Bool("has_installer_filter", filters.InstallerID != nil),
 		slog.Bool("has_salesperson_filter", filters.SalespersonID != nil),
+		slog.Bool("has_status_filter", filters.StatusID != nil),
 		slog.Bool("has_year_filter", filters.Year != nil),
 		slog.Bool("has_month_filter", filters.Month != nil),
 	)
@@ -82,7 +84,15 @@ func (h *Handler) GetSalespeopleDashboard(c *gin.Context) {
 }
 
 func parseSalespeopleDashboardFilters(c *gin.Context) (*dto.DashboardSalespeopleFilters, error) {
+	installerID, err := parseOptionalInt64(c.Query("installer_id"))
+	if err != nil {
+		return nil, err
+	}
 	salespersonID, err := parseOptionalInt64(c.Query("salesperson_id"))
+	if err != nil {
+		return nil, err
+	}
+	statusID, err := parseOptionalInt64(c.Query("status_id"))
 	if err != nil {
 		return nil, err
 	}
@@ -96,9 +106,11 @@ func parseSalespeopleDashboardFilters(c *gin.Context) (*dto.DashboardSalespeople
 	}
 
 	return &dto.DashboardSalespeopleFilters{
+		InstallerID:   installerID,
 		Month:         month,
 		SalespersonID: salespersonID,
 		SourceCompany: c.Query("source_company"),
+		StatusID:      statusID,
 		Year:          year,
 	}, nil
 }

@@ -1,4 +1,4 @@
-﻿﻿﻿export type BudgetSortBy =
+﻿﻿export type BudgetSortBy =
   | "sent_at"
   | "gross_value"
   | "created_at"
@@ -16,6 +16,7 @@ export type BudgetListFilters = {
   installerId: string;
   systemTypeId: string;
   projectCode: string;
+  projectName: string;
   salespersonId: string;
   estimatorId: string;
   sentAtFrom: string;

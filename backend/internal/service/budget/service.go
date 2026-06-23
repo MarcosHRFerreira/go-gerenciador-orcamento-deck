@@ -447,6 +447,7 @@ func normalizeListFilters(filters *dto.ListBudgetsFilters) (*dto.ListBudgetsFilt
 	normalized.BudgetNumber = strings.TrimSpace(filters.BudgetNumber)
 	normalized.SourceCompany = strings.TrimSpace(filters.SourceCompany)
 	normalized.ProjectCode = strings.TrimSpace(filters.ProjectCode)
+	normalized.ProjectName = strings.TrimSpace(filters.ProjectName)
 	normalized.ProjetistaName = strings.TrimSpace(filters.ProjetistaName)
 	normalized.CompetitorName = strings.TrimSpace(filters.CompetitorName)
 	normalized.SortBy = strings.TrimSpace(strings.ToLower(filters.SortBy))
