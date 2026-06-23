@@ -1,8 +1,6 @@
 package budget
 
 import (
-	"bytes"
-	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
@@ -35,6 +33,7 @@ func (h *Handler) RouteList() {
 	protectedRoutes := h.router.Group("/budgets")
 	protectedRoutes.Use(middleware.Auth(h.secretKey))
 	protectedRoutes.GET("", h.List)
+	protectedRoutes.GET("/delivery-monitor/items", h.ListDeliveryMonitor)
 	protectedRoutes.GET("/:budget_id", h.GetByID)
 	protectedRoutes.POST("", h.Create)
 	protectedRoutes.PUT("/:budget_id", h.Update)
@@ -63,26 +62,6 @@ func (h *Handler) Create(c *gin.Context) {
 }
 
 func (h *Handler) List(c *gin.Context) {
-	// #region debug-point A:budgets-list-entry
-	go func() {
-		payload, _ := json.Marshal(map[string]interface{}{
-			"sessionId":    "login-internal-error",
-			"runId":        "pre-fix",
-			"hypothesisId": "A",
-			"location":     "backend/internal/handler/budget/handler.go:List",
-			"msg":          "[DEBUG] budgets list request started",
-			"data": map[string]interface{}{
-				"path":              c.FullPath(),
-				"raw_query":         c.Request.URL.RawQuery,
-				"role":              middleware.Role(c),
-				"username":          middleware.Username(c),
-				"authorization_set": c.GetHeader("Authorization") != "",
-			},
-			"ts": time.Now().UnixMilli(),
-		})
-		_, _ = http.Post("http://127.0.0.1:7777/event", "application/json", bytes.NewReader(payload))
-	}()
-	// #endregion
 	filters, err := parseListFilters(c)
 	if err != nil {
 		httpresponse.JSONError(c, http.StatusBadRequest, err.Error())
@@ -96,26 +75,27 @@ func (h *Handler) List(c *gin.Context) {
 		middleware.Username(c),
 	)
 	if err != nil {
-		// #region debug-point A:budgets-list-error
-		go func() {
-			payload, _ := json.Marshal(map[string]interface{}{
-				"sessionId":    "login-internal-error",
-				"runId":        "pre-fix",
-				"hypothesisId": "A",
-				"location":     "backend/internal/handler/budget/handler.go:List",
-				"msg":          "[DEBUG] budgets list request failed",
-				"data": map[string]interface{}{
-					"error":     err.Error(),
-					"path":      c.FullPath(),
-					"raw_query": c.Request.URL.RawQuery,
-					"role":      middleware.Role(c),
-					"username":  middleware.Username(c),
-				},
-				"ts": time.Now().UnixMilli(),
-			})
-			_, _ = http.Post("http://127.0.0.1:7777/event", "application/json", bytes.NewReader(payload))
-		}()
-		// #endregion
+		httpresponse.JSONAppError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, items)
+}
+
+func (h *Handler) ListDeliveryMonitor(c *gin.Context) {
+	filters, err := parseDeliveryMonitorFilters(c)
+	if err != nil {
+		httpresponse.JSONError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	items, err := h.service.ListDeliveryMonitor(
+		c.Request.Context(),
+		filters,
+		middleware.Role(c),
+		middleware.Username(c),
+	)
+	if err != nil {
 		httpresponse.JSONAppError(c, err)
 		return
 	}
@@ -302,6 +282,50 @@ func parseListFilters(c *gin.Context) (*dto.ListBudgetsFilters, error) {
 	}, nil
 }
 
+func parseDeliveryMonitorFilters(c *gin.Context) (*dto.ListBudgetDeliveryMonitorFilters, error) {
+	salespersonID, err := parseOptionalInt64(c.Query("salesperson_id"))
+	if err != nil {
+		return nil, err
+	}
+	statusID, err := parseOptionalInt64(c.Query("status_id"))
+	if err != nil {
+		return nil, err
+	}
+	deliveryDateFrom, err := parseOptionalTime(c.Query("delivery_date_from"))
+	if err != nil {
+		return nil, err
+	}
+	deliveryDateTo, err := parseOptionalTime(c.Query("delivery_date_to"))
+	if err != nil {
+		return nil, err
+	}
+	missingDeliveryDate, err := parseOptionalBool(c.Query("missing_delivery_date"))
+	if err != nil {
+		return nil, err
+	}
+	page, err := parseOptionalIntValue(c.Query("page"), 1)
+	if err != nil {
+		return nil, err
+	}
+	pageSize, err := parseOptionalIntValue(c.Query("page_size"), 25)
+	if err != nil {
+		return nil, err
+	}
+
+	return &dto.ListBudgetDeliveryMonitorFilters{
+		BudgetNumber:        c.Query("budget_number"),
+		ProjectName:         c.Query("project_name"),
+		SalespersonID:       salespersonID,
+		StatusID:            statusID,
+		DeliveryDateFrom:    deliveryDateFrom,
+		DeliveryDateTo:      deliveryDateTo,
+		DeliveryStatus:      c.Query("delivery_status"),
+		MissingDeliveryDate: missingDeliveryDate,
+		Page:                page,
+		PageSize:            pageSize,
+	}, nil
+}
+
 func parseBudgetID(c *gin.Context) (int64, bool) {
 	budgetID, err := strconv.ParseInt(c.Param("budget_id"), 10, 64)
 	if err != nil || budgetID <= 0 {
@@ -378,6 +402,19 @@ func parseOptionalTime(value string) (*time.Time, error) {
 	}
 
 	return nil, httpError("Data invalida")
+}
+
+func parseOptionalBool(value string) (*bool, error) {
+	if value == "" {
+		return nil, nil
+	}
+
+	parsedValue, err := strconv.ParseBool(value)
+	if err != nil {
+		return nil, httpError("Valor booleano invalido")
+	}
+
+	return &parsedValue, nil
 }
 
 func httpError(message string) error {

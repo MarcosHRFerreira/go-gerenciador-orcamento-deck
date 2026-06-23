@@ -1,8 +1,12 @@
-﻿import { api } from "../../../lib/axios/api";
+import { api } from "../../../lib/axios/api";
 import type {
   BudgetCatalogItem,
   BudgetCatalogsResult,
   BudgetApiItem,
+  BudgetDeliveryMonitorApiItem,
+  BudgetDeliveryMonitorApiResponse,
+  BudgetDeliveryMonitorFilters,
+  BudgetDeliveryMonitorResult,
   BudgetElectWinnerPayload,
   BudgetImportExecutionResult,
   BudgetImportPreviewOptions,
@@ -26,6 +30,7 @@ function mapBudgetListItem(item: BudgetApiItem) {
     yearBudget: item.year_budget,
     revision: item.revision,
     sentAt: item.sent_at,
+    deliveryDate: item.delivery_date ?? null,
     grossValue: item.gross_value,
     commissionValue: item.commission_value,
     areaM2: item.area_m2,
@@ -64,6 +69,26 @@ function mapBudgetListItem(item: BudgetApiItem) {
   };
 }
 
+function mapBudgetDeliveryMonitorItem(item: BudgetDeliveryMonitorApiItem) {
+  return {
+    id: item.id,
+    budgetNumber: item.budget_number,
+    projectId: item.project_id ?? null,
+    projectCode: item.project_code ?? null,
+    projectName: item.project_name ?? null,
+    constructionCompany: item.construction_company,
+    salespersonId: item.salesperson_id ?? null,
+    salespersonName: item.salesperson_name ?? null,
+    statusId: item.status_id,
+    statusName: item.status_name ?? null,
+    deliveryDate: item.delivery_date ?? null,
+    daysUntilDelivery: item.days_until_delivery ?? null,
+    deliveryStatus: item.delivery_status,
+    deliveryStatusLabel: item.delivery_status_label,
+    updatedAt: item.updated_at,
+  };
+}
+
 function mapBudgetStatusHistoryItem(
   item: BudgetStatusHistoryApiItem,
 ): BudgetStatusHistoryItem {
@@ -90,6 +115,7 @@ type CreateBudgetApiPayload = {
   year_budget: number;
   revision: number;
   sent_at: string;
+  delivery_date: string | null;
   gross_value: number;
   commission_value: number;
   area_m2: number;
@@ -337,6 +363,7 @@ function mapCreateBudgetPayload(
     competitor_price: payload.competitorPrice,
     contact_id: payload.contactId,
     current_follow_up: payload.currentFollowUp,
+    delivery_date: payload.deliveryDate,
     projetista_name: payload.projetistaName,
     gross_value: payload.grossValue,
     installer_id: payload.installerId,
@@ -377,6 +404,23 @@ function buildBudgetListParams(filters: BudgetListFilters) {
   };
 }
 
+function buildBudgetDeliveryMonitorParams(
+  filters: BudgetDeliveryMonitorFilters,
+) {
+  return {
+    budget_number: filters.budgetNumber || undefined,
+    project_name: filters.projectName || undefined,
+    salesperson_id: filters.salespersonId || undefined,
+    status_id: filters.statusId || undefined,
+    delivery_date_from: filters.deliveryDateFrom || undefined,
+    delivery_date_to: filters.deliveryDateTo || undefined,
+    delivery_status: filters.deliveryStatus || undefined,
+    missing_delivery_date: filters.missingDeliveryDate ? true : undefined,
+    page: filters.page,
+    page_size: filters.pageSize,
+  };
+}
+
 async function fetchAllBudgetPages(
   filters: BudgetListFilters,
   page: number,
@@ -406,6 +450,32 @@ export async function getBudgetListRequest(
 
   return {
     items: response.data.items.map(mapBudgetListItem),
+    page: response.data.page,
+    pageSize: response.data.page_size,
+    total: response.data.total,
+  };
+}
+
+export async function getBudgetDeliveryMonitorRequest(
+  filters: BudgetDeliveryMonitorFilters,
+): Promise<BudgetDeliveryMonitorResult> {
+  const response = await api.get<BudgetDeliveryMonitorApiResponse>(
+    "/budgets/delivery-monitor/items",
+    {
+      params: buildBudgetDeliveryMonitorParams(filters),
+    },
+  );
+
+  return {
+    items: response.data.items.map(mapBudgetDeliveryMonitorItem),
+    summary: {
+      total: response.data.summary.total,
+      overdueCount: response.data.summary.overdue_count,
+      dueTodayCount: response.data.summary.due_today_count,
+      dueInUpTo2DaysCount: response.data.summary.due_in_up_to_2_days_count,
+      missingDeliveryCount: response.data.summary.missing_delivery_count,
+      futureCount: response.data.summary.future_count,
+    },
     page: response.data.page,
     pageSize: response.data.page_size,
     total: response.data.total,

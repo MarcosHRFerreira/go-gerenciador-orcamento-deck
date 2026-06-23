@@ -1,4 +1,4 @@
-﻿﻿export type BudgetSortBy =
+﻿﻿﻿export type BudgetSortBy =
   | "sent_at"
   | "gross_value"
   | "created_at"
@@ -34,6 +34,7 @@ export type BudgetApiItem = {
   year_budget: number;
   revision: number;
   sent_at: string;
+  delivery_date?: string | null;
   gross_value: number;
   commission_value: number;
   area_m2: number;
@@ -84,6 +85,7 @@ export type BudgetListItem = {
   yearBudget: number;
   revision: number;
   sentAt: string;
+  deliveryDate: string | null;
   grossValue: number;
   commissionValue: number;
   areaM2: number;
@@ -125,6 +127,95 @@ export type BudgetDetailItem = BudgetListItem;
 
 export type BudgetListResult = {
   items: BudgetListItem[];
+  page: number;
+  pageSize: number;
+  total: number;
+};
+
+export type BudgetDeliveryStatus =
+  | "overdue"
+  | "due_today"
+  | "due_in_1_day"
+  | "due_in_2_days"
+  | "future"
+  | "missing_delivery_date";
+
+export type BudgetDeliveryMonitorFilters = {
+  budgetNumber: string;
+  projectName: string;
+  salespersonId: string;
+  statusId: string;
+  deliveryDateFrom: string;
+  deliveryDateTo: string;
+  deliveryStatus: "" | BudgetDeliveryStatus;
+  missingDeliveryDate: boolean;
+  page: number;
+  pageSize: number;
+};
+
+export type BudgetDeliveryMonitorApiItem = {
+  id: number;
+  budget_number: string;
+  project_id?: number | null;
+  project_code?: string | null;
+  project_name?: string | null;
+  construction_company: string;
+  salesperson_id?: number | null;
+  salesperson_name?: string | null;
+  status_id: number;
+  status_name?: string | null;
+  delivery_date?: string | null;
+  days_until_delivery?: number | null;
+  delivery_status: BudgetDeliveryStatus;
+  delivery_status_label: string;
+  updated_at: string;
+};
+
+export type BudgetDeliveryMonitorItem = {
+  id: number;
+  budgetNumber: string;
+  projectId: number | null;
+  projectCode: string | null;
+  projectName: string | null;
+  constructionCompany: string;
+  salespersonId: number | null;
+  salespersonName: string | null;
+  statusId: number;
+  statusName: string | null;
+  deliveryDate: string | null;
+  daysUntilDelivery: number | null;
+  deliveryStatus: BudgetDeliveryStatus;
+  deliveryStatusLabel: string;
+  updatedAt: string;
+};
+
+export type BudgetDeliveryMonitorSummary = {
+  total: number;
+  overdueCount: number;
+  dueTodayCount: number;
+  dueInUpTo2DaysCount: number;
+  missingDeliveryCount: number;
+  futureCount: number;
+};
+
+export type BudgetDeliveryMonitorApiResponse = {
+  items: BudgetDeliveryMonitorApiItem[];
+  summary: {
+    total: number;
+    overdue_count: number;
+    due_today_count: number;
+    due_in_up_to_2_days_count: number;
+    missing_delivery_count: number;
+    future_count: number;
+  };
+  page: number;
+  page_size: number;
+  total: number;
+};
+
+export type BudgetDeliveryMonitorResult = {
+  items: BudgetDeliveryMonitorItem[];
+  summary: BudgetDeliveryMonitorSummary;
   page: number;
   pageSize: number;
   total: number;
@@ -177,6 +268,7 @@ export type BudgetCreatePayload = {
   yearBudget: number;
   revision: number;
   sentAt: string;
+  deliveryDate: string | null;
   grossValue: number;
   commissionValue: number;
   areaM2: number;

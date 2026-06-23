@@ -243,6 +243,7 @@ function mapBudgetDetailToPayload(
     competitorPrice: budget.competitorPrice,
     contactId: budget.contactId,
     currentFollowUp: budget.currentFollowUp,
+    deliveryDate: budget.deliveryDate,
     projetistaName: budget.projetistaName,
     grossValue: budget.grossValue,
     installerId: budget.installerId,

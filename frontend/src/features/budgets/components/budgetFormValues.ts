@@ -8,6 +8,7 @@ export type BudgetFormValues = {
   competitorPrice: string;
   contactId: string;
   currentFollowUp: string;
+  deliveryDate: string;
   projetistaName: string;
   grossValue: string;
   installerId: string;
@@ -41,6 +42,7 @@ export function createDefaultBudgetFormValues(): BudgetFormValues {
     competitorPrice: "",
     contactId: "",
     currentFollowUp: "",
+    deliveryDate: "",
     projetistaName: "",
     grossValue: "",
     installerId: "",
@@ -71,6 +73,7 @@ export function mapBudgetDetailToFormValues(
       budget.competitorPrice === null ? "" : String(budget.competitorPrice),
     contactId: budget.contactId === null ? "" : String(budget.contactId),
     currentFollowUp: budget.currentFollowUp,
+    deliveryDate: budget.deliveryDate ?? "",
     projetistaName: budget.projetistaName,
     grossValue: String(budget.grossValue),
     installerId: budget.installerId === null ? "" : String(budget.installerId),

@@ -7,6 +7,7 @@ type CreateBudgetRequest struct {
 	YearBudget           int       `json:"year_budget" validate:"required"`
 	Revision             int       `json:"revision"`
 	SentAt               time.Time `json:"sent_at"`
+	DeliveryDate         *string   `json:"delivery_date"`
 	GrossValue           float64   `json:"gross_value"`
 	CommissionValue      float64   `json:"commission_value"`
 	AreaM2               float64   `json:"area_m2"`
@@ -33,6 +34,7 @@ type UpdateBudgetRequest struct {
 	YearBudget           int       `json:"year_budget" validate:"required"`
 	Revision             int       `json:"revision"`
 	SentAt               time.Time `json:"sent_at"`
+	DeliveryDate         *string   `json:"delivery_date"`
 	GrossValue           float64   `json:"gross_value"`
 	CommissionValue      float64   `json:"commission_value"`
 	AreaM2               float64   `json:"area_m2"`
@@ -93,6 +95,7 @@ type BudgetResponse struct {
 	YearBudget           int       `json:"year_budget"`
 	Revision             int       `json:"revision"`
 	SentAt               time.Time `json:"sent_at"`
+	DeliveryDate         *string   `json:"delivery_date,omitempty"`
 	GrossValue           float64   `json:"gross_value"`
 	CommissionValue      float64   `json:"commission_value"`
 	AreaM2               float64   `json:"area_m2"`
@@ -135,4 +138,54 @@ type ListBudgetsResponse struct {
 	Page     int              `json:"page"`
 	PageSize int              `json:"page_size"`
 	Total    int64            `json:"total"`
+}
+
+type ListBudgetDeliveryMonitorFilters struct {
+	BudgetNumber            string
+	ProjectName             string
+	SalespersonID           *int64
+	StatusID                *int64
+	RestrictedSalespersonID *int64
+	RestrictedEstimatorID   *int64
+	DeliveryDateFrom        *time.Time
+	DeliveryDateTo          *time.Time
+	DeliveryStatus          string
+	MissingDeliveryDate     *bool
+	Page                    int
+	PageSize                int
+}
+
+type BudgetDeliveryMonitorItemResponse struct {
+	ID                  int64     `json:"id"`
+	BudgetNumber        string    `json:"budget_number"`
+	ProjectID           *int64    `json:"project_id,omitempty"`
+	ProjectCode         *string   `json:"project_code,omitempty"`
+	ProjectName         *string   `json:"project_name,omitempty"`
+	ConstructionCompany string    `json:"construction_company"`
+	SalespersonID       *int64    `json:"salesperson_id,omitempty"`
+	SalespersonName     *string   `json:"salesperson_name,omitempty"`
+	StatusID            int64     `json:"status_id"`
+	StatusName          *string   `json:"status_name,omitempty"`
+	DeliveryDate        *string   `json:"delivery_date,omitempty"`
+	DaysUntilDelivery   *int64    `json:"days_until_delivery,omitempty"`
+	DeliveryStatus      string    `json:"delivery_status"`
+	DeliveryStatusLabel string    `json:"delivery_status_label"`
+	UpdatedAt           time.Time `json:"updated_at"`
+}
+
+type BudgetDeliveryMonitorSummaryResponse struct {
+	Total                int64 `json:"total"`
+	OverdueCount         int64 `json:"overdue_count"`
+	DueTodayCount        int64 `json:"due_today_count"`
+	DueInUpTo2DaysCount  int64 `json:"due_in_up_to_2_days_count"`
+	MissingDeliveryCount int64 `json:"missing_delivery_count"`
+	FutureCount          int64 `json:"future_count"`
+}
+
+type ListBudgetDeliveryMonitorResponse struct {
+	Items    []BudgetDeliveryMonitorItemResponse  `json:"items"`
+	Summary  BudgetDeliveryMonitorSummaryResponse `json:"summary"`
+	Page     int                                  `json:"page"`
+	PageSize int                                  `json:"page_size"`
+	Total    int64                                `json:"total"`
 }

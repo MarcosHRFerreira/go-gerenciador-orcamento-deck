@@ -22,6 +22,7 @@ import (
 type Service interface {
 	Create(ctx context.Context, role model.UserRole, username string, req *dto.CreateBudgetRequest) (int64, error)
 	List(ctx context.Context, filters *dto.ListBudgetsFilters, role model.UserRole, username string) (*dto.ListBudgetsResponse, error)
+	ListDeliveryMonitor(ctx context.Context, filters *dto.ListBudgetDeliveryMonitorFilters, role model.UserRole, username string) (*dto.ListBudgetDeliveryMonitorResponse, error)
 	GetByID(ctx context.Context, budgetID int64, role model.UserRole, username string) (*dto.BudgetResponse, error)
 	Update(ctx context.Context, budgetID int64, role model.UserRole, username string, req *dto.UpdateBudgetRequest) error
 	ElectProjectWinner(ctx context.Context, budgetID int64, userID int64, role model.UserRole, username string, req *dto.ElectBudgetWinnerRequest) error
@@ -74,6 +75,11 @@ func (s *service) Create(ctx context.Context, role model.UserRole, username stri
 		return 0, apperror.BadRequest("status_id e obrigatorio")
 	}
 
+	deliveryDate, err := parseOptionalDeliveryDate(req.DeliveryDate)
+	if err != nil {
+		return 0, err
+	}
+
 	exists, err := s.repo.ExistsByNumberAndYear(ctx, budgetNumber, req.YearBudget)
 	if err != nil {
 		return 0, apperror.Internal("failed to check budget uniqueness", err)
@@ -100,6 +106,7 @@ func (s *service) Create(ctx context.Context, role model.UserRole, username stri
 		YearBudget:           req.YearBudget,
 		Revision:             req.Revision,
 		SentAt:               req.SentAt,
+		DeliveryDate:         deliveryDate,
 		GrossValue:           req.GrossValue,
 		CommissionValue:      req.CommissionValue,
 		AreaM2:               req.AreaM2,
@@ -177,6 +184,38 @@ func (s *service) GetByID(ctx context.Context, budgetID int64, role model.UserRo
 	return &response, nil
 }
 
+func (s *service) ListDeliveryMonitor(
+	ctx context.Context,
+	filters *dto.ListBudgetDeliveryMonitorFilters,
+	role model.UserRole,
+	username string,
+) (*dto.ListBudgetDeliveryMonitorResponse, error) {
+	normalizedFilters, err := normalizeDeliveryMonitorFilters(filters)
+	if err != nil {
+		return nil, err
+	}
+
+	scope, err := accessscope.ResolveBudgetScope(ctx, role, username, s.userRepo, s.salespersonRepo, s.estimatorRepo)
+	if err != nil {
+		return nil, err
+	}
+	normalizedFilters.RestrictedSalespersonID = scope.RestrictedSalespersonID
+	normalizedFilters.RestrictedEstimatorID = scope.RestrictedEstimatorID
+
+	items, total, summary, err := s.repo.ListDeliveryMonitor(ctx, normalizedFilters)
+	if err != nil {
+		return nil, apperror.Internal("failed to list budget delivery monitor", err)
+	}
+
+	return &dto.ListBudgetDeliveryMonitorResponse{
+		Items:    mapBudgetDeliveryMonitorResponses(items),
+		Summary:  *summary,
+		Page:     normalizedFilters.Page,
+		PageSize: normalizedFilters.PageSize,
+		Total:    total,
+	}, nil
+}
+
 func (s *service) Update(ctx context.Context, budgetID int64, role model.UserRole, username string, req *dto.UpdateBudgetRequest) error {
 	if budgetID <= 0 {
 		return apperror.BadRequest("budget_id e obrigatorio")
@@ -216,6 +255,11 @@ func (s *service) Update(ctx context.Context, budgetID int64, role model.UserRol
 		return apperror.BadRequest("status_id e obrigatorio")
 	}
 
+	deliveryDate, err := parseOptionalDeliveryDate(req.DeliveryDate)
+	if err != nil {
+		return err
+	}
+
 	if currentBudget.BudgetNumber != budgetNumber || currentBudget.YearBudget != req.YearBudget {
 		exists, existsErr := s.repo.ExistsByNumberAndYear(ctx, budgetNumber, req.YearBudget)
 		if existsErr != nil {
@@ -245,6 +289,7 @@ func (s *service) Update(ctx context.Context, budgetID int64, role model.UserRol
 		YearBudget:           req.YearBudget,
 		Revision:             req.Revision,
 		SentAt:               req.SentAt,
+		DeliveryDate:         deliveryDate,
 		GrossValue:           req.GrossValue,
 		CommissionValue:      req.CommissionValue,
 		AreaM2:               req.AreaM2,
@@ -518,6 +563,47 @@ func normalizeListFilters(filters *dto.ListBudgetsFilters) (*dto.ListBudgetsFilt
 	return &normalized, nil
 }
 
+func normalizeDeliveryMonitorFilters(filters *dto.ListBudgetDeliveryMonitorFilters) (*dto.ListBudgetDeliveryMonitorFilters, error) {
+	if filters == nil {
+		return &dto.ListBudgetDeliveryMonitorFilters{
+			Page:     1,
+			PageSize: 25,
+		}, nil
+	}
+
+	normalized := *filters
+	normalized.BudgetNumber = strings.TrimSpace(filters.BudgetNumber)
+	normalized.ProjectName = strings.TrimSpace(filters.ProjectName)
+	normalized.DeliveryStatus = strings.TrimSpace(strings.ToLower(filters.DeliveryStatus))
+
+	if normalized.Page <= 0 {
+		normalized.Page = 1
+	}
+	if normalized.PageSize <= 0 {
+		normalized.PageSize = 25
+	}
+	if normalized.PageSize > 100 {
+		return nil, apperror.BadRequest("page_size nao pode ser maior que 100")
+	}
+	if normalized.SalespersonID != nil && *normalized.SalespersonID <= 0 {
+		return nil, apperror.BadRequest("salesperson_id deve ser maior que zero")
+	}
+	if normalized.StatusID != nil && *normalized.StatusID <= 0 {
+		return nil, apperror.BadRequest("status_id deve ser maior que zero")
+	}
+	if normalized.DeliveryDateFrom != nil && normalized.DeliveryDateTo != nil && normalized.DeliveryDateFrom.After(*normalized.DeliveryDateTo) {
+		return nil, apperror.BadRequest("delivery_date_from nao pode ser maior que delivery_date_to")
+	}
+
+	switch normalized.DeliveryStatus {
+	case "", "overdue", "due_today", "due_in_1_day", "due_in_2_days", "future", "missing_delivery_date":
+	default:
+		return nil, apperror.BadRequest("delivery_status e invalido")
+	}
+
+	return &normalized, nil
+}
+
 func isAllowedSortBy(value string) bool {
 	allowedValues := map[string]struct{}{
 		"sent_at":       {},
@@ -541,6 +627,31 @@ func mapBudgetResponses(items []model.BudgetModel) []dto.BudgetResponse {
 	return response
 }
 
+func mapBudgetDeliveryMonitorResponses(items []model.BudgetDeliveryMonitorModel) []dto.BudgetDeliveryMonitorItemResponse {
+	response := make([]dto.BudgetDeliveryMonitorItemResponse, 0, len(items))
+	for _, item := range items {
+		response = append(response, dto.BudgetDeliveryMonitorItemResponse{
+			ID:                  item.ID,
+			BudgetNumber:        item.BudgetNumber,
+			ProjectID:           nullableInt64Pointer(item.ProjectID),
+			ProjectCode:         nullableStringPointer(item.ProjectCode),
+			ProjectName:         nullableStringPointer(item.ProjectName),
+			ConstructionCompany: item.ConstructionCompany,
+			SalespersonID:       nullableInt64Pointer(item.SalespersonID),
+			SalespersonName:     nullableStringPointer(item.SalespersonName),
+			StatusID:            item.StatusID,
+			StatusName:          nullableStringPointer(item.StatusName),
+			DeliveryDate:        nullableDatePointer(item.DeliveryDate),
+			DaysUntilDelivery:   nullableInt64Pointer(item.DaysUntilDelivery),
+			DeliveryStatus:      item.DeliveryStatus,
+			DeliveryStatusLabel: mapDeliveryStatusLabel(item.DeliveryStatus),
+			UpdatedAt:           item.UpdatedAt,
+		})
+	}
+
+	return response
+}
+
 func mapBudgetResponse(item *model.BudgetModel) dto.BudgetResponse {
 	return dto.BudgetResponse{
 		ID:                   item.ID,
@@ -548,6 +659,7 @@ func mapBudgetResponse(item *model.BudgetModel) dto.BudgetResponse {
 		YearBudget:           item.YearBudget,
 		Revision:             item.Revision,
 		SentAt:               item.SentAt,
+		DeliveryDate:         nullableDatePointer(item.DeliveryDate),
 		GrossValue:           item.GrossValue,
 		CommissionValue:      item.CommissionValue,
 		AreaM2:               item.AreaM2,
@@ -616,6 +728,25 @@ func nullableInt64Pointer(value sql.NullInt64) *int64 {
 	return &value.Int64
 }
 
+func mapDeliveryStatusLabel(value string) string {
+	switch value {
+	case "overdue":
+		return "Atrasado"
+	case "due_today":
+		return "Entrega hoje"
+	case "due_in_1_day":
+		return "Entrega em 1 dia"
+	case "due_in_2_days":
+		return "Entrega em 2 dias"
+	case "future":
+		return "Entrega futura"
+	case "missing_delivery_date":
+		return "Pedido sem data de entrega"
+	default:
+		return "Nao informado"
+	}
+}
+
 func nullableFloat64Pointer(value sql.NullFloat64) *float64 {
 	if !value.Valid {
 		return nil
@@ -630,6 +761,36 @@ func nullableStringPointer(value sql.NullString) *string {
 	}
 
 	return &value.String
+}
+
+func nullableDatePointer(value sql.NullTime) *string {
+	if !value.Valid {
+		return nil
+	}
+
+	formattedValue := value.Time.Format("2006-01-02")
+	return &formattedValue
+}
+
+func parseOptionalDeliveryDate(value *string) (sql.NullTime, error) {
+	if value == nil {
+		return sql.NullTime{}, nil
+	}
+
+	trimmedValue := strings.TrimSpace(*value)
+	if trimmedValue == "" {
+		return sql.NullTime{}, nil
+	}
+
+	parsedValue, err := time.Parse("2006-01-02", trimmedValue)
+	if err != nil {
+		return sql.NullTime{}, apperror.BadRequest("delivery_date invalida")
+	}
+
+	return sql.NullTime{
+		Time:  parsedValue,
+		Valid: true,
+	}, nil
 }
 
 func (s *service) resolveCreateAndUpdateAssignments(

@@ -40,6 +40,7 @@ type ElectProjectWinnerParams struct {
 type Repository interface {
 	Create(ctx context.Context, item *model.BudgetModel) (int64, error)
 	List(ctx context.Context, filters *dto.ListBudgetsFilters) ([]model.BudgetModel, int64, error)
+	ListDeliveryMonitor(ctx context.Context, filters *dto.ListBudgetDeliveryMonitorFilters) ([]model.BudgetDeliveryMonitorModel, int64, *dto.BudgetDeliveryMonitorSummaryResponse, error)
 	ExistsByNumberAndYear(ctx context.Context, budgetNumber string, yearBudget int) (bool, error)
 	ExistsBySourceAndNumberAndYear(ctx context.Context, sourceCompany string, budgetNumber string, yearBudget int) (bool, error)
 	GetByNumberAndYear(ctx context.Context, budgetNumber string, yearBudget int) (*model.BudgetModel, error)
@@ -70,6 +71,7 @@ func (r *repository) Create(ctx context.Context, item *model.BudgetModel) (int64
 			year_budget,
 			revision,
 			sent_at,
+			delivery_date,
 			gross_value,
 			commission_value,
 			area_m2,
@@ -95,7 +97,7 @@ func (r *repository) Create(ctx context.Context, item *model.BudgetModel) (int64
 			created_at,
 			updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
 		RETURNING id
 	`
 
@@ -107,6 +109,7 @@ func (r *repository) Create(ctx context.Context, item *model.BudgetModel) (int64
 		item.YearBudget,
 		item.Revision,
 		item.SentAt,
+		nullableTime(item.DeliveryDate),
 		item.GrossValue,
 		item.CommissionValue,
 		item.AreaM2,
@@ -147,6 +150,7 @@ func (r *repository) List(ctx context.Context, filters *dto.ListBudgetsFilters) 
 			b.year_budget,
 			b.revision,
 			b.sent_at,
+			b.delivery_date,
 			b.gross_value,
 			b.commission_value,
 			b.area_m2,
@@ -220,6 +224,7 @@ func (r *repository) List(ctx context.Context, filters *dto.ListBudgetsFilters) 
 			&item.YearBudget,
 			&item.Revision,
 			&item.SentAt,
+			&item.DeliveryDate,
 			&item.GrossValue,
 			&item.CommissionValue,
 			&item.AreaM2,
@@ -267,6 +272,129 @@ func (r *repository) List(ctx context.Context, filters *dto.ListBudgetsFilters) 
 	}
 
 	return items, total, nil
+}
+
+func (r *repository) ListDeliveryMonitor(
+	ctx context.Context,
+	filters *dto.ListBudgetDeliveryMonitorFilters,
+) ([]model.BudgetDeliveryMonitorModel, int64, *dto.BudgetDeliveryMonitorSummaryResponse, error) {
+	const statusExpression = `
+		CASE
+			WHEN b.delivery_date IS NULL THEN 'missing_delivery_date'
+			WHEN b.delivery_date < CURRENT_DATE THEN 'overdue'
+			WHEN b.delivery_date = CURRENT_DATE THEN 'due_today'
+			WHEN b.delivery_date = CURRENT_DATE + 1 THEN 'due_in_1_day'
+			WHEN b.delivery_date = CURRENT_DATE + 2 THEN 'due_in_2_days'
+			ELSE 'future'
+		END
+	`
+
+	const baseFromClause = `
+		FROM budgets b
+		LEFT JOIN budget_statuses bs ON bs.id = b.status_id
+		LEFT JOIN projects p ON p.id = b.project_id
+		LEFT JOIN salespeople s ON s.id = b.salesperson_id
+	`
+
+	whereClause, whereArgs := buildDeliveryMonitorWhereClause(filters, statusExpression)
+	countQuery := "SELECT COUNT(*) " + baseFromClause + whereClause
+
+	var total int64
+	if err := r.db.QueryRowContext(ctx, countQuery, whereArgs...).Scan(&total); err != nil {
+		return nil, 0, nil, err
+	}
+
+	summaryQuery := fmt.Sprintf(`
+		SELECT
+			COUNT(*) AS total,
+			COUNT(*) FILTER (WHERE %s = 'overdue') AS overdue_count,
+			COUNT(*) FILTER (WHERE %s = 'due_today') AS due_today_count,
+			COUNT(*) FILTER (WHERE %s IN ('due_in_1_day', 'due_in_2_days')) AS due_in_up_to_2_days_count,
+			COUNT(*) FILTER (WHERE %s = 'missing_delivery_date') AS missing_delivery_count,
+			COUNT(*) FILTER (WHERE %s = 'future') AS future_count
+		%s
+		%s
+	`, statusExpression, statusExpression, statusExpression, statusExpression, statusExpression, baseFromClause, whereClause)
+
+	summary := &dto.BudgetDeliveryMonitorSummaryResponse{}
+	if err := r.db.QueryRowContext(ctx, summaryQuery, whereArgs...).Scan(
+		&summary.Total,
+		&summary.OverdueCount,
+		&summary.DueTodayCount,
+		&summary.DueInUpTo2DaysCount,
+		&summary.MissingDeliveryCount,
+		&summary.FutureCount,
+	); err != nil {
+		return nil, 0, nil, err
+	}
+
+	queryArgs := append([]interface{}{}, whereArgs...)
+	queryArgs = append(queryArgs, filters.PageSize)
+	limitIndex := len(queryArgs)
+	queryArgs = append(queryArgs, (filters.Page-1)*filters.PageSize)
+	offsetIndex := len(queryArgs)
+
+	query := fmt.Sprintf(`
+		SELECT
+			b.id,
+			b.budget_number,
+			b.project_id,
+			p.code AS project_code,
+			p.name AS project_name,
+			b.construction_company,
+			b.salesperson_id,
+			s.name AS salesperson_name,
+			b.status_id,
+			bs.name AS status_name,
+			b.delivery_date,
+			CASE
+				WHEN b.delivery_date IS NULL THEN NULL
+				ELSE (b.delivery_date - CURRENT_DATE)::bigint
+			END AS days_until_delivery,
+			%s AS delivery_status,
+			b.updated_at
+		%s
+		%s
+		ORDER BY %s
+		LIMIT $%d OFFSET $%d
+	`, statusExpression, baseFromClause, whereClause, deliveryMonitorOrderByClause(statusExpression), limitIndex, offsetIndex)
+
+	rows, err := r.db.QueryContext(ctx, query, queryArgs...)
+	if err != nil {
+		return nil, 0, nil, err
+	}
+	defer rows.Close()
+
+	items := make([]model.BudgetDeliveryMonitorModel, 0)
+	for rows.Next() {
+		var item model.BudgetDeliveryMonitorModel
+		if err := rows.Scan(
+			&item.ID,
+			&item.BudgetNumber,
+			&item.ProjectID,
+			&item.ProjectCode,
+			&item.ProjectName,
+			&item.ConstructionCompany,
+			&item.SalespersonID,
+			&item.SalespersonName,
+			&item.StatusID,
+			&item.StatusName,
+			&item.DeliveryDate,
+			&item.DaysUntilDelivery,
+			&item.DeliveryStatus,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, 0, nil, err
+		}
+
+		items = append(items, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, 0, nil, err
+	}
+
+	return items, total, summary, nil
 }
 
 func buildListQuery(baseQuery string, filters *dto.ListBudgetsFilters, whereClause string, whereArgs []interface{}) (string, []interface{}) {
@@ -392,6 +520,88 @@ func buildListWhereClause(filters *dto.ListBudgetsFilters) (string, []interface{
 	return builder.String(), args
 }
 
+func buildDeliveryMonitorWhereClause(filters *dto.ListBudgetDeliveryMonitorFilters, statusExpression string) (string, []interface{}) {
+	conditions := make([]string, 0)
+	args := make([]interface{}, 0)
+
+	if filters == nil {
+		filters = &dto.ListBudgetDeliveryMonitorFilters{}
+	}
+
+	if filters.StatusID != nil {
+		args = append(args, *filters.StatusID)
+		conditions = append(conditions, fmt.Sprintf("b.status_id = $%d", len(args)))
+	} else {
+		conditions = append(conditions, "(UPPER(COALESCE(bs.code, '')) = 'PEDIDO' OR LOWER(COALESCE(bs.name, '')) = 'pedido')")
+	}
+	if filters.RestrictedSalespersonID != nil {
+		args = append(args, *filters.RestrictedSalespersonID)
+		conditions = append(conditions, fmt.Sprintf("b.salesperson_id = $%d", len(args)))
+	}
+	if filters.RestrictedEstimatorID != nil {
+		args = append(args, *filters.RestrictedEstimatorID)
+		conditions = append(conditions, fmt.Sprintf("b.estimator_id = $%d", len(args)))
+	}
+	if filters.SalespersonID != nil {
+		args = append(args, *filters.SalespersonID)
+		conditions = append(conditions, fmt.Sprintf("b.salesperson_id = $%d", len(args)))
+	}
+	if filters.BudgetNumber != "" {
+		args = append(args, "%"+filters.BudgetNumber+"%")
+		conditions = append(conditions, fmt.Sprintf("b.budget_number ILIKE $%d", len(args)))
+	}
+	if filters.ProjectName != "" {
+		args = append(args, "%"+filters.ProjectName+"%")
+		conditions = append(
+			conditions,
+			fmt.Sprintf("(p.name ILIKE $%d OR p.code ILIKE $%d)", len(args), len(args)),
+		)
+	}
+	if filters.DeliveryDateFrom != nil {
+		args = append(args, *filters.DeliveryDateFrom)
+		conditions = append(conditions, fmt.Sprintf("b.delivery_date >= $%d", len(args)))
+	}
+	if filters.DeliveryDateTo != nil {
+		args = append(args, *filters.DeliveryDateTo)
+		conditions = append(conditions, fmt.Sprintf("b.delivery_date <= $%d", len(args)))
+	}
+	if filters.MissingDeliveryDate != nil {
+		if *filters.MissingDeliveryDate {
+			conditions = append(conditions, "b.delivery_date IS NULL")
+		} else {
+			conditions = append(conditions, "b.delivery_date IS NOT NULL")
+		}
+	}
+	if filters.DeliveryStatus != "" {
+		args = append(args, filters.DeliveryStatus)
+		conditions = append(conditions, fmt.Sprintf("%s = $%d", statusExpression, len(args)))
+	}
+
+	builder := strings.Builder{}
+	if len(conditions) > 0 {
+		builder.WriteString("\nWHERE ")
+		builder.WriteString(strings.Join(conditions, "\n  AND "))
+	}
+
+	return builder.String(), args
+}
+
+func deliveryMonitorOrderByClause(statusExpression string) string {
+	return fmt.Sprintf(`
+		CASE %s
+			WHEN 'overdue' THEN 1
+			WHEN 'due_today' THEN 2
+			WHEN 'due_in_1_day' THEN 3
+			WHEN 'due_in_2_days' THEN 4
+			WHEN 'missing_delivery_date' THEN 5
+			WHEN 'future' THEN 6
+			ELSE 7
+		END,
+		COALESCE(b.delivery_date, DATE '9999-12-31') ASC,
+		b.updated_at DESC
+	`, statusExpression)
+}
+
 func orderByClause(filters *dto.ListBudgetsFilters) string {
 	sortByMap := map[string]string{
 		"sent_at":       "b.sent_at",
@@ -461,6 +671,7 @@ func (r *repository) GetByNumberAndYear(ctx context.Context, budgetNumber string
 			year_budget,
 			revision,
 			sent_at,
+			delivery_date,
 			gross_value,
 			commission_value,
 			area_m2,
@@ -501,6 +712,7 @@ func (r *repository) GetByNumberAndYear(ctx context.Context, budgetNumber string
 		&item.YearBudget,
 		&item.Revision,
 		&item.SentAt,
+		&item.DeliveryDate,
 		&item.GrossValue,
 		&item.CommissionValue,
 		&item.AreaM2,
@@ -548,6 +760,7 @@ func (r *repository) GetBySourceAndNumberAndYear(ctx context.Context, sourceComp
 			year_budget,
 			revision,
 			sent_at,
+			delivery_date,
 			gross_value,
 			commission_value,
 			area_m2,
@@ -595,6 +808,7 @@ func (r *repository) GetBySourceAndNumberAndYear(ctx context.Context, sourceComp
 		&item.YearBudget,
 		&item.Revision,
 		&item.SentAt,
+		&item.DeliveryDate,
 		&item.GrossValue,
 		&item.CommissionValue,
 		&item.AreaM2,
@@ -649,6 +863,7 @@ func (r *repository) GetByIDScoped(ctx context.Context, budgetID int64, restrict
 			b.year_budget,
 			b.revision,
 			b.sent_at,
+			b.delivery_date,
 			b.gross_value,
 			b.commission_value,
 			b.area_m2,
@@ -716,6 +931,7 @@ func (r *repository) GetByIDScoped(ctx context.Context, budgetID int64, restrict
 		&item.YearBudget,
 		&item.Revision,
 		&item.SentAt,
+		&item.DeliveryDate,
 		&item.GrossValue,
 		&item.CommissionValue,
 		&item.AreaM2,
@@ -1361,29 +1577,30 @@ func updateBudgetExecutor(ctx context.Context, db executor, item *model.BudgetMo
 				year_budget = $3,
 				revision = $4,
 				sent_at = $5,
-				gross_value = $6,
-				commission_value = $7,
-				area_m2 = $8,
-				status_id = $9,
-				priority_id = $10,
-				installer_id = $11,
-				product_line_id = $12,
-				system_type_id = $13,
-				project_id = $14,
-				salesperson_id = $15,
-				estimator_id = $16,
-				contact_id = $17,
-				loss_reason_id = $18,
-				construction_company = $19,
-				competitor_name = $20,
-				competitor_price = $21,
-				projetista_name = $22,
-				specification_details = $23,
-				current_follow_up = $24,
-				updated_at = $25,
-				source_company = COALESCE(NULLIF($26, ''), source_company),
-				source_layout = COALESCE(NULLIF($27, ''), source_layout),
-				import_batch_id = COALESCE($28, import_batch_id)
+				delivery_date = $6,
+				gross_value = $7,
+				commission_value = $8,
+				area_m2 = $9,
+				status_id = $10,
+				priority_id = $11,
+				installer_id = $12,
+				product_line_id = $13,
+				system_type_id = $14,
+				project_id = $15,
+				salesperson_id = $16,
+				estimator_id = $17,
+				contact_id = $18,
+				loss_reason_id = $19,
+				construction_company = $20,
+				competitor_name = $21,
+				competitor_price = $22,
+				projetista_name = $23,
+				specification_details = $24,
+				current_follow_up = $25,
+				updated_at = $26,
+				source_company = COALESCE(NULLIF($27, ''), source_company),
+				source_layout = COALESCE(NULLIF($28, ''), source_layout),
+				import_batch_id = COALESCE($29, import_batch_id)
 			WHERE id = $1
 		`
 
@@ -1395,6 +1612,7 @@ func updateBudgetExecutor(ctx context.Context, db executor, item *model.BudgetMo
 			item.YearBudget,
 			item.Revision,
 			item.SentAt,
+			nullableTime(item.DeliveryDate),
 			item.GrossValue,
 			item.CommissionValue,
 			item.AreaM2,
@@ -1430,28 +1648,29 @@ func updateBudgetExecutor(ctx context.Context, db executor, item *model.BudgetMo
 			year_budget = $3,
 			revision = $4,
 			sent_at = $5,
-			gross_value = $6,
-			commission_value = $7,
-			area_m2 = $8,
-			priority_id = $9,
-			installer_id = $10,
-			product_line_id = $11,
-			system_type_id = $12,
-			project_id = $13,
-			salesperson_id = $14,
-			estimator_id = $15,
-			contact_id = $16,
-			loss_reason_id = $17,
-			construction_company = $18,
-			competitor_name = $19,
-			competitor_price = $20,
-			projetista_name = $21,
-			specification_details = $22,
-			current_follow_up = $23,
-			updated_at = $24,
-			source_company = COALESCE(NULLIF($25, ''), source_company),
-			source_layout = COALESCE(NULLIF($26, ''), source_layout),
-			import_batch_id = COALESCE($27, import_batch_id)
+				delivery_date = $6,
+				gross_value = $7,
+				commission_value = $8,
+				area_m2 = $9,
+				priority_id = $10,
+				installer_id = $11,
+				product_line_id = $12,
+				system_type_id = $13,
+				project_id = $14,
+				salesperson_id = $15,
+				estimator_id = $16,
+				contact_id = $17,
+				loss_reason_id = $18,
+				construction_company = $19,
+				competitor_name = $20,
+				competitor_price = $21,
+				projetista_name = $22,
+				specification_details = $23,
+				current_follow_up = $24,
+				updated_at = $25,
+				source_company = COALESCE(NULLIF($26, ''), source_company),
+				source_layout = COALESCE(NULLIF($27, ''), source_layout),
+				import_batch_id = COALESCE($28, import_batch_id)
 		WHERE id = $1
 	`
 
@@ -1463,6 +1682,7 @@ func updateBudgetExecutor(ctx context.Context, db executor, item *model.BudgetMo
 		item.YearBudget,
 		item.Revision,
 		item.SentAt,
+		nullableTime(item.DeliveryDate),
 		item.GrossValue,
 		item.CommissionValue,
 		item.AreaM2,
@@ -1504,4 +1724,12 @@ func nullableFloat64(value sql.NullFloat64) interface{} {
 	}
 
 	return value.Float64
+}
+
+func nullableTime(value sql.NullTime) interface{} {
+	if !value.Valid {
+		return nil
+	}
+
+	return value.Time
 }

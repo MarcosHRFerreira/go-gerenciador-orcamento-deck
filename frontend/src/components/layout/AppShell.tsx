@@ -7,6 +7,7 @@ import ForumRoundedIcon from "@mui/icons-material/ForumRounded";
 import ManageAccountsRoundedIcon from "@mui/icons-material/ManageAccountsRounded";
 import EngineeringRoundedIcon from "@mui/icons-material/EngineeringRounded";
 import LightModeRoundedIcon from "@mui/icons-material/LightModeRounded";
+import LocalShippingRoundedIcon from "@mui/icons-material/LocalShippingRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import PeopleAltRoundedIcon from "@mui/icons-material/PeopleAltRounded";
@@ -74,6 +75,11 @@ const navigationItems: NavigationItem[] = [
     to: "/dashboard",
   },
   { icon: <DescriptionRoundedIcon />, label: "Orçamentos", to: "/budgets" },
+  {
+    icon: <LocalShippingRoundedIcon />,
+    label: "Entregas",
+    to: "/budgets/delivery-monitor",
+  },
   {
     icon: <ApartmentRoundedIcon />,
     label: "Obras",

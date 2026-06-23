@@ -15,7 +15,7 @@ import { alpha } from "@mui/material/styles";
 import { useQuery } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
 import { useEffect, useMemo, useState } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { PageHeader } from "../../../components/common/PageHeader";
 import { SectionCard } from "../../../components/common/SectionCard";
 import { useAuth } from "../../auth/hooks/useAuth";
@@ -120,6 +120,13 @@ const budgetFormSchema = schema.object({
       "Selecione um contato válido",
     ),
   currentFollowUp: schema.string().trim(),
+  deliveryDate: schema
+    .string()
+    .trim()
+    .refine(
+      (value) => value === "" || isValidDate(value),
+      "Informe uma data de entrega válida",
+    ),
   projetistaName: schema
     .string()
     .trim()
@@ -292,6 +299,18 @@ function isValidDateTime(value: string) {
   return !Number.isNaN(new Date(value).getTime());
 }
 
+function isValidDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
+}
+
+function normalizeStatusLabel(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
 function parseInteger(value: string) {
   return Number.parseInt(value, 10);
 }
@@ -340,6 +359,7 @@ function mapFormValuesToPayload(values: BudgetFormValues): BudgetCreatePayload {
     competitorPrice: parseOptionalDecimal(values.competitorPrice),
     contactId: parseOptionalInteger(values.contactId),
     currentFollowUp: values.currentFollowUp.trim(),
+    deliveryDate: values.deliveryDate.trim() || null,
     projetistaName: values.projetistaName.trim(),
     grossValue: parseDecimal(values.grossValue),
     installerId: parseOptionalInteger(values.installerId),
@@ -403,6 +423,14 @@ export function BudgetForm({
     defaultValues: initialValues,
     resolver: zodResolver(budgetFormSchema),
   });
+  const selectedStatusId = useWatch({
+    control,
+    name: "statusId",
+  });
+  const deliveryDateValue = useWatch({
+    control,
+    name: "deliveryDate",
+  });
 
   useEffect(() => {
     reset(initialValues);
@@ -458,6 +486,24 @@ export function BudgetForm({
       setSubmitError(getBudgetSubmitErrorMessage(mode, error));
     }
   };
+
+  const selectedStatusName = useMemo(() => {
+    if (!selectedStatusId) {
+      return null;
+    }
+
+    const selectedStatus = (budgetCatalogsQuery.data?.statuses ?? []).find(
+      (status) => String(status.id) === selectedStatusId,
+    );
+
+    return selectedStatus?.name ?? null;
+  }, [budgetCatalogsQuery.data?.statuses, selectedStatusId]);
+
+  const isPedidoStatus =
+    selectedStatusName !== null &&
+    normalizeStatusLabel(selectedStatusName) === "pedido";
+  const shouldShowDeliveryDateAlert =
+    isPedidoStatus && initialDataError === null && !isInitialDataLoading;
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -561,6 +607,21 @@ export function BudgetForm({
               {submitError}
             </Alert>
           ) : null}
+
+          {shouldShowDeliveryDateAlert ? (
+            <Alert
+              severity={deliveryDateValue ? "info" : "warning"}
+              sx={{
+                "& .MuiAlert-message": {
+                  fontWeight: 600,
+                },
+              }}
+            >
+              {deliveryDateValue
+                ? "A data de entrega ajuda o acompanhamento operacional deste pedido."
+                : "Este orçamento está com status Pedido e ainda não possui data de entrega. Sem essa informação, o sistema não conseguirá gerar aviso automático ao vendedor."}
+            </Alert>
+          ) : null}
           <SectionCard
             description="Campos principais para identificação e envio do orçamento."
             sx={budgetFormSectionCardSx}
@@ -615,6 +676,19 @@ export function BudgetForm({
                   helperText={errors.sentAt?.message}
                   type="datetime-local"
                   {...register("sentAt")}
+                />
+              </BudgetField>
+              <BudgetField label="Data de entrega">
+                <TextField
+                  error={Boolean(errors.deliveryDate)}
+                  helperText={
+                    errors.deliveryDate?.message ??
+                    (isPedidoStatus
+                      ? "Recomendado para acompanhamento e aviso automático do pedido."
+                      : undefined)
+                  }
+                  type="date"
+                  {...register("deliveryDate")}
                 />
               </BudgetField>
               <BudgetField label="Status">

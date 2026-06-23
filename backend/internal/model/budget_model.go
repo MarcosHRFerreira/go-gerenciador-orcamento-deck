@@ -11,6 +11,7 @@ type BudgetModel struct {
 	YearBudget           int
 	Revision             int
 	SentAt               time.Time
+	DeliveryDate         sql.NullTime
 	GrossValue           float64
 	CommissionValue      float64
 	AreaM2               float64
@@ -48,4 +49,21 @@ type BudgetModel struct {
 	EstimatorName        sql.NullString
 	ContactName          sql.NullString
 	LossReasonName       sql.NullString
+}
+
+type BudgetDeliveryMonitorModel struct {
+	ID                  int64
+	BudgetNumber        string
+	ProjectID           sql.NullInt64
+	ProjectCode         sql.NullString
+	ProjectName         sql.NullString
+	ConstructionCompany string
+	SalespersonID       sql.NullInt64
+	SalespersonName     sql.NullString
+	StatusID            int64
+	StatusName          sql.NullString
+	DeliveryDate        sql.NullTime
+	DaysUntilDelivery   sql.NullInt64
+	DeliveryStatus      string
+	UpdatedAt           time.Time
 }

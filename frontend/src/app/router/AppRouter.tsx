@@ -6,6 +6,7 @@ import { PublicOnlyRoute } from "../../features/auth/components/PublicOnlyRoute"
 import { ChangePasswordPage } from "../../features/auth/pages/ChangePasswordPage";
 import { LoginPage } from "../../features/auth/pages/LoginPage";
 import { BudgetCreatePage } from "../../features/budgets/pages/BudgetCreatePage";
+import BudgetDeliveryMonitorPage from "../../features/budgets/pages/BudgetDeliveryMonitorPage";
 import { BudgetEditPage } from "../../features/budgets/pages/BudgetEditPage";
 import { BudgetImportPage } from "../../features/budgets/pages/BudgetImportPage";
 import { BudgetListPage } from "../../features/budgets/pages/BudgetListPage";
@@ -35,6 +36,10 @@ export function AppRouter() {
         <Route element={<AppShell />}>
           <Route path="/" element={<Navigate replace to="/budgets" />} />
           <Route path="/budgets" element={<BudgetListPage />} />
+          <Route
+            path="/budgets/delivery-monitor"
+            element={<BudgetDeliveryMonitorPage />}
+          />
           <Route path="/budgets/:budgetId/edit" element={<BudgetEditPage />} />
           <Route path="/communication" element={<CommunicationPage />} />
           <Route path="/projects" element={<ProjectListPage />} />

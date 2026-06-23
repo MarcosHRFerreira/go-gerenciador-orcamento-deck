@@ -88,6 +88,10 @@ func (s *budgetRepositoryStub) List(_ context.Context, filters *dto.ListBudgetsF
 	return s.listItems, s.listTotal, s.listErr
 }
 
+func (s *budgetRepositoryStub) ListDeliveryMonitor(_ context.Context, _ *dto.ListBudgetDeliveryMonitorFilters) ([]model.BudgetDeliveryMonitorModel, int64, *dto.BudgetDeliveryMonitorSummaryResponse, error) {
+	return nil, 0, nil, nil
+}
+
 func (s *budgetRepositoryStub) ExistsByNumberAndYear(_ context.Context, _ string, _ int) (bool, error) {
 	s.existsByNumberAndYearCalls++
 	return s.existsByNumberAndYear, s.existsByNumberAndYearErr

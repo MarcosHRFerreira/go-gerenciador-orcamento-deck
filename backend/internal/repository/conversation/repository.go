@@ -93,24 +93,22 @@ func (r *repository) ListByUser(ctx context.Context, userID int64) ([]model.Conv
 			p.id,
 			p.code,
 			p.name,
-			u.id,
-			u.name,
-			u.username,
-			u.role,
+			MAX(CASE WHEN cp.user_id <> $1 THEN u.id END) AS participant_user_id,
+			MAX(CASE WHEN cp.user_id <> $1 THEN u.name END) AS participant_name,
+			MAX(CASE WHEN cp.user_id <> $1 THEN u.username END) AS participant_username,
+			MAX(CASE WHEN cp.user_id <> $1 THEN u.role END) AS participant_role,
 			lm.id,
 			lm.body,
 			lm.created_at,
 			lm.sender_user_id,
-			COALESCE(unread.unread_count, 0)
+			COALESCE(unread.unread_count, 0) AS unread_count
 		FROM conversations c
 		LEFT JOIN projects p ON p.id = c.project_id
 		INNER JOIN conversation_participants self_cp
 			ON self_cp.conversation_id = c.id
 			AND self_cp.user_id = $1
-		INNER JOIN conversation_participants other_cp
-			ON other_cp.conversation_id = c.id
-			AND other_cp.user_id <> $1
-		INNER JOIN users u ON u.id = other_cp.user_id
+		INNER JOIN conversation_participants cp ON cp.conversation_id = c.id
+		INNER JOIN users u ON u.id = cp.user_id
 		LEFT JOIN LATERAL (
 			SELECT id, body, created_at, sender_user_id
 			FROM conversation_messages
@@ -129,6 +127,19 @@ func (r *repository) ListByUser(ctx context.Context, userID int64) ([]model.Conv
 				)
 		) unread ON TRUE
 		WHERE c.type = 'direct'
+		GROUP BY
+			c.id,
+			c.type,
+			c.updated_at,
+			p.id,
+			p.code,
+			p.name,
+			self_cp.last_read_message_id,
+			lm.id,
+			lm.body,
+			lm.created_at,
+			lm.sender_user_id,
+			unread.unread_count
 		ORDER BY COALESCE(lm.created_at, c.updated_at) DESC, c.id DESC
 	`
 
@@ -156,14 +167,6 @@ func (r *repository) ListByUser(ctx context.Context, userID int64) ([]model.Conv
 }
 
 func (r *repository) ListMessagesByConversation(ctx context.Context, conversationID int64, userID int64) ([]model.ConversationMessageDetailsModel, error) {
-	isParticipant, err := isConversationParticipant(ctx, r.db, conversationID, userID)
-	if err != nil {
-		return nil, err
-	}
-	if !isParticipant {
-		return nil, sql.ErrNoRows
-	}
-
 	const query = `
 		SELECT
 			m.id,
@@ -177,11 +180,17 @@ func (r *repository) ListMessagesByConversation(ctx context.Context, conversatio
 			m.updated_at
 		FROM conversation_messages m
 		INNER JOIN users u ON u.id = m.sender_user_id
-		WHERE m.conversation_id = $1
+		WHERE EXISTS (
+			SELECT 1
+			FROM conversation_participants cp
+			WHERE cp.conversation_id = m.conversation_id
+				AND cp.user_id = $2
+		)
+			AND m.conversation_id = $1
 		ORDER BY m.id ASC
 	`
 
-	rows, err := r.db.QueryContext(ctx, query, conversationID)
+	rows, err := r.db.QueryContext(ctx, query, conversationID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +211,6 @@ func (r *repository) ListMessagesByConversation(ctx context.Context, conversatio
 
 	return items, nil
 }
-
 func (r *repository) CountUnreadByUser(ctx context.Context, userID int64) (int64, error) {
 	const query = `
 		SELECT COUNT(*)

@@ -9,42 +9,48 @@ import (
 )
 
 type Config struct {
-	Port                   string
-	AppEnv                 string
-	LogLevel               string
-	SecretJWT              string
-	DatabaseURL            string
-	DBHost                 string
-	DBPort                 string
-	DBUser                 string
-	DBPassword             string
-	DBName                 string
-	AllowedOrigins         []string
-	InitialAdminSetupToken string
-	RefreshCookieName      string
-	RefreshCookieDomain    string
-	RefreshCookieSecure    bool
+	Port                         string
+	AppEnv                       string
+	LogLevel                     string
+	SecretJWT                    string
+	DatabaseURL                  string
+	DBHost                       string
+	DBPort                       string
+	DBUser                       string
+	DBPassword                   string
+	DBName                       string
+	AllowedOrigins               []string
+	InitialAdminSetupToken       string
+	RefreshCookieName            string
+	RefreshCookieDomain          string
+	RefreshCookieSecure          bool
+	DeliveryAlertEnabled         bool
+	DeliveryAlertIntervalMinutes int
+	DeliveryAlertSenderUsername  string
 }
 
 func Load() (*Config, error) {
 	_ = godotenv.Load()
 
 	cfg := &Config{
-		Port:                   getEnvOrDefault("PORT", "8080"),
-		AppEnv:                 getEnvOrDefault("APP_ENV", "development"),
-		LogLevel:               getEnvOrDefault("LOG_LEVEL", "info"),
-		SecretJWT:              strings.TrimSpace(os.Getenv("SECRET_JWT")),
-		DatabaseURL:            strings.TrimSpace(os.Getenv("DATABASE_URL")),
-		DBHost:                 strings.TrimSpace(os.Getenv("DB_HOST")),
-		DBPort:                 getEnvOrDefault("DB_PORT", "5432"),
-		DBUser:                 strings.TrimSpace(os.Getenv("DB_USER")),
-		DBPassword:             strings.TrimSpace(os.Getenv("DB_PASSWORD")),
-		DBName:                 strings.TrimSpace(os.Getenv("DB_NAME")),
-		AllowedOrigins:         getCSVEnvOrDefault("ALLOWED_ORIGINS", []string{"http://localhost:5173", "http://127.0.0.1:5173"}),
-		InitialAdminSetupToken: strings.TrimSpace(os.Getenv("INITIAL_ADMIN_SETUP_TOKEN")),
-		RefreshCookieName:      getEnvOrDefault("REFRESH_COOKIE_NAME", "budget_management_refresh"),
-		RefreshCookieDomain:    strings.TrimSpace(os.Getenv("REFRESH_COOKIE_DOMAIN")),
-		RefreshCookieSecure:    getBoolEnvOrDefault("REFRESH_COOKIE_SECURE", false),
+		Port:                         getEnvOrDefault("PORT", "8080"),
+		AppEnv:                       getEnvOrDefault("APP_ENV", "development"),
+		LogLevel:                     getEnvOrDefault("LOG_LEVEL", "info"),
+		SecretJWT:                    strings.TrimSpace(os.Getenv("SECRET_JWT")),
+		DatabaseURL:                  strings.TrimSpace(os.Getenv("DATABASE_URL")),
+		DBHost:                       strings.TrimSpace(os.Getenv("DB_HOST")),
+		DBPort:                       getEnvOrDefault("DB_PORT", "5432"),
+		DBUser:                       strings.TrimSpace(os.Getenv("DB_USER")),
+		DBPassword:                   strings.TrimSpace(os.Getenv("DB_PASSWORD")),
+		DBName:                       strings.TrimSpace(os.Getenv("DB_NAME")),
+		AllowedOrigins:               getCSVEnvOrDefault("ALLOWED_ORIGINS", []string{"http://localhost:5173", "http://127.0.0.1:5173"}),
+		InitialAdminSetupToken:       strings.TrimSpace(os.Getenv("INITIAL_ADMIN_SETUP_TOKEN")),
+		RefreshCookieName:            getEnvOrDefault("REFRESH_COOKIE_NAME", "budget_management_refresh"),
+		RefreshCookieDomain:          strings.TrimSpace(os.Getenv("REFRESH_COOKIE_DOMAIN")),
+		RefreshCookieSecure:          getBoolEnvOrDefault("REFRESH_COOKIE_SECURE", false),
+		DeliveryAlertEnabled:         getBoolEnvOrDefault("DELIVERY_ALERT_ENABLED", true),
+		DeliveryAlertIntervalMinutes: getIntEnvOrDefault("DELIVERY_ALERT_INTERVAL_MINUTES", 60),
+		DeliveryAlertSenderUsername:  strings.TrimSpace(os.Getenv("DELIVERY_ALERT_SENDER_USERNAME")),
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -84,6 +90,9 @@ func (c *Config) validate() error {
 	}
 	if c.RefreshCookieName == "" {
 		missingFields = append(missingFields, "REFRESH_COOKIE_NAME")
+	}
+	if c.DeliveryAlertIntervalMinutes <= 0 {
+		return fmt.Errorf("DELIVERY_ALERT_INTERVAL_MINUTES must be greater than zero")
 	}
 
 	if len(missingFields) > 0 {
@@ -132,4 +141,18 @@ func getBoolEnvOrDefault(key string, defaultValue bool) bool {
 
 	normalizedValue := strings.ToLower(value)
 	return normalizedValue == "1" || normalizedValue == "true" || normalizedValue == "yes"
+}
+
+func getIntEnvOrDefault(key string, defaultValue int) int {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return defaultValue
+	}
+
+	var parsedValue int
+	if _, err := fmt.Sscanf(value, "%d", &parsedValue); err != nil || parsedValue == 0 {
+		return defaultValue
+	}
+
+	return parsedValue
 }

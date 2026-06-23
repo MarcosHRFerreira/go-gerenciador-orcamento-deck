@@ -34,16 +34,16 @@ type ConversationProjectResponse struct {
 }
 
 type ConversationListItemResponse struct {
-	ID                int64                           `json:"id"`
-	Type              string                          `json:"type"`
-	UpdatedAt         time.Time                       `json:"updated_at"`
-	Project           *ConversationProjectResponse    `json:"project,omitempty"`
+	ID                int64                         `json:"id"`
+	Type              string                        `json:"type"`
+	UpdatedAt         time.Time                     `json:"updated_at"`
+	Project           *ConversationProjectResponse  `json:"project,omitempty"`
 	Participant       ConversationParticipantResponse `json:"participant"`
-	LastMessageID     *int64                          `json:"last_message_id,omitempty"`
-	LastMessageBody   *string                         `json:"last_message_body,omitempty"`
-	LastMessageAt     *time.Time                      `json:"last_message_at,omitempty"`
-	LastMessageSender *int64                          `json:"last_message_sender,omitempty"`
-	UnreadCount       int64                           `json:"unread_count"`
+	LastMessageID     *int64                        `json:"last_message_id,omitempty"`
+	LastMessageBody   *string                       `json:"last_message_body,omitempty"`
+	LastMessageAt     *time.Time                    `json:"last_message_at,omitempty"`
+	LastMessageSender *int64                        `json:"last_message_sender,omitempty"`
+	UnreadCount       int64                         `json:"unread_count"`
 }
 
 type ConversationMessageResponse struct {
