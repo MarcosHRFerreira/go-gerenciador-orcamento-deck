@@ -33,6 +33,7 @@ func (h *Handler) RouteList() {
 	adminRoutes := h.router.Group("/dashboard")
 	adminRoutes.Use(middleware.Auth(h.secretKey))
 	adminRoutes.Use(middleware.RequireRoles(model.RoleAdmin))
+	adminRoutes.GET("/salespeople/gross-value-range", h.GetSalespeopleDashboardGrossValueRange)
 	adminRoutes.GET("/salespeople", h.GetSalespeopleDashboard)
 }
 
@@ -83,6 +84,27 @@ func (h *Handler) GetSalespeopleDashboard(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+func (h *Handler) GetSalespeopleDashboardGrossValueRange(c *gin.Context) {
+	filters, err := parseSalespeopleDashboardFilters(c)
+	if err != nil {
+		httpresponse.JSONError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	response, err := h.service.GetGrossValueRange(
+		c.Request.Context(),
+		filters,
+		middleware.Role(c),
+		middleware.Username(c),
+	)
+	if err != nil {
+		httpresponse.JSONAppError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
 func parseSalespeopleDashboardFilters(c *gin.Context) (*dto.DashboardSalespeopleFilters, error) {
 	installerID, err := parseOptionalInt64(c.Query("installer_id"))
 	if err != nil {
@@ -104,6 +126,14 @@ func parseSalespeopleDashboardFilters(c *gin.Context) (*dto.DashboardSalespeople
 	if err != nil {
 		return nil, err
 	}
+	grossValueMin, err := parseOptionalFloat64(c.Query("gross_value_min"))
+	if err != nil {
+		return nil, err
+	}
+	grossValueMax, err := parseOptionalFloat64(c.Query("gross_value_max"))
+	if err != nil {
+		return nil, err
+	}
 
 	return &dto.DashboardSalespeopleFilters{
 		InstallerID:   installerID,
@@ -112,6 +142,8 @@ func parseSalespeopleDashboardFilters(c *gin.Context) (*dto.DashboardSalespeople
 		SourceCompany: c.Query("source_company"),
 		StatusID:      statusID,
 		Year:          year,
+		GrossValueMin: grossValueMin,
+		GrossValueMax: grossValueMax,
 	}, nil
 }
 
@@ -136,6 +168,19 @@ func parseOptionalInt64(value string) (*int64, error) {
 	parsedValue, err := strconv.ParseInt(value, 10, 64)
 	if err != nil {
 		return nil, httpError("Valor inteiro invalido")
+	}
+
+	return &parsedValue, nil
+}
+
+func parseOptionalFloat64(value string) (*float64, error) {
+	if value == "" {
+		return nil, nil
+	}
+
+	parsedValue, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return nil, httpError("Valor numerico invalido")
 	}
 
 	return &parsedValue, nil

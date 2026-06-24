@@ -4,6 +4,7 @@ export type BudgetFormValues = {
   areaM2: string;
   budgetNumber: string;
   commissionValue: string;
+  constructionCompany: string;
   competitorName: string;
   competitorPrice: string;
   contactId: string;
@@ -21,6 +22,7 @@ export type BudgetFormValues = {
   salespersonId: string;
   estimatorId: string;
   sentAt: string;
+  sourceCompany: string;
   specificationDetails: string;
   statusId: string;
   yearBudget: string;
@@ -38,6 +40,7 @@ export function createDefaultBudgetFormValues(): BudgetFormValues {
     areaM2: "0",
     budgetNumber: "",
     commissionValue: "0",
+    constructionCompany: "",
     competitorName: "",
     competitorPrice: "",
     contactId: "",
@@ -55,6 +58,7 @@ export function createDefaultBudgetFormValues(): BudgetFormValues {
     salespersonId: "",
     estimatorId: "",
     sentAt: toDateTimeLocalValue(new Date().toISOString()),
+    sourceCompany: "",
     specificationDetails: "",
     statusId: "",
     yearBudget: String(new Date().getFullYear()),
@@ -68,6 +72,7 @@ export function mapBudgetDetailToFormValues(
     areaM2: String(budget.areaM2),
     budgetNumber: budget.budgetNumber,
     commissionValue: String(budget.commissionValue),
+    constructionCompany: budget.constructionCompany,
     competitorName: budget.competitorName,
     competitorPrice:
       budget.competitorPrice === null ? "" : String(budget.competitorPrice),
@@ -90,6 +95,7 @@ export function mapBudgetDetailToFormValues(
       budget.salespersonId === null ? "" : String(budget.salespersonId),
     estimatorId: budget.estimatorId === null ? "" : String(budget.estimatorId),
     sentAt: toDateTimeLocalValue(budget.sentAt),
+    sourceCompany: budget.sourceCompany,
     specificationDetails: budget.specificationDetails,
     statusId: String(budget.statusId),
     yearBudget: String(budget.yearBudget),

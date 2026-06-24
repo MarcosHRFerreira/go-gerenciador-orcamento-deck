@@ -175,6 +175,11 @@ type DashboardSalespeopleApiResponse = {
   technical_overview: DashboardTechnicalOverviewApiResponse;
 };
 
+type DashboardGrossValueRangeApiResponse = {
+  min: number;
+  max: number;
+};
+
 function mapSummary(response: DashboardSummaryApiResponse): DashboardSummary {
   return {
     activeSalespeople: response.active_salespeople,
@@ -347,6 +352,8 @@ function mapTechnicalOverview(
 
 function buildDashboardParams(filters: DashboardSalespeopleFilters) {
   return {
+    gross_value_max: filters.grossValueMax || undefined,
+    gross_value_min: filters.grossValueMin || undefined,
     installer_id: filters.installerId || undefined,
     month: filters.month || undefined,
     salesperson_id: filters.salespersonId || undefined,
@@ -361,7 +368,10 @@ function buildLegacyDashboardBudgetFilters(
 ): BudgetListFilters {
   return {
     budgetNumber: "",
+    grossValueMax: filters.grossValueMax,
+    grossValueMin: filters.grossValueMin,
     installerId: filters.installerId,
+    priorityId: "",
     page: 1,
     pageSize: 100,
     projectCode: "",
@@ -664,7 +674,7 @@ function buildClosingTimeSummariesFromBudgetItems(
   return [
     buildSummary("Geral", closedBudgets),
     buildSummary(
-      "Pedidos",
+      "Fechados",
       closedBudgets.filter((item) => item.statusCategory === "won"),
     ),
     buildSummary(
@@ -1270,4 +1280,20 @@ export async function getSalespeopleDashboardRequest(
 
     throw error;
   }
+}
+
+export async function getDashboardGrossValueRangeRequest(
+  filters: DashboardSalespeopleFilters,
+) {
+  const response = await api.get<DashboardGrossValueRangeApiResponse>(
+    "/dashboard/salespeople/gross-value-range",
+    {
+      params: buildDashboardParams(filters),
+    },
+  );
+
+  return {
+    min: response.data.min,
+    max: response.data.max,
+  };
 }

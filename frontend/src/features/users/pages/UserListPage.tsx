@@ -41,6 +41,10 @@ import {
   filterSectionCardSx,
 } from "../../../components/common/FilterField";
 import { PageHeader } from "../../../components/common/PageHeader";
+import {
+  ResizableTableHeadCell,
+  useResizableTableColumns,
+} from "../../../components/common/ResizableTable";
 import { SectionCard } from "../../../components/common/SectionCard";
 import {
   createStrongPasswordSchema,
@@ -118,6 +122,17 @@ const tableDetailCellSx = {
   verticalAlign: "top",
 };
 
+const userListColumnDefinitions = [
+  { key: "name", width: 220, minWidth: 180 },
+  { key: "email", width: 240, minWidth: 200 },
+  { key: "username", width: 180, minWidth: 150 },
+  { key: "role", width: 150, minWidth: 130 },
+  { key: "userKind", width: 180, minWidth: 150 },
+  { key: "status", width: 170, minWidth: 150 },
+  { key: "updatedAt", width: 180, minWidth: 160 },
+  { key: "actions", width: 420, minWidth: 320 },
+] as const;
+
 function formatDateTime(value: string) {
   return dateTimeFormatter.format(new Date(value));
 }
@@ -187,6 +202,10 @@ function mapResetPasswordFormValues(
 export function UserListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { createResizeHandler, getColumnWidth } = useResizableTableColumns(
+    "user-list-columns:v1",
+    [...userListColumnDefinitions],
+  );
   const { user: currentUser } = useAuth();
   const [filters, setFilters] = useState<UserListFilters>(defaultFilters);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
@@ -500,16 +519,63 @@ export function UserListPage() {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell sx={tableHeadCellSx}>Nome</TableCell>
-                <TableCell sx={tableHeadCellSx}>E-mail</TableCell>
-                <TableCell sx={tableHeadCellSx}>Username</TableCell>
-                <TableCell sx={tableHeadCellSx}>Perfil</TableCell>
-                <TableCell sx={tableHeadCellSx}>Tipo funcional</TableCell>
-                <TableCell sx={tableHeadCellSx}>Status</TableCell>
-                <TableCell sx={tableHeadCellSx}>Atualizado em</TableCell>
-                <TableCell align="right" sx={tableHeadCellSx}>
+                <ResizableTableHeadCell
+                  onResizeStart={createResizeHandler("name")}
+                  sx={tableHeadCellSx}
+                  width={getColumnWidth("name")}
+                >
+                  Nome
+                </ResizableTableHeadCell>
+                <ResizableTableHeadCell
+                  onResizeStart={createResizeHandler("email")}
+                  sx={tableHeadCellSx}
+                  width={getColumnWidth("email")}
+                >
+                  E-mail
+                </ResizableTableHeadCell>
+                <ResizableTableHeadCell
+                  onResizeStart={createResizeHandler("username")}
+                  sx={tableHeadCellSx}
+                  width={getColumnWidth("username")}
+                >
+                  Username
+                </ResizableTableHeadCell>
+                <ResizableTableHeadCell
+                  onResizeStart={createResizeHandler("role")}
+                  sx={tableHeadCellSx}
+                  width={getColumnWidth("role")}
+                >
+                  Perfil
+                </ResizableTableHeadCell>
+                <ResizableTableHeadCell
+                  onResizeStart={createResizeHandler("userKind")}
+                  sx={tableHeadCellSx}
+                  width={getColumnWidth("userKind")}
+                >
+                  Tipo funcional
+                </ResizableTableHeadCell>
+                <ResizableTableHeadCell
+                  onResizeStart={createResizeHandler("status")}
+                  sx={tableHeadCellSx}
+                  width={getColumnWidth("status")}
+                >
+                  Status
+                </ResizableTableHeadCell>
+                <ResizableTableHeadCell
+                  onResizeStart={createResizeHandler("updatedAt")}
+                  sx={tableHeadCellSx}
+                  width={getColumnWidth("updatedAt")}
+                >
+                  Atualizado em
+                </ResizableTableHeadCell>
+                <ResizableTableHeadCell
+                  align="right"
+                  onResizeStart={createResizeHandler("actions")}
+                  sx={tableHeadCellSx}
+                  width={getColumnWidth("actions")}
+                >
                   Ações
-                </TableCell>
+                </ResizableTableHeadCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -521,7 +587,9 @@ export function UserListPage() {
 
                 return (
                   <TableRow hover key={item.id}>
-                    <TableCell sx={tableDetailCellSx}>
+                    <TableCell
+                      sx={{ ...tableDetailCellSx, width: getColumnWidth("name") }}
+                    >
                       <Box
                         sx={{
                           display: "flex",
@@ -537,11 +605,22 @@ export function UserListPage() {
                         </Typography>
                       </Box>
                     </TableCell>
-                    <TableCell sx={tableDetailCellSx}>{item.email}</TableCell>
-                    <TableCell sx={tableDetailCellSx}>
+                    <TableCell
+                      sx={{ ...tableDetailCellSx, width: getColumnWidth("email") }}
+                    >
+                      {item.email}
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        ...tableDetailCellSx,
+                        width: getColumnWidth("username"),
+                      }}
+                    >
                       {item.username}
                     </TableCell>
-                    <TableCell sx={tableDetailCellSx}>
+                    <TableCell
+                      sx={{ ...tableDetailCellSx, width: getColumnWidth("role") }}
+                    >
                       <Chip
                         color={getRoleChipColor(item.role)}
                         label={getRoleLabel(item.role)}
@@ -549,7 +628,12 @@ export function UserListPage() {
                         variant={item.role === "admin" ? "filled" : "outlined"}
                       />
                     </TableCell>
-                    <TableCell sx={tableDetailCellSx}>
+                    <TableCell
+                      sx={{
+                        ...tableDetailCellSx,
+                        width: getColumnWidth("userKind"),
+                      }}
+                    >
                       <Chip
                         color={
                           item.userKind === "estimator"
@@ -561,7 +645,12 @@ export function UserListPage() {
                         variant={item.userKind ? "outlined" : "filled"}
                       />
                     </TableCell>
-                    <TableCell sx={tableDetailCellSx}>
+                    <TableCell
+                      sx={{
+                        ...tableDetailCellSx,
+                        width: getColumnWidth("status"),
+                      }}
+                    >
                       <Box
                         sx={{
                           display: "flex",
@@ -585,10 +674,21 @@ export function UserListPage() {
                         ) : null}
                       </Box>
                     </TableCell>
-                    <TableCell sx={tableDetailCellSx}>
+                    <TableCell
+                      sx={{
+                        ...tableDetailCellSx,
+                        width: getColumnWidth("updatedAt"),
+                      }}
+                    >
                       {formatDateTime(item.updatedAt)}
                     </TableCell>
-                    <TableCell align="right" sx={tableDetailCellSx}>
+                    <TableCell
+                      align="right"
+                      sx={{
+                        ...tableDetailCellSx,
+                        width: getColumnWidth("actions"),
+                      }}
+                    >
                       <Box
                         sx={{
                           display: "flex",

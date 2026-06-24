@@ -65,6 +65,11 @@ import type {
   BudgetStatusHistoryItem,
 } from "../../budgets/types/budget";
 import {
+  getBudgetStatusDisplayName,
+  getWonStatusSingularLabel,
+  isWonStatusLabel,
+} from "../../budgets/utils/businessTerms";
+import {
   getProjectByIdRequest,
   listProjectTypesRequest,
 } from "../api/projects";
@@ -101,11 +106,11 @@ function normalizeValue(value: string | null | undefined) {
 }
 
 function getBudgetStatusCategory(statusName: string): BudgetStatusCategory {
-  const normalizedStatusName = normalizeValue(statusName);
-
-  if (normalizedStatusName === "pedido") {
+  if (isWonStatusLabel(statusName)) {
     return "pedido";
   }
+
+  const normalizedStatusName = normalizeValue(statusName);
 
   if (normalizedStatusName === "cancelado") {
     return "cancelado";
@@ -157,7 +162,10 @@ function formatHistoryTransition(
 
 const projectBudgetsFilters = (projectId: number): BudgetListFilters => ({
   budgetNumber: "",
+  grossValueMax: "",
+  grossValueMin: "",
   installerId: "",
+  priorityId: "",
   page: 1,
   pageSize: 100,
   projectId: String(projectId),
@@ -177,7 +185,10 @@ const projectBudgetsFilters = (projectId: number): BudgetListFilters => ({
 
 const associationCandidateFilters: BudgetListFilters = {
   budgetNumber: "",
+  grossValueMax: "",
+  grossValueMin: "",
   installerId: "",
+  priorityId: "",
   page: 1,
   pageSize: 100,
   projectCode: "",
@@ -239,6 +250,7 @@ function mapBudgetDetailToPayload(
     areaM2: budget.areaM2,
     budgetNumber: budget.budgetNumber,
     commissionValue: budget.commissionValue,
+    constructionCompany: budget.constructionCompany,
     competitorName: budget.competitorName,
     competitorPrice: budget.competitorPrice,
     contactId: budget.contactId,
@@ -330,8 +342,11 @@ export default function ProjectDetailPage() {
   );
   const statusMap = useMemo(
     () =>
-      createNameMap<BudgetCatalogItem>(
-        budgetCatalogsQuery.data?.statuses ?? [],
+      new Map(
+        (budgetCatalogsQuery.data?.statuses ?? []).map((item) => [
+          item.id,
+          getBudgetStatusDisplayName(item.name),
+        ]),
       ),
     [budgetCatalogsQuery.data?.statuses],
   );
@@ -815,7 +830,7 @@ export default function ProjectDetailPage() {
                 label={
                   winnerBudget
                     ? `Vencedor: ${winnerBudget.budgetNumber}`
-                    : "Sem PEDIDO definido"
+                    : `Sem ${getWonStatusSingularLabel().toUpperCase()} definido`
                 }
               />
               <Chip
@@ -1316,7 +1331,7 @@ export default function ProjectDetailPage() {
             {pendingWinnerBudget
               ? winnerBudget && winnerBudget.id !== pendingWinnerBudget.id
                 ? `Ao confirmar, o orçamento ${pendingWinnerBudget.budgetNumber} passará a ser o novo vencedor da obra. O vencedor atual será substituído e os demais orçamentos da obra ficarão como Cancelado.`
-                : `Ao confirmar, o orçamento ${pendingWinnerBudget.budgetNumber} será definido como Pedido e os demais orçamentos desta obra serão alterados para Cancelado.`
+                : `Ao confirmar, o orçamento ${pendingWinnerBudget.budgetNumber} será definido como ${getWonStatusSingularLabel()} e os demais orçamentos desta obra serão alterados para Cancelado.`
               : ""}
           </DialogContentText>
           <TextField

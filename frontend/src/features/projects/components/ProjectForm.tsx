@@ -6,14 +6,18 @@ import {
   Alert,
   Box,
   Button,
+  CircularProgress,
   IconButton,
   InputAdornment,
   MenuItem,
   TextField,
   Tooltip,
+  Typography,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import { useQuery } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
+import type { ReactNode } from "react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -39,6 +43,57 @@ const projectFormSchema = z.object({
 });
 
 export type ProjectFormValues = z.infer<typeof projectFormSchema>;
+
+const projectGridBlue = "var(--app-accent-text)";
+
+const projectFormSectionCardSx = {
+  background: (theme: {
+    palette: {
+      info: { main: string };
+      primary: { main: string };
+    };
+  }) =>
+    `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.07)} 0%, ${alpha(theme.palette.info.main, 0.035)} 100%)`,
+  border: "1px solid",
+  borderColor: (theme: { palette: { primary: { main: string } } }) =>
+    alpha(theme.palette.primary.main, 0.16),
+  boxShadow: (theme: { palette: { primary: { main: string } } }) =>
+    `0 12px 24px ${alpha(theme.palette.primary.main, 0.07)}`,
+  "& .MuiTypography-h5": {
+    color: projectGridBlue,
+    fontWeight: 800,
+  },
+  "& .MuiTypography-body2": {
+    color: "text.primary",
+  },
+} as const;
+
+const projectFieldContainerSx = {
+  display: "grid",
+  gap: 0.75,
+  minWidth: 0,
+} as const;
+
+const projectFieldLabelSx = {
+  color: projectGridBlue,
+  fontSize: "0.82rem",
+  fontWeight: 700,
+  lineHeight: 1.2,
+} as const;
+
+type ProjectFieldProps = {
+  children: ReactNode;
+  label: string;
+};
+
+function ProjectField({ children, label }: ProjectFieldProps) {
+  return (
+    <Box sx={projectFieldContainerSx}>
+      <Typography sx={projectFieldLabelSx}>{label}</Typography>
+      {children}
+    </Box>
+  );
+}
 
 type ProjectFormProps = {
   initialDataError?: string | null;
@@ -129,163 +184,276 @@ export default function ProjectForm({
   };
 
   return (
-    <Box component="form" onSubmit={handleSubmit(handleFormSubmit)}>
-      <PageHeader
-        action={
-          <Button
-            onClick={onCancel}
-            startIcon={<ArrowBackRoundedIcon />}
-            variant="outlined"
-          >
-            Voltar
-          </Button>
-        }
-        description={subtitle}
-        title={title}
-      />
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      <Box
+        sx={{
+          background: (theme) =>
+            `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.08)} 0%, ${alpha(theme.palette.info.main, 0.04)} 100%)`,
+          border: "1px solid",
+          borderColor: (theme) => alpha(theme.palette.primary.main, 0.18),
+          borderRadius: 4,
+          boxShadow: (theme) =>
+            `0 14px 28px ${alpha(theme.palette.primary.main, 0.08)}`,
+          p: { md: 3, xs: 2.5 },
+          "& .MuiTypography-h3": {
+            color: projectGridBlue,
+            fontWeight: 800,
+          },
+          "& .MuiTypography-body1": {
+            color: "text.primary",
+            lineHeight: 1.7,
+          },
+        }}
+      >
+        <PageHeader
+          action={
+            <Button
+              onClick={onCancel}
+              startIcon={<ArrowBackRoundedIcon />}
+              sx={{
+                borderColor: (theme) => alpha(theme.palette.primary.main, 0.28),
+                color: projectGridBlue,
+                fontWeight: 700,
+              }}
+              variant="outlined"
+            >
+              Voltar
+            </Button>
+          }
+          description={subtitle}
+          title={title}
+        />
+      </Box>
 
-      <Box sx={{ mt: 3 }}>
-        <SectionCard
-          description="Cadastre a descrição da obra, com código gerado automaticamente e dados complementares para apoio operacional."
-          title="Dados da obra"
+      {isInitialDataLoading ? (
+        <SectionCard sx={projectFormSectionCardSx}>
+          <Box
+            sx={{
+              alignItems: "center",
+              display: "flex",
+              justifyContent: "center",
+              minHeight: 240,
+            }}
+          >
+            <CircularProgress />
+          </Box>
+        </SectionCard>
+      ) : null}
+
+      {!isInitialDataLoading ? (
+        <Box
+          component="form"
+          onSubmit={handleSubmit(handleFormSubmit)}
+          sx={{ display: "flex", flexDirection: "column", gap: 3 }}
         >
           {initialDataError ? (
-            <Alert severity="error">{initialDataError}</Alert>
+            <Alert
+              severity="error"
+              sx={{
+                "& .MuiAlert-message": {
+                  fontWeight: 600,
+                },
+              }}
+            >
+              {initialDataError}
+            </Alert>
           ) : null}
           {copyFeedback ? (
-            <Alert severity="success">{copyFeedback}</Alert>
+            <Alert
+              severity="success"
+              sx={{
+                "& .MuiAlert-message": {
+                  fontWeight: 600,
+                },
+              }}
+            >
+              {copyFeedback}
+            </Alert>
           ) : null}
-          {submitError ? <Alert severity="error">{submitError}</Alert> : null}
+          {submitError ? (
+            <Alert
+              severity="error"
+              sx={{
+                "& .MuiAlert-message": {
+                  fontWeight: 600,
+                },
+              }}
+            >
+              {submitError}
+            </Alert>
+          ) : null}
           {projectTypesQuery.isError ? (
-            <Alert severity="warning" variant="outlined">
+            <Alert
+              severity="warning"
+              sx={{
+                "& .MuiAlert-message": {
+                  fontWeight: 600,
+                },
+              }}
+              variant="outlined"
+            >
               Não foi possível carregar os tipos de obra. Você ainda pode salvar
               a obra sem esse vínculo.
             </Alert>
           ) : null}
 
-          <Box
-            sx={{
-              display: "grid",
-              gap: 2,
-              gridTemplateColumns: {
-                md: "repeat(2, minmax(0, 1fr))",
-                xs: "minmax(0, 1fr)",
-              },
-            }}
+          <SectionCard
+            description="Campos principais para identificação e classificação da obra."
+            sx={projectFormSectionCardSx}
+            title="Dados principais"
           >
-            <TextField
-              error={Boolean(errors.code)}
-              fullWidth
-              helperText={
-                errors.code?.message ??
-                (isCodeAutoGenerated
-                  ? currentCode === ""
-                    ? isInitialDataLoading
-                      ? "Gerando código automático da obra..."
-                      : "O código será gerado automaticamente ao salvar a obra."
-                    : "Código gerado automaticamente pelo sistema."
-                  : undefined)
-              }
-              label="Código"
-              placeholder="Ex: OBR-000001"
-              slotProps={{
-                input: {
-                  endAdornment:
-                    currentCode === "" ? undefined : (
-                      <InputAdornment position="end">
-                        <Tooltip title="Copiar código">
-                          <IconButton
-                            aria-label="Copiar código"
-                            edge="end"
-                            onClick={handleCopyCode}
-                            size="small"
-                          >
-                            <ContentCopyRoundedIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      </InputAdornment>
-                    ),
-                  readOnly: isCodeAutoGenerated,
-                },
-                inputLabel: {
-                  shrink: isCodeAutoGenerated || currentCode !== "",
+            <Box
+              sx={{
+                display: "grid",
+                gap: 2,
+                gridTemplateColumns: {
+                  lg: "repeat(3, minmax(0, 1fr))",
+                  md: "repeat(2, minmax(0, 1fr))",
+                  xs: "minmax(0, 1fr)",
                 },
               }}
-              {...register("code")}
-            />
-            <TextField
-              error={Boolean(errors.name)}
-              fullWidth
-              helperText={errors.name?.message}
-              label="Descrição"
-              placeholder="Ex: Centro Empresarial Campinas"
-              {...register("name")}
-            />
-            <TextField
-              error={Boolean(errors.projectTypeId)}
-              fullWidth
-              helperText={errors.projectTypeId?.message}
-              label="Tipo de obra"
-              select
-              {...register("projectTypeId")}
             >
-              <MenuItem value="">Não informado</MenuItem>
-              {(projectTypesQuery.data ?? []).map((item) => (
-                <MenuItem key={item.id} value={String(item.id)}>
-                  {item.name}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              error={Boolean(errors.city)}
-              fullWidth
-              helperText={errors.city?.message}
-              label="Cidade"
-              placeholder="Ex: Campinas"
-              {...register("city")}
-            />
-            <TextField
-              error={Boolean(errors.state)}
-              fullWidth
-              helperText={errors.state?.message}
-              label="Estado"
-              placeholder="Ex: SP"
-              {...register("state")}
-            />
-            <TextField
-              error={Boolean(errors.notes)}
-              fullWidth
-              helperText={errors.notes?.message}
-              label="Observações"
-              multiline
-              minRows={4}
-              sx={{ gridColumn: { md: "1 / -1", xs: "auto" } }}
-              {...register("notes")}
-            />
-          </Box>
+              <ProjectField label="Código">
+                <TextField
+                  error={Boolean(errors.code)}
+                  helperText={
+                    errors.code?.message ??
+                    (isCodeAutoGenerated
+                      ? currentCode === ""
+                        ? "O código será gerado automaticamente ao salvar a obra."
+                        : "Campo protegido com código gerado automaticamente."
+                      : undefined)
+                  }
+                  placeholder="Ex: OBR-000001"
+                  slotProps={{
+                    input: {
+                      endAdornment:
+                        currentCode === "" ? undefined : (
+                          <InputAdornment position="end">
+                            <Tooltip title="Copiar código">
+                              <IconButton
+                                aria-label="Copiar código"
+                                edge="end"
+                                onClick={handleCopyCode}
+                                size="small"
+                              >
+                                <ContentCopyRoundedIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </InputAdornment>
+                        ),
+                      readOnly: isCodeAutoGenerated,
+                    },
+                  }}
+                  {...register("code")}
+                />
+              </ProjectField>
+              <ProjectField label="Descrição">
+                <TextField
+                  error={Boolean(errors.name)}
+                  helperText={errors.name?.message}
+                  placeholder="Ex: Centro Empresarial Campinas"
+                  {...register("name")}
+                />
+              </ProjectField>
+              <ProjectField label="Tipo de obra">
+                <TextField
+                  error={Boolean(errors.projectTypeId)}
+                  helperText={errors.projectTypeId?.message}
+                  select
+                  {...register("projectTypeId")}
+                >
+                  <MenuItem value="">Não informado</MenuItem>
+                  {(projectTypesQuery.data ?? []).map((item) => (
+                    <MenuItem key={item.id} value={String(item.id)}>
+                      {item.name}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </ProjectField>
+            </Box>
+          </SectionCard>
 
-          <Box
-            sx={{
-              display: "flex",
-              gap: 1.5,
-              justifyContent: "flex-end",
-              pt: 1,
-            }}
+          <SectionCard
+            description="Dados de localização para facilitar consultas e vínculo operacional."
+            sx={projectFormSectionCardSx}
+            title="Localização"
           >
-            <Button onClick={onCancel} variant="text">
-              Cancelar
-            </Button>
-            <Button
-              disabled={isSubmitting || isInitialDataLoading}
-              startIcon={<SaveRoundedIcon />}
-              type="submit"
-              variant="contained"
+            <Box
+              sx={{
+                display: "grid",
+                gap: 2,
+                gridTemplateColumns: {
+                  md: "repeat(2, minmax(0, 1fr))",
+                  xs: "minmax(0, 1fr)",
+                },
+              }}
             >
-              {isSubmitting ? "Salvando..." : submitLabel}
-            </Button>
-          </Box>
-        </SectionCard>
-      </Box>
+              <ProjectField label="Cidade">
+                <TextField
+                  error={Boolean(errors.city)}
+                  helperText={errors.city?.message}
+                  placeholder="Ex: Campinas"
+                  {...register("city")}
+                />
+              </ProjectField>
+              <ProjectField label="Estado">
+                <TextField
+                  error={Boolean(errors.state)}
+                  helperText={errors.state?.message}
+                  placeholder="Ex: SP"
+                  {...register("state")}
+                />
+              </ProjectField>
+            </Box>
+          </SectionCard>
+
+          <SectionCard
+            description="Informações complementares para consulta futura e contexto da obra."
+            sx={projectFormSectionCardSx}
+            title="Observações"
+          >
+            <Box
+              sx={{
+                display: "grid",
+                gap: 2,
+              }}
+            >
+              <ProjectField label="Observações">
+                <TextField
+                  error={Boolean(errors.notes)}
+                  helperText={errors.notes?.message}
+                  minRows={4}
+                  multiline
+                  placeholder="Detalhes adicionais da obra, restrições ou observações operacionais."
+                  {...register("notes")}
+                />
+              </ProjectField>
+            </Box>
+
+            <Box
+              sx={{
+                display: "flex",
+                gap: 1.5,
+                justifyContent: "flex-end",
+                pt: 1,
+              }}
+            >
+              <Button onClick={onCancel} variant="text">
+                Cancelar
+              </Button>
+              <Button
+                disabled={isSubmitting || isInitialDataLoading}
+                startIcon={<SaveRoundedIcon />}
+                type="submit"
+                variant="contained"
+              >
+                {isSubmitting ? "Salvando..." : submitLabel}
+              </Button>
+            </Box>
+          </SectionCard>
+        </Box>
+      ) : null}
     </Box>
   );
 }

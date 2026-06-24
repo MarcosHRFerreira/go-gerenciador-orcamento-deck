@@ -18,6 +18,7 @@ import (
 	"unicode"
 
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/apperror"
+	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/budgetpriority"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/dto"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/logger"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/model"
@@ -187,7 +188,6 @@ type catalogIndex struct {
 	lossReasons              map[string]struct{}
 	installerNameByID        map[int64]string
 	defaultStatusExists      bool
-	defaultPriorityExists    bool
 	defaultInstallerExists   bool
 	defaultProjectExists     bool
 	defaultProjectTypeExists bool
@@ -349,8 +349,8 @@ func (s *service) Preview(
 		missingStatuses,
 		normalizedOptions,
 	)
-	ensureDefaultCatalog(
-		catalogs.defaultPriorityExists,
+	ensurePriorityRangesCatalogs(
+		catalogs.priorities,
 		missingPriorities,
 		normalizedOptions,
 	)
@@ -607,8 +607,9 @@ func (s *service) buildRowPreview(
 	result.hasWarning = result.hasWarning || lossReasonHasWarning
 	result.hasError = result.hasError || lossReasonHasError
 
-	priorityHasWarning, priorityHasError := ensureDefaultPriority(
-		catalogs.defaultPriorityExists,
+	priorityHasWarning, priorityHasError := ensurePriorityRange(
+		normalizedRow.grossValue,
+		catalogs.priorities,
 		options,
 		missingPriorities,
 		&previewRow.Messages,
@@ -756,9 +757,7 @@ func (s *service) loadCatalogIndex(ctx context.Context) (*catalogIndex, error) {
 	for _, item := range priorities {
 		key := normalizeLookupKey(item.Name)
 		index.priorities[key] = struct{}{}
-		if key == normalizeLookupKey(notInformedName) {
-			index.defaultPriorityExists = true
-		}
+		index.priorities[normalizeLookupKey(item.Code)] = struct{}{}
 	}
 	for _, item := range installers {
 		key := normalizeLookupKey(item.Name)
@@ -1408,25 +1407,54 @@ func resolveSalespersonName(
 	return "", false, true
 }
 
-func ensureDefaultPriority(
-	defaultExists bool,
+func ensurePriorityRange(
+	grossValue float64,
+	existing map[string]struct{},
 	options dto.PreviewBudgetImportOptions,
 	missing map[string]struct{},
 	messages *[]string,
 ) (bool, bool) {
-	if defaultExists {
+	definition := budgetpriority.ResolveByGrossValue(grossValue)
+	priorityKey := normalizeLookupKey(definition.Name)
+	if _, exists := existing[priorityKey]; exists {
 		return false, false
 	}
-	if options.CreateMissingCatalogs && options.UseDefaultNotInformed {
-		missing[normalizeLookupKey(notInformedName)] = struct{}{}
-		*messages = append(*messages, "Prioridade operacional sera tratada como Nao informado.")
+	if options.CreateMissingCatalogs {
+		missing[priorityKey] = struct{}{}
+		*messages = append(*messages, fmt.Sprintf("Prioridade operacional sera classificada automaticamente como %s.", definition.Name))
 		return true, false
 	}
-	if options.UseDefaultNotInformed {
-		*messages = append(*messages, "Prioridade operacional Nao informado nao existe.")
-		return false, true
+
+	*messages = append(*messages, fmt.Sprintf("Prioridade operacional %s nao existe.", definition.Name))
+	return false, true
+}
+
+func hasAllPriorityRanges(existing map[string]struct{}) bool {
+	for _, definition := range budgetpriority.Definitions() {
+		if _, exists := existing[normalizeLookupKey(definition.Name)]; !exists {
+			return false
+		}
 	}
-	return false, false
+
+	return true
+}
+
+func ensurePriorityRangesCatalogs(
+	existing map[string]struct{},
+	missing map[string]struct{},
+	options dto.PreviewBudgetImportOptions,
+) {
+	if hasAllPriorityRanges(existing) || !options.CreateMissingCatalogs {
+		return
+	}
+
+	for _, definition := range budgetpriority.Definitions() {
+		if _, exists := existing[normalizeLookupKey(definition.Name)]; exists {
+			continue
+		}
+
+		missing[normalizeLookupKey(definition.Name)] = struct{}{}
+	}
 }
 
 func ensureDefaultCatalog(defaultExists bool, missing map[string]struct{}, options dto.PreviewBudgetImportOptions) {

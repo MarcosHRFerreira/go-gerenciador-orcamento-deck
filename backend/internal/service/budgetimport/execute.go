@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/apperror"
+	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/budgetpriority"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/dto"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/logger"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/model"
@@ -363,7 +364,7 @@ func (s *service) importBudgetRow(
 	}
 	catalogsCreated := created
 
-	priorityID, created, err := s.ensurePriorityID(ctx, catalogs, row.priorityName, options)
+	priorityID, created, err := s.ensurePriorityID(ctx, catalogs, row.grossValue, options)
 	if err != nil {
 		return importRowResult{}, err
 	}
@@ -723,6 +724,8 @@ func buildRawRowData(header []string, rowValues []string) map[string]string {
 }
 
 func buildNormalizedRowData(row normalizedBudgetImportRow) map[string]interface{} {
+	priorityDefinition := budgetpriority.ResolveByGrossValue(row.grossValue)
+
 	data := map[string]interface{}{
 		"row_number":           row.rowNumber,
 		"budget_number":        row.budgetNumber,
@@ -732,7 +735,7 @@ func buildNormalizedRowData(row normalizedBudgetImportRow) map[string]interface{
 		"commission_value":     row.commissionValue,
 		"area_m2":              row.areaM2,
 		"status_name":          row.statusName,
-		"priority_name":        row.priorityName,
+		"priority_name":        priorityDefinition.Name,
 		"installer_name":       row.installerName,
 		"product_line_name":    row.productLineName,
 		"project_name":         row.projectName,
@@ -828,6 +831,7 @@ func (s *service) loadCatalogRuntime(ctx context.Context) (*catalogRuntime, erro
 	}
 	for _, item := range priorities {
 		runtime.priorities[normalizeLookupKey(item.Name)] = item.ID
+		runtime.priorities[normalizeLookupKey(item.Code)] = item.ID
 	}
 	for _, item := range installers {
 		runtime.installers[normalizeLookupKey(item.Name)] = item.ID
@@ -918,9 +922,9 @@ func (s *service) ensureBudgetStatusID(ctx context.Context, catalogs *catalogRun
 	return id, 1, nil
 }
 
-func (s *service) ensurePriorityID(ctx context.Context, catalogs *catalogRuntime, name string, options dto.PreviewBudgetImportOptions) (int64, int, error) {
-	name = normalizeDisplayText(name)
-	key := normalizeLookupKey(name)
+func (s *service) ensurePriorityID(ctx context.Context, catalogs *catalogRuntime, grossValue float64, options dto.PreviewBudgetImportOptions) (int64, int, error) {
+	definition := budgetpriority.ResolveByGrossValue(grossValue)
+	key := normalizeLookupKey(definition.Name)
 	if id, ok := catalogs.priorities[key]; ok {
 		return id, 0, nil
 	}
@@ -930,22 +934,24 @@ func (s *service) ensurePriorityID(ctx context.Context, catalogs *catalogRuntime
 
 	now := time.Now()
 	id, err := s.priorityRepo.Create(ctx, &model.PriorityModel{
-		Code:      buildCatalogCode(name),
-		Name:      name,
-		Weight:    0,
+		Code:      definition.Code,
+		Name:      definition.Name,
+		Weight:    definition.Weight,
 		CreatedAt: now,
 		UpdatedAt: now,
 	})
 	if err != nil {
-		existing, getErr := s.priorityRepo.GetByCodeOrName(ctx, buildCatalogCode(name), name)
+		existing, getErr := s.priorityRepo.GetByCodeOrName(ctx, definition.Code, definition.Name)
 		if getErr == nil && existing != nil {
 			catalogs.priorities[key] = existing.ID
+			catalogs.priorities[normalizeLookupKey(definition.Code)] = existing.ID
 			return existing.ID, 0, nil
 		}
 		return 0, 0, apperror.Internal("Falha ao criar prioridade para importacao", err)
 	}
 
 	catalogs.priorities[key] = id
+	catalogs.priorities[normalizeLookupKey(definition.Code)] = id
 	return id, 1, nil
 }
 

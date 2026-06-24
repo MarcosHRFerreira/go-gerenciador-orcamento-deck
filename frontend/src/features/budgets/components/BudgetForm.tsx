@@ -26,6 +26,16 @@ import {
 import { listProjectsRequest } from "../../projects/api/projects";
 import type { BudgetCreatePayload } from "../types/budget";
 import type { BudgetFormValues } from "./budgetFormValues";
+import {
+  getBudgetStatusDisplayName,
+  getFactorFieldLabel,
+  isWonStatusLabel,
+} from "../utils/businessTerms";
+import {
+  getPriorityLabelByGrossValue,
+  parseBudgetDecimalInput,
+  resolvePriorityIdByGrossValue,
+} from "../utils/priorityRanges";
 import { z as schema } from "zod";
 import type { ReactNode } from "react";
 
@@ -96,11 +106,15 @@ const budgetFormSchema = schema.object({
   commissionValue: schema
     .string()
     .trim()
-    .min(1, "Informe a comissão")
+    .min(1, "Informe o fator")
     .refine(
       (value) => isValidNonNegativeNumber(value),
-      "Informe uma comissão válida",
+      "Informe um fator válido",
     ),
+  constructionCompany: schema
+    .string()
+    .trim()
+    .max(200, "A construtora deve ter no máximo 200 caracteres"),
   competitorName: schema
     .string()
     .trim()
@@ -211,6 +225,7 @@ const budgetFormSchema = schema.object({
       (value) => isValidDateTime(value),
       "Informe uma data de envio válida",
     ),
+  sourceCompany: schema.string().trim(),
   specificationDetails: schema.string().trim(),
   statusId: schema
     .string()
@@ -303,14 +318,6 @@ function isValidDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
 }
 
-function normalizeStatusLabel(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toLowerCase();
-}
-
 function parseInteger(value: string) {
   return Number.parseInt(value, 10);
 }
@@ -355,6 +362,7 @@ function mapFormValuesToPayload(values: BudgetFormValues): BudgetCreatePayload {
     areaM2: parseDecimal(values.areaM2),
     budgetNumber: values.budgetNumber.trim(),
     commissionValue: parseDecimal(values.commissionValue),
+    constructionCompany: values.constructionCompany.trim(),
     competitorName: values.competitorName.trim(),
     competitorPrice: parseOptionalDecimal(values.competitorPrice),
     contactId: parseOptionalInteger(values.contactId),
@@ -419,6 +427,7 @@ export function BudgetForm({
     handleSubmit,
     register,
     reset,
+    setValue,
   } = useForm<BudgetFormValues>({
     defaultValues: initialValues,
     resolver: zodResolver(budgetFormSchema),
@@ -431,10 +440,45 @@ export function BudgetForm({
     control,
     name: "deliveryDate",
   });
+  const grossValueInput = useWatch({
+    control,
+    name: "grossValue",
+  });
 
   useEffect(() => {
     reset(initialValues);
   }, [initialValues, reset]);
+
+  const derivedPriorityLabel = useMemo(() => {
+    const parsedGrossValue = parseBudgetDecimalInput(grossValueInput ?? "");
+    if (parsedGrossValue === null) {
+      return "";
+    }
+
+    return getPriorityLabelByGrossValue(parsedGrossValue);
+  }, [grossValueInput]);
+
+  useEffect(() => {
+    const parsedGrossValue = parseBudgetDecimalInput(grossValueInput ?? "");
+    if (parsedGrossValue === null) {
+      setValue("priorityId", "", { shouldDirty: false, shouldValidate: false });
+      return;
+    }
+
+    const resolvedPriorityId = resolvePriorityIdByGrossValue(
+      parsedGrossValue,
+      budgetCatalogsQuery.data?.priorities ?? [],
+    );
+
+    setValue(
+      "priorityId",
+      resolvedPriorityId === null ? "" : String(resolvedPriorityId),
+      {
+        shouldDirty: false,
+        shouldValidate: false,
+      },
+    );
+  }, [budgetCatalogsQuery.data?.priorities, grossValueInput, setValue]);
 
   const projectOptions = useMemo<ProjectOption[]>(() => {
     const optionsMap = new Map<number, string>();
@@ -500,8 +544,7 @@ export function BudgetForm({
   }, [budgetCatalogsQuery.data?.statuses, selectedStatusId]);
 
   const isPedidoStatus =
-    selectedStatusName !== null &&
-    normalizeStatusLabel(selectedStatusName) === "pedido";
+    selectedStatusName !== null && isWonStatusLabel(selectedStatusName);
   const shouldShowDeliveryDateAlert =
     isPedidoStatus && initialDataError === null && !isInitialDataLoading;
 
@@ -568,6 +611,7 @@ export function BudgetForm({
           onSubmit={handleSubmit(handleFormSubmit)}
           sx={{ display: "flex", flexDirection: "column", gap: 3 }}
         >
+          <input type="hidden" {...register("areaM2")} />
           {initialDataError ? (
             <Alert
               severity="error"
@@ -618,8 +662,8 @@ export function BudgetForm({
               }}
             >
               {deliveryDateValue
-                ? "A data de entrega ajuda o acompanhamento operacional deste pedido."
-                : "Este orçamento está com status Pedido e ainda não possui data de entrega. Sem essa informação, o sistema não conseguirá gerar aviso automático ao vendedor."}
+                ? "A data de entrega ajuda o acompanhamento operacional deste fechado."
+                : "Este orçamento está com status Fechado e ainda não possui data de entrega. Sem essa informação, o sistema não conseguirá gerar aviso automático ao vendedor."}
             </Alert>
           ) : null}
           <SectionCard
@@ -632,7 +676,7 @@ export function BudgetForm({
                 display: "grid",
                 gap: 2,
                 gridTemplateColumns: {
-                  lg: "repeat(5, minmax(0, 1fr))",
+                  lg: "repeat(6, minmax(0, 1fr))",
                   md: "repeat(2, minmax(0, 1fr))",
                   xs: "minmax(0, 1fr)",
                 },
@@ -678,13 +722,28 @@ export function BudgetForm({
                   {...register("sentAt")}
                 />
               </BudgetField>
+              <BudgetField label="Empresa">
+                <TextField
+                  helperText={
+                    mode === "edit"
+                      ? "Campo exibido para conferência da origem do orçamento."
+                      : "Preenchido automaticamente pela origem do orçamento."
+                  }
+                  slotProps={{
+                    input: {
+                      readOnly: true,
+                    },
+                  }}
+                  {...register("sourceCompany")}
+                />
+              </BudgetField>
               <BudgetField label="Data de entrega">
                 <TextField
                   error={Boolean(errors.deliveryDate)}
                   helperText={
                     errors.deliveryDate?.message ??
                     (isPedidoStatus
-                      ? "Recomendado para acompanhamento e aviso automático do pedido."
+                      ? "Recomendado para acompanhamento e aviso automático do fechado."
                       : undefined)
                   }
                   type="date"
@@ -707,7 +766,7 @@ export function BudgetForm({
                       {(budgetCatalogsQuery.data?.statuses ?? []).map(
                         (status) => (
                           <MenuItem key={status.id} value={String(status.id)}>
-                            {status.name}
+                            {getBudgetStatusDisplayName(status.name)}
                           </MenuItem>
                         ),
                       )}
@@ -719,7 +778,7 @@ export function BudgetForm({
           </SectionCard>
 
           <SectionCard
-            description="Valores, área e dados comerciais do orçamento."
+            description="Valores e dados comerciais do orçamento."
             sx={budgetFormSectionCardSx}
             title="Informações comerciais"
           >
@@ -744,7 +803,7 @@ export function BudgetForm({
                   {...register("grossValue")}
                 />
               </BudgetField>
-              <BudgetField label="Comissão">
+              <BudgetField label={getFactorFieldLabel()}>
                 <TextField
                   error={Boolean(errors.commissionValue)}
                   helperText={errors.commissionValue?.message}
@@ -754,14 +813,12 @@ export function BudgetForm({
                   {...register("commissionValue")}
                 />
               </BudgetField>
-              <BudgetField label="Área m2">
+              <BudgetField label="Construtora">
                 <TextField
-                  error={Boolean(errors.areaM2)}
-                  helperText={errors.areaM2?.message}
-                  slotProps={{ htmlInput: { inputMode: "decimal" } }}
-                  placeholder="0,00"
-                  type="text"
-                  {...register("areaM2")}
+                  error={Boolean(errors.constructionCompany)}
+                  helperText={errors.constructionCompany?.message}
+                  placeholder="Nome da construtora"
+                  {...register("constructionCompany")}
                 />
               </BudgetField>
               <BudgetField label="Projetista">
@@ -808,21 +865,20 @@ export function BudgetForm({
               }}
             >
               <BudgetField label="Prioridade">
+                <input type="hidden" {...register("priorityId")} />
                 <TextField
-                  error={Boolean(errors.priorityId)}
-                  helperText={errors.priorityId?.message}
-                  select
-                  {...register("priorityId")}
-                >
-                  <MenuItem value="">Não informar</MenuItem>
-                  {(budgetCatalogsQuery.data?.priorities ?? []).map(
-                    (priority) => (
-                      <MenuItem key={priority.id} value={String(priority.id)}>
-                        {priority.name}
-                      </MenuItem>
-                    ),
-                  )}
-                </TextField>
+                  helperText={
+                    derivedPriorityLabel.length > 0
+                      ? "Classificada automaticamente pelo valor bruto."
+                      : "Informe o valor bruto para classificar a prioridade."
+                  }
+                  slotProps={{
+                    input: {
+                      readOnly: true,
+                    },
+                  }}
+                  value={derivedPriorityLabel}
+                />
               </BudgetField>
               <BudgetField label="Instalador">
                 <TextField

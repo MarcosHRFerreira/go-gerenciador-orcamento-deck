@@ -1,3 +1,4 @@
+import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
 import LaunchRoundedIcon from "@mui/icons-material/LaunchRounded";
 import LocalShippingRoundedIcon from "@mui/icons-material/LocalShippingRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
@@ -31,13 +32,20 @@ import {
   filterSectionCardSx,
 } from "../../../components/common/FilterField";
 import { PageHeader } from "../../../components/common/PageHeader";
+import {
+  ResizableTableHeadCell,
+  useResizableTableColumns,
+  type ResizableColumnDefinition,
+} from "../../../components/common/ResizableTable";
 import { SectionCard } from "../../../components/common/SectionCard";
+import { exportSheetToExcel } from "../../../shared/utils/excel";
 import { useAuth } from "../../auth/hooks/useAuth";
 import {
   getBudgetCatalogsRequest,
   getBudgetDeliveryMonitorRequest,
   getBudgetListCatalogsRequest,
 } from "../api/budgets";
+import { getBudgetStatusDisplayName } from "../utils/businessTerms";
 import type {
   BudgetCatalogItem,
   BudgetDeliveryMonitorFilters,
@@ -78,7 +86,7 @@ const deliveryStatusOptions: Array<{
   { value: "due_in_1_day", label: "Entrega em 1 dia" },
   { value: "due_in_2_days", label: "Entrega em 2 dias" },
   { value: "future", label: "Entrega futura" },
-  { value: "missing_delivery_date", label: "Pedido sem data" },
+  { value: "missing_delivery_date", label: "Fechado sem data" },
 ];
 
 const pageSizeOptions = [10, 25, 50] as const;
@@ -176,6 +184,24 @@ const budgetPaginationSx = {
 const rowNumberColumnWidth = 68;
 const budgetNumberColumnWidth = 140;
 const tableMaxHeight = "calc(100vh - 300px)";
+
+const deliveryMonitorColumnDefinitions: ResizableColumnDefinition[] = [
+  { key: "row", minWidth: rowNumberColumnWidth, width: rowNumberColumnWidth },
+  {
+    key: "budgetNumber",
+    minWidth: budgetNumberColumnWidth,
+    width: budgetNumberColumnWidth,
+  },
+  { key: "project", minWidth: 240, width: 240 },
+  { key: "constructionCompany", minWidth: 190, width: 190 },
+  { key: "salesperson", minWidth: 170, width: 170 },
+  { key: "status", minWidth: 150, width: 150 },
+  { key: "deliveryDate", minWidth: 140, width: 140 },
+  { key: "daysUntilDelivery", minWidth: 140, width: 140 },
+  { key: "deliveryStatus", minWidth: 170, width: 170 },
+  { key: "updatedAt", minWidth: 160, width: 160 },
+  { key: "actions", minWidth: 160, width: 160 },
+];
 
 function parsePositiveInteger(value: string | null, fallback: number) {
   const parsedValue = Number(value);
@@ -353,6 +379,10 @@ export function BudgetDeliveryMonitorPage() {
   );
   const [draftFilters, setDraftFilters] =
     useState<BudgetDeliveryMonitorFilters>(appliedFilters);
+  const { createResizeHandler, getColumnWidth } = useResizableTableColumns(
+    "budget-delivery-monitor-columns:v1",
+    deliveryMonitorColumnDefinitions,
+  );
 
   const monitorQuery = useQuery({
     queryKey: ["budget-delivery-monitor", appliedFilters],
@@ -371,7 +401,13 @@ export function BudgetDeliveryMonitorPage() {
   }, [appliedFilters]);
 
   const statusCatalogMap = useMemo(
-    () => createCatalogMap(catalogsQuery.data?.statuses ?? []),
+    () =>
+      new Map(
+        (catalogsQuery.data?.statuses ?? []).map((item) => [
+          String(item.id),
+          getBudgetStatusDisplayName(item.name),
+        ]),
+      ),
     [catalogsQuery.data?.statuses],
   );
 
@@ -379,6 +415,34 @@ export function BudgetDeliveryMonitorPage() {
     1,
     Math.ceil((monitorQuery.data?.total ?? 0) / appliedFilters.pageSize),
   );
+  const tableMinWidth = useMemo(
+    () =>
+      deliveryMonitorColumnDefinitions.reduce(
+        (currentWidth, column) => currentWidth + getColumnWidth(column.key),
+        0,
+      ),
+    [getColumnWidth],
+  );
+  const getResizableColumnSx = (
+    columnKey: string,
+    overrides: Record<string, unknown> = {},
+  ) => ({
+    ...singleLineTableCellSx,
+    maxWidth: getColumnWidth(columnKey),
+    minWidth: getColumnWidth(columnKey),
+    width: getColumnWidth(columnKey),
+    ...overrides,
+  });
+  const getResizableDetailColumnSx = (
+    columnKey: string,
+    overrides: Record<string, unknown> = {},
+  ) => ({
+    ...tableDetailCellSx,
+    maxWidth: getColumnWidth(columnKey),
+    minWidth: getColumnWidth(columnKey),
+    width: getColumnWidth(columnKey),
+    ...overrides,
+  });
 
   const handleDraftChange = <Key extends keyof BudgetDeliveryMonitorFilters>(
     key: Key,
@@ -426,19 +490,98 @@ export function BudgetDeliveryMonitorPage() {
     );
   };
 
+  const handleExportMonitorXlsx = async () => {
+    const monitorItems = monitorQuery.data?.items ?? [];
+    if (monitorItems.length === 0) {
+      return;
+    }
+
+    await exportSheetToExcel({
+      columns: [
+        {
+          header: "Linha",
+          format: "integer",
+          value: (_item, index) =>
+            (appliedFilters.page - 1) * appliedFilters.pageSize + index + 1,
+        },
+        {
+          header: "Orcamento",
+          value: (item) => item.budgetNumber,
+        },
+        {
+          header: "Obra",
+          value: (item) => formatProjectLabel(item),
+        },
+        {
+          header: "Construtora",
+          value: (item) => item.constructionCompany || "Nao informada",
+        },
+        {
+          header: "Vendedor",
+          value: (item) => item.salespersonName || "Nao informado",
+        },
+        {
+          header: "Status",
+          value: (item) =>
+            getBudgetStatusDisplayName(
+              item.statusName ??
+                statusCatalogMap.get(String(item.statusId)) ??
+                "Nao informado",
+            ),
+        },
+        {
+          header: "Data de entrega",
+          value: (item) => formatDate(item.deliveryDate),
+        },
+        {
+          header: "Dias ate a entrega",
+          value: (item) => formatDaysUntilDelivery(item.daysUntilDelivery),
+        },
+        {
+          header: "Situacao da entrega",
+          value: (item) => item.deliveryStatusLabel,
+        },
+        {
+          header: "Atualizado em",
+          value: (item) => formatDateTime(item.updatedAt),
+        },
+      ],
+      fileName: `acompanhamento-entregas-pagina-${appliedFilters.page}`,
+      items: monitorItems,
+      sheetName: "Entregas",
+    });
+  };
+
   return (
     <Box sx={{ display: "grid", gap: 3 }}>
       <PageHeader
         title="Acompanhamento de entregas"
-        description="Monitore pedidos atrasados, proximos da entrega e registros sem data informada."
+        description="Monitore fechados atrasados, proximos da entrega e registros sem data informada."
         action={
-          <Button
-            onClick={() => navigate("/budgets")}
-            startIcon={<LocalShippingRoundedIcon />}
-            variant="outlined"
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: { sm: "row", xs: "column" },
+              gap: 1.25,
+              width: "100%",
+            }}
           >
-            Voltar para orcamentos
-          </Button>
+            <Button
+              disabled={(monitorQuery.data?.items.length ?? 0) === 0}
+              onClick={handleExportMonitorXlsx}
+              startIcon={<DownloadRoundedIcon />}
+              variant="outlined"
+            >
+              Exportar Excel
+            </Button>
+            <Button
+              onClick={() => navigate("/budgets")}
+              startIcon={<LocalShippingRoundedIcon />}
+              variant="outlined"
+            >
+              Voltar para orcamentos
+            </Button>
+          </Box>
         }
       />
 
@@ -450,7 +593,7 @@ export function BudgetDeliveryMonitorPage() {
         <Box sx={monitorSummaryGridSx}>
           {[
             {
-              helper: "Pedidos no contexto atual",
+              helper: "Fechados no contexto atual",
               label: "Total monitorado",
               value: monitorQuery.data?.summary.total ?? 0,
             },
@@ -492,7 +635,7 @@ export function BudgetDeliveryMonitorPage() {
 
       <SectionCard
         title="Filtros"
-        description="Use os filtros para localizar rapidamente os pedidos que exigem acompanhamento."
+        description="Use os filtros para localizar rapidamente os fechados que exigem acompanhamento."
         sx={filterSectionCardSx}
       >
         <Box sx={filterGroupSx}>
@@ -556,10 +699,10 @@ export function BudgetDeliveryMonitorPage() {
                 size="small"
                 sx={compactFilterFieldSx}
               >
-                <MenuItem value="">Pedido</MenuItem>
+                <MenuItem value="">Fechado</MenuItem>
                 {(catalogsQuery.data?.statuses ?? []).map((item) => (
                   <MenuItem key={item.id} value={String(item.id)}>
-                    {item.name}
+                    {getBudgetStatusDisplayName(item.name)}
                   </MenuItem>
                 ))}
               </TextField>
@@ -625,8 +768,8 @@ export function BudgetDeliveryMonitorPage() {
                 }
               >
                 {draftFilters.missingDeliveryDate
-                  ? "Somente pedidos sem data"
-                  : "Filtrar pedidos sem data"}
+                  ? "Somente fechados sem data"
+                  : "Filtrar fechados sem data"}
               </Button>
             </FilterField>
           </Box>
@@ -654,7 +797,7 @@ export function BudgetDeliveryMonitorPage() {
       </SectionCard>
 
       <SectionCard
-        title="Pedidos monitorados"
+        title="Fechados monitorados"
         description="Lista inicial com destaque visual para prioridade de atendimento."
         sx={{
           background: (theme) =>
@@ -770,7 +913,7 @@ export function BudgetDeliveryMonitorPage() {
                       sx={{
                         borderCollapse: "separate",
                         borderSpacing: 0,
-                        minWidth: 1480,
+                        minWidth: tableMinWidth,
                         "& .MuiTableHead-root": {
                           position: "relative",
                           zIndex: 3,
@@ -797,38 +940,94 @@ export function BudgetDeliveryMonitorPage() {
                     >
                       <TableHead>
                         <TableRow>
-                          <TableCell
+                          <ResizableTableHeadCell
                             align="center"
+                            onResizeStart={createResizeHandler("row")}
                             sx={{
                               ...tableHeadCellSx,
-                              minWidth: rowNumberColumnWidth,
-                              width: rowNumberColumnWidth,
                             }}
+                            width={getColumnWidth("row")}
                           >
                             #
-                          </TableCell>
-                          <TableCell
+                          </ResizableTableHeadCell>
+                          <ResizableTableHeadCell
+                            onResizeStart={createResizeHandler("budgetNumber")}
                             sx={{
                               ...tableHeadCellSx,
-                              minWidth: budgetNumberColumnWidth,
-                              width: budgetNumberColumnWidth,
                             }}
+                            width={getColumnWidth("budgetNumber")}
                           >
                             Orçamento
-                          </TableCell>
-                          <TableCell sx={tableHeadCellSx}>Obra</TableCell>
-                          <TableCell sx={tableHeadCellSx}>Empresa</TableCell>
-                          <TableCell sx={tableHeadCellSx}>Vendedor</TableCell>
-                          <TableCell sx={tableHeadCellSx}>Status</TableCell>
-                          <TableCell sx={tableHeadCellSx}>
+                          </ResizableTableHeadCell>
+                          <ResizableTableHeadCell
+                            onResizeStart={createResizeHandler("project")}
+                            sx={tableHeadCellSx}
+                            width={getColumnWidth("project")}
+                          >
+                            Obra
+                          </ResizableTableHeadCell>
+                          <ResizableTableHeadCell
+                            onResizeStart={createResizeHandler(
+                              "constructionCompany",
+                            )}
+                            sx={tableHeadCellSx}
+                            width={getColumnWidth("constructionCompany")}
+                          >
+                            Empresa
+                          </ResizableTableHeadCell>
+                          <ResizableTableHeadCell
+                            onResizeStart={createResizeHandler("salesperson")}
+                            sx={tableHeadCellSx}
+                            width={getColumnWidth("salesperson")}
+                          >
+                            Vendedor
+                          </ResizableTableHeadCell>
+                          <ResizableTableHeadCell
+                            onResizeStart={createResizeHandler("status")}
+                            sx={tableHeadCellSx}
+                            width={getColumnWidth("status")}
+                          >
+                            Status
+                          </ResizableTableHeadCell>
+                          <ResizableTableHeadCell
+                            onResizeStart={createResizeHandler("deliveryDate")}
+                            sx={tableHeadCellSx}
+                            width={getColumnWidth("deliveryDate")}
+                          >
                             Data de entrega
-                          </TableCell>
-                          <TableCell sx={tableHeadCellSx}>Dias</TableCell>
-                          <TableCell sx={tableHeadCellSx}>Situação</TableCell>
-                          <TableCell sx={tableHeadCellSx}>
+                          </ResizableTableHeadCell>
+                          <ResizableTableHeadCell
+                            onResizeStart={createResizeHandler(
+                              "daysUntilDelivery",
+                            )}
+                            sx={tableHeadCellSx}
+                            width={getColumnWidth("daysUntilDelivery")}
+                          >
+                            Dias
+                          </ResizableTableHeadCell>
+                          <ResizableTableHeadCell
+                            onResizeStart={createResizeHandler(
+                              "deliveryStatus",
+                            )}
+                            sx={tableHeadCellSx}
+                            width={getColumnWidth("deliveryStatus")}
+                          >
+                            Situação
+                          </ResizableTableHeadCell>
+                          <ResizableTableHeadCell
+                            onResizeStart={createResizeHandler("updatedAt")}
+                            sx={tableHeadCellSx}
+                            width={getColumnWidth("updatedAt")}
+                          >
                             Atualização
-                          </TableCell>
-                          <TableCell sx={tableHeadCellSx}>Ações</TableCell>
+                          </ResizableTableHeadCell>
+                          <ResizableTableHeadCell
+                            onResizeStart={createResizeHandler("actions")}
+                            sx={tableHeadCellSx}
+                            width={getColumnWidth("actions")}
+                          >
+                            Ações
+                          </ResizableTableHeadCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -836,13 +1035,9 @@ export function BudgetDeliveryMonitorPage() {
                           <TableRow hover key={item.id}>
                             <TableCell
                               align="center"
-                              sx={{
-                                ...singleLineTableCellSx,
+                              sx={getResizableColumnSx("row", {
                                 fontWeight: 700,
-                                maxWidth: rowNumberColumnWidth,
-                                minWidth: rowNumberColumnWidth,
-                                width: rowNumberColumnWidth,
-                              }}
+                              })}
                             >
                               {(appliedFilters.page - 1) *
                                 appliedFilters.pageSize +
@@ -850,25 +1045,21 @@ export function BudgetDeliveryMonitorPage() {
                                 1}
                             </TableCell>
                             <TableCell
-                              sx={{
-                                ...singleLineTableCellSx,
+                              sx={getResizableColumnSx("budgetNumber", {
                                 fontWeight: 600,
-                                maxWidth: budgetNumberColumnWidth,
-                                minWidth: budgetNumberColumnWidth,
-                                width: budgetNumberColumnWidth,
-                              }}
+                              })}
                               title={item.budgetNumber}
                             >
                               {item.budgetNumber}
                             </TableCell>
                             <TableCell
-                              sx={singleLineTableCellSx}
+                              sx={getResizableColumnSx("project")}
                               title={formatProjectLabel(item)}
                             >
                               {formatProjectLabel(item)}
                             </TableCell>
                             <TableCell
-                              sx={singleLineTableCellSx}
+                              sx={getResizableColumnSx("constructionCompany")}
                               title={
                                 item.constructionCompany || "Nao informada"
                               }
@@ -876,19 +1067,23 @@ export function BudgetDeliveryMonitorPage() {
                               {item.constructionCompany || "Nao informada"}
                             </TableCell>
                             <TableCell
-                              sx={singleLineTableCellSx}
+                              sx={getResizableColumnSx("salesperson")}
                               title={item.salespersonName || "Nao informado"}
                             >
                               {item.salespersonName || "Nao informado"}
                             </TableCell>
-                            <TableCell sx={tableDetailCellSx}>
+                            <TableCell
+                              sx={getResizableDetailColumnSx("status")}
+                            >
                               <Chip
                                 color="primary"
-                                label={
+                                label={getBudgetStatusDisplayName(
                                   item.statusName ??
-                                  statusCatalogMap.get(String(item.statusId)) ??
-                                  "Nao informado"
-                                }
+                                    statusCatalogMap.get(
+                                      String(item.statusId),
+                                    ) ??
+                                    "Nao informado",
+                                )}
                                 size="small"
                                 sx={{
                                   fontSize: "0.7rem",
@@ -898,13 +1093,19 @@ export function BudgetDeliveryMonitorPage() {
                                 variant="outlined"
                               />
                             </TableCell>
-                            <TableCell sx={singleLineTableCellSx}>
+                            <TableCell
+                              sx={getResizableColumnSx("deliveryDate")}
+                            >
                               {formatDate(item.deliveryDate)}
                             </TableCell>
-                            <TableCell sx={singleLineTableCellSx}>
+                            <TableCell
+                              sx={getResizableColumnSx("daysUntilDelivery")}
+                            >
                               {formatDaysUntilDelivery(item.daysUntilDelivery)}
                             </TableCell>
-                            <TableCell sx={tableDetailCellSx}>
+                            <TableCell
+                              sx={getResizableDetailColumnSx("deliveryStatus")}
+                            >
                               <Chip
                                 color={getDeliveryStatusChipColor(
                                   item.deliveryStatus,
@@ -924,14 +1125,13 @@ export function BudgetDeliveryMonitorPage() {
                                 }
                               />
                             </TableCell>
-                            <TableCell sx={singleLineTableCellSx}>
+                            <TableCell sx={getResizableColumnSx("updatedAt")}>
                               {formatDateTime(item.updatedAt)}
                             </TableCell>
                             <TableCell
-                              sx={{
-                                ...tableDetailCellSx,
+                              sx={getResizableDetailColumnSx("actions", {
                                 whiteSpace: "nowrap",
-                              }}
+                              })}
                             >
                               <Button
                                 onClick={() =>

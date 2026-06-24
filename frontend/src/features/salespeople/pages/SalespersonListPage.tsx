@@ -38,6 +38,10 @@ import {
   filterSectionCardSx,
 } from "../../../components/common/FilterField";
 import { PageHeader } from "../../../components/common/PageHeader";
+import {
+  ResizableTableHeadCell,
+  useResizableTableColumns,
+} from "../../../components/common/ResizableTable";
 import { SectionCard } from "../../../components/common/SectionCard";
 import {
   createSalespersonRequest,
@@ -106,6 +110,15 @@ const tableDetailCellSx = {
   verticalAlign: "top",
 };
 
+const salespersonListColumnDefinitions = [
+  { key: "name", width: 220, minWidth: 180 },
+  { key: "email", width: 240, minWidth: 200 },
+  { key: "phone", width: 180, minWidth: 150 },
+  { key: "status", width: 140, minWidth: 120 },
+  { key: "updatedAt", width: 180, minWidth: 160 },
+  { key: "actions", width: 320, minWidth: 260 },
+] as const;
+
 function formatDateTime(value: string) {
   return dateTimeFormatter.format(new Date(value));
 }
@@ -160,6 +173,10 @@ function getDialogSubmitLabel(dialogState: SalespersonDialogState | null) {
 
 export default function SalespersonListPage() {
   const queryClient = useQueryClient();
+  const { createResizeHandler, getColumnWidth } = useResizableTableColumns(
+    "salesperson-list-columns:v1",
+    [...salespersonListColumnDefinitions],
+  );
   const [filters, setFilters] =
     useState<SalespersonListFilters>(defaultFilters);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
@@ -455,27 +472,74 @@ export default function SalespersonListPage() {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell sx={tableHeadCellSx}>Nome</TableCell>
-                <TableCell sx={tableHeadCellSx}>E-mail</TableCell>
-                <TableCell sx={tableHeadCellSx}>Telefone</TableCell>
-                <TableCell sx={tableHeadCellSx}>Status</TableCell>
-                <TableCell sx={tableHeadCellSx}>Atualizado em</TableCell>
-                <TableCell align="right" sx={tableHeadCellSx}>
+                <ResizableTableHeadCell
+                  onResizeStart={createResizeHandler("name")}
+                  sx={tableHeadCellSx}
+                  width={getColumnWidth("name")}
+                >
+                  Nome
+                </ResizableTableHeadCell>
+                <ResizableTableHeadCell
+                  onResizeStart={createResizeHandler("email")}
+                  sx={tableHeadCellSx}
+                  width={getColumnWidth("email")}
+                >
+                  E-mail
+                </ResizableTableHeadCell>
+                <ResizableTableHeadCell
+                  onResizeStart={createResizeHandler("phone")}
+                  sx={tableHeadCellSx}
+                  width={getColumnWidth("phone")}
+                >
+                  Telefone
+                </ResizableTableHeadCell>
+                <ResizableTableHeadCell
+                  onResizeStart={createResizeHandler("status")}
+                  sx={tableHeadCellSx}
+                  width={getColumnWidth("status")}
+                >
+                  Status
+                </ResizableTableHeadCell>
+                <ResizableTableHeadCell
+                  onResizeStart={createResizeHandler("updatedAt")}
+                  sx={tableHeadCellSx}
+                  width={getColumnWidth("updatedAt")}
+                >
+                  Atualizado em
+                </ResizableTableHeadCell>
+                <ResizableTableHeadCell
+                  align="right"
+                  onResizeStart={createResizeHandler("actions")}
+                  sx={tableHeadCellSx}
+                  width={getColumnWidth("actions")}
+                >
                   Ações
-                </TableCell>
+                </ResizableTableHeadCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {filteredSalespeople.map((item) => (
                 <TableRow hover key={item.id}>
-                  <TableCell sx={tableDetailCellSx}>
+                  <TableCell
+                    sx={{ ...tableDetailCellSx, width: getColumnWidth("name") }}
+                  >
                     <Typography sx={{ fontWeight: 600 }} variant="body2">
                       {item.name}
                     </Typography>
                   </TableCell>
-                  <TableCell sx={tableDetailCellSx}>{item.email}</TableCell>
-                  <TableCell sx={tableDetailCellSx}>{item.phone}</TableCell>
-                  <TableCell sx={tableDetailCellSx}>
+                  <TableCell
+                    sx={{ ...tableDetailCellSx, width: getColumnWidth("email") }}
+                  >
+                    {item.email}
+                  </TableCell>
+                  <TableCell
+                    sx={{ ...tableDetailCellSx, width: getColumnWidth("phone") }}
+                  >
+                    {item.phone}
+                  </TableCell>
+                  <TableCell
+                    sx={{ ...tableDetailCellSx, width: getColumnWidth("status") }}
+                  >
                     <Chip
                       color={getStatusChipColor(item.active)}
                       label={getStatusLabel(item.active)}
@@ -483,10 +547,21 @@ export default function SalespersonListPage() {
                       variant={item.active ? "filled" : "outlined"}
                     />
                   </TableCell>
-                  <TableCell sx={tableDetailCellSx}>
+                  <TableCell
+                    sx={{
+                      ...tableDetailCellSx,
+                      width: getColumnWidth("updatedAt"),
+                    }}
+                  >
                     {formatDateTime(item.updatedAt)}
                   </TableCell>
-                  <TableCell align="right" sx={tableDetailCellSx}>
+                  <TableCell
+                    align="right"
+                    sx={{
+                      ...tableDetailCellSx,
+                      width: getColumnWidth("actions"),
+                    }}
+                  >
                     <Box
                       sx={{
                         display: "flex",

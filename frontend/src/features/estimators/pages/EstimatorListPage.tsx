@@ -36,6 +36,10 @@ import {
   filterSectionCardSx,
 } from "../../../components/common/FilterField";
 import { PageHeader } from "../../../components/common/PageHeader";
+import {
+  ResizableTableHeadCell,
+  useResizableTableColumns,
+} from "../../../components/common/ResizableTable";
 import { SectionCard } from "../../../components/common/SectionCard";
 import {
   deleteEstimatorRequest,
@@ -80,6 +84,16 @@ const tableDetailCellSx = {
   verticalAlign: "top",
 };
 
+const estimatorListColumnDefinitions = [
+  { key: "code", width: 140, minWidth: 120 },
+  { key: "name", width: 260, minWidth: 220 },
+  { key: "contact", width: 240, minWidth: 200 },
+  { key: "linkedUser", width: 180, minWidth: 150 },
+  { key: "status", width: 140, minWidth: 120 },
+  { key: "updatedAt", width: 180, minWidth: 160 },
+  { key: "actions", width: 320, minWidth: 260 },
+] as const;
+
 function formatDateTime(value: string) {
   return dateTimeFormatter.format(new Date(value));
 }
@@ -117,6 +131,10 @@ function mapUpdatePayload(
 export default function EstimatorListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { createResizeHandler, getColumnWidth } = useResizableTableColumns(
+    "estimator-list-columns:v1",
+    [...estimatorListColumnDefinitions],
+  );
   const [filters, setFilters] = useState<EstimatorListFilters>(defaultFilters);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
@@ -369,26 +387,71 @@ export default function EstimatorListPage() {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell sx={tableHeadCellSx}>Código</TableCell>
-                <TableCell sx={tableHeadCellSx}>Nome</TableCell>
-                <TableCell sx={tableHeadCellSx}>Contato</TableCell>
-                <TableCell sx={tableHeadCellSx}>Usuário vinculado</TableCell>
-                <TableCell sx={tableHeadCellSx}>Status</TableCell>
-                <TableCell sx={tableHeadCellSx}>Atualizado em</TableCell>
-                <TableCell align="right" sx={tableHeadCellSx}>
+                <ResizableTableHeadCell
+                  onResizeStart={createResizeHandler("code")}
+                  sx={tableHeadCellSx}
+                  width={getColumnWidth("code")}
+                >
+                  Código
+                </ResizableTableHeadCell>
+                <ResizableTableHeadCell
+                  onResizeStart={createResizeHandler("name")}
+                  sx={tableHeadCellSx}
+                  width={getColumnWidth("name")}
+                >
+                  Nome
+                </ResizableTableHeadCell>
+                <ResizableTableHeadCell
+                  onResizeStart={createResizeHandler("contact")}
+                  sx={tableHeadCellSx}
+                  width={getColumnWidth("contact")}
+                >
+                  Contato
+                </ResizableTableHeadCell>
+                <ResizableTableHeadCell
+                  onResizeStart={createResizeHandler("linkedUser")}
+                  sx={tableHeadCellSx}
+                  width={getColumnWidth("linkedUser")}
+                >
+                  Usuário vinculado
+                </ResizableTableHeadCell>
+                <ResizableTableHeadCell
+                  onResizeStart={createResizeHandler("status")}
+                  sx={tableHeadCellSx}
+                  width={getColumnWidth("status")}
+                >
+                  Status
+                </ResizableTableHeadCell>
+                <ResizableTableHeadCell
+                  onResizeStart={createResizeHandler("updatedAt")}
+                  sx={tableHeadCellSx}
+                  width={getColumnWidth("updatedAt")}
+                >
+                  Atualizado em
+                </ResizableTableHeadCell>
+                <ResizableTableHeadCell
+                  align="right"
+                  onResizeStart={createResizeHandler("actions")}
+                  sx={tableHeadCellSx}
+                  width={getColumnWidth("actions")}
+                >
                   Ações
-                </TableCell>
+                </ResizableTableHeadCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {filteredEstimators.map((item) => (
                 <TableRow hover key={item.id}>
-                  <TableCell sx={tableDetailCellSx}>
+                  <TableCell
+                    sx={{ ...tableDetailCellSx, width: getColumnWidth("code") }}
+                  >
                     <Typography sx={{ fontWeight: 700 }} variant="body2">
                       {item.code}
                     </Typography>
                   </TableCell>
-                  <TableCell sx={tableDetailCellSx}>
+                  <TableCell
+                    sx={{ ...tableDetailCellSx, width: getColumnWidth("name") }}
+                  >
                     <Box
                       sx={{
                         display: "flex",
@@ -406,7 +469,12 @@ export default function EstimatorListPage() {
                       ) : null}
                     </Box>
                   </TableCell>
-                  <TableCell sx={tableDetailCellSx}>
+                  <TableCell
+                    sx={{
+                      ...tableDetailCellSx,
+                      width: getColumnWidth("contact"),
+                    }}
+                  >
                     <Box
                       sx={{
                         display: "flex",
@@ -422,7 +490,12 @@ export default function EstimatorListPage() {
                       </Typography>
                     </Box>
                   </TableCell>
-                  <TableCell sx={tableDetailCellSx}>
+                  <TableCell
+                    sx={{
+                      ...tableDetailCellSx,
+                      width: getColumnWidth("linkedUser"),
+                    }}
+                  >
                     {item.userName ? (
                       <Chip
                         color="primary"
@@ -434,7 +507,9 @@ export default function EstimatorListPage() {
                       "Não vinculado"
                     )}
                   </TableCell>
-                  <TableCell sx={tableDetailCellSx}>
+                  <TableCell
+                    sx={{ ...tableDetailCellSx, width: getColumnWidth("status") }}
+                  >
                     <Chip
                       color={getStatusChipColor(item.active)}
                       label={getStatusLabel(item.active)}
@@ -442,10 +517,21 @@ export default function EstimatorListPage() {
                       variant={item.active ? "filled" : "outlined"}
                     />
                   </TableCell>
-                  <TableCell sx={tableDetailCellSx}>
+                  <TableCell
+                    sx={{
+                      ...tableDetailCellSx,
+                      width: getColumnWidth("updatedAt"),
+                    }}
+                  >
                     {formatDateTime(item.updatedAt)}
                   </TableCell>
-                  <TableCell align="right" sx={tableDetailCellSx}>
+                  <TableCell
+                    align="right"
+                    sx={{
+                      ...tableDetailCellSx,
+                      width: getColumnWidth("actions"),
+                    }}
+                  >
                     <Box
                       sx={{
                         display: "flex",

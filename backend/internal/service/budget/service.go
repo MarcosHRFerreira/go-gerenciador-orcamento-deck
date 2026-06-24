@@ -9,11 +9,13 @@ import (
 
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/accessscope"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/apperror"
+	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/budgetpriority"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/dto"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/model"
 	budgetrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budget"
 	budgetstatusrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budgetstatus"
 	estimatorrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/estimator"
+	priorityrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/priority"
 	salespersonrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/salesperson"
 	userrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/user"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -22,6 +24,7 @@ import (
 type Service interface {
 	Create(ctx context.Context, role model.UserRole, username string, req *dto.CreateBudgetRequest) (int64, error)
 	List(ctx context.Context, filters *dto.ListBudgetsFilters, role model.UserRole, username string) (*dto.ListBudgetsResponse, error)
+	GetGrossValueRange(ctx context.Context, filters *dto.ListBudgetsFilters, role model.UserRole, username string) (*dto.BudgetGrossValueRangeResponse, error)
 	ListDeliveryMonitor(ctx context.Context, filters *dto.ListBudgetDeliveryMonitorFilters, role model.UserRole, username string) (*dto.ListBudgetDeliveryMonitorResponse, error)
 	GetByID(ctx context.Context, budgetID int64, role model.UserRole, username string) (*dto.BudgetResponse, error)
 	Update(ctx context.Context, budgetID int64, role model.UserRole, username string, req *dto.UpdateBudgetRequest) error
@@ -32,6 +35,7 @@ type Service interface {
 type service struct {
 	repo             budgetrepository.Repository
 	budgetStatusRepo budgetstatusrepository.Repository
+	priorityRepo     priorityrepository.Repository
 	userRepo         userrepository.Repository
 	salespersonRepo  salespersonrepository.Repository
 	estimatorRepo    estimatorrepository.Repository
@@ -40,6 +44,7 @@ type service struct {
 func NewService(
 	repo budgetrepository.Repository,
 	budgetStatusRepo budgetstatusrepository.Repository,
+	priorityRepo priorityrepository.Repository,
 	userRepo userrepository.Repository,
 	salespersonRepo salespersonrepository.Repository,
 	estimatorRepo estimatorrepository.Repository,
@@ -47,6 +52,7 @@ func NewService(
 	return &service{
 		repo:             repo,
 		budgetStatusRepo: budgetStatusRepo,
+		priorityRepo:     priorityRepo,
 		userRepo:         userRepo,
 		salespersonRepo:  salespersonRepo,
 		estimatorRepo:    estimatorRepo,
@@ -100,6 +106,11 @@ func (s *service) Create(ctx context.Context, role model.UserRole, username stri
 		return 0, err
 	}
 
+	priorityID, err := s.resolvePriorityIDByGrossValue(ctx, req.GrossValue)
+	if err != nil {
+		return 0, err
+	}
+
 	now := time.Now()
 	id, err := s.repo.Create(ctx, &model.BudgetModel{
 		BudgetNumber:         budgetNumber,
@@ -111,7 +122,7 @@ func (s *service) Create(ctx context.Context, role model.UserRole, username stri
 		CommissionValue:      req.CommissionValue,
 		AreaM2:               req.AreaM2,
 		StatusID:             req.StatusID,
-		PriorityID:           newNullInt64(req.PriorityID),
+		PriorityID:           priorityID,
 		InstallerID:          newNullInt64(req.InstallerID),
 		ProductLineID:        newNullInt64(req.ProductLineID),
 		SystemTypeID:         newNullInt64(req.SystemTypeID),
@@ -160,6 +171,32 @@ func (s *service) List(ctx context.Context, filters *dto.ListBudgetsFilters, rol
 		PageSize: normalizedFilters.PageSize,
 		Total:    total,
 	}, nil
+}
+
+func (s *service) GetGrossValueRange(
+	ctx context.Context,
+	filters *dto.ListBudgetsFilters,
+	role model.UserRole,
+	username string,
+) (*dto.BudgetGrossValueRangeResponse, error) {
+	normalizedFilters, err := normalizeListFilters(filters)
+	if err != nil {
+		return nil, err
+	}
+
+	scope, err := accessscope.ResolveBudgetScope(ctx, role, username, s.userRepo, s.salespersonRepo, s.estimatorRepo)
+	if err != nil {
+		return nil, err
+	}
+	normalizedFilters.RestrictedSalespersonID = scope.RestrictedSalespersonID
+	normalizedFilters.RestrictedEstimatorID = scope.RestrictedEstimatorID
+
+	response, err := s.repo.GetGrossValueRange(ctx, normalizedFilters)
+	if err != nil {
+		return nil, apperror.Internal("failed to get budgets gross value range", err)
+	}
+
+	return response, nil
 }
 
 func (s *service) GetByID(ctx context.Context, budgetID int64, role model.UserRole, username string) (*dto.BudgetResponse, error) {
@@ -282,6 +319,11 @@ func (s *service) Update(ctx context.Context, budgetID int64, role model.UserRol
 		return err
 	}
 
+	priorityID, err := s.resolvePriorityIDByGrossValue(ctx, req.GrossValue)
+	if err != nil {
+		return err
+	}
+
 	updatedAt := time.Now()
 	updateItem := &model.BudgetModel{
 		ID:                   budgetID,
@@ -294,7 +336,7 @@ func (s *service) Update(ctx context.Context, budgetID int64, role model.UserRol
 		CommissionValue:      req.CommissionValue,
 		AreaM2:               req.AreaM2,
 		StatusID:             req.StatusID,
-		PriorityID:           newNullInt64(req.PriorityID),
+		PriorityID:           priorityID,
 		InstallerID:          newNullInt64(req.InstallerID),
 		ProductLineID:        newNullInt64(req.ProductLineID),
 		SystemTypeID:         newNullInt64(req.SystemTypeID),
@@ -407,7 +449,7 @@ func (s *service) ElectProjectWinner(
 	})
 	if err != nil {
 		if errors.Is(err, budgetrepository.ErrProjectAlreadyHasPedido) {
-			return apperror.Conflict("Ja existe outro orcamento da obra marcado como PEDIDO")
+			return apperror.Conflict("Ja existe outro orcamento da obra marcado como Fechado")
 		}
 
 		return apperror.Internal("failed to elect project winner", err)
@@ -653,6 +695,12 @@ func mapBudgetDeliveryMonitorResponses(items []model.BudgetDeliveryMonitorModel)
 }
 
 func mapBudgetResponse(item *model.BudgetModel) dto.BudgetResponse {
+	priorityName := nullableStringPointer(item.PriorityName)
+	if item.GrossValue > 0 {
+		definition := budgetpriority.ResolveByGrossValue(item.GrossValue)
+		priorityName = &definition.Name
+	}
+
 	return dto.BudgetResponse{
 		ID:                   item.ID,
 		BudgetNumber:         item.BudgetNumber,
@@ -679,7 +727,7 @@ func mapBudgetResponse(item *model.BudgetModel) dto.BudgetResponse {
 		ProjetistaName:       item.ProjetistaName,
 		SourceCompany:        item.SourceCompany,
 		StatusName:           nullableStringPointer(item.StatusName),
-		PriorityName:         nullableStringPointer(item.PriorityName),
+		PriorityName:         priorityName,
 		InstallerName:        nullableStringPointer(item.InstallerName),
 		ProductLineCode:      nullableStringPointer(item.ProductLineCode),
 		ProductLineName:      nullableStringPointer(item.ProductLineName),
@@ -696,6 +744,36 @@ func mapBudgetResponse(item *model.BudgetModel) dto.BudgetResponse {
 		CreatedAt:            item.CreatedAt,
 		UpdatedAt:            item.UpdatedAt,
 	}
+}
+
+func (s *service) resolvePriorityIDByGrossValue(ctx context.Context, grossValue float64) (sql.NullInt64, error) {
+	definition := budgetpriority.ResolveByGrossValue(grossValue)
+	existingPriority, err := s.priorityRepo.GetByCodeOrName(ctx, definition.Code, definition.Name)
+	if err != nil {
+		return sql.NullInt64{}, apperror.Internal("failed to check priority by gross value", err)
+	}
+	if existingPriority != nil {
+		return newNullInt64(&existingPriority.ID), nil
+	}
+
+	now := time.Now()
+	priorityID, err := s.priorityRepo.Create(ctx, &model.PriorityModel{
+		Code:      definition.Code,
+		Name:      definition.Name,
+		Weight:    definition.Weight,
+		CreatedAt: now,
+		UpdatedAt: now,
+	})
+	if err != nil {
+		existingPriority, getErr := s.priorityRepo.GetByCodeOrName(ctx, definition.Code, definition.Name)
+		if getErr == nil && existingPriority != nil {
+			return newNullInt64(&existingPriority.ID), nil
+		}
+
+		return sql.NullInt64{}, apperror.Internal("failed to ensure priority by gross value", err)
+	}
+
+	return newNullInt64(&priorityID), nil
 }
 
 func newNullInt64(value *int64) sql.NullInt64 {
@@ -741,7 +819,7 @@ func mapDeliveryStatusLabel(value string) string {
 	case "future":
 		return "Entrega futura"
 	case "missing_delivery_date":
-		return "Pedido sem data de entrega"
+		return "Fechado sem data de entrega"
 	default:
 		return "Nao informado"
 	}

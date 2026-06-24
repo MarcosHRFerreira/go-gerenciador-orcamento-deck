@@ -14,9 +14,9 @@ import (
 
 var ErrProjectAlreadyHasPedido = errors.New("project already has pedido budget")
 
-const automaticProjectCancellationNote = "Cancelado automaticamente porque outro orcamento da obra foi marcado como PEDIDO"
+const automaticProjectCancellationNote = "Cancelado automaticamente porque outro orcamento da obra foi marcado como Fechado"
 const automaticProjectRestorationNote = "Status restaurado automaticamente para permitir a troca do vencedor da obra"
-const automaticProjectWinnerReplacementNote = "Vencedor anterior restaurado automaticamente porque outro orcamento da obra foi definido como PEDIDO"
+const automaticProjectWinnerReplacementNote = "Vencedor anterior restaurado automaticamente porque outro orcamento da obra foi definido como Fechado"
 
 type ChangeStatusParams struct {
 	BudgetID                 int64
@@ -40,6 +40,7 @@ type ElectProjectWinnerParams struct {
 type Repository interface {
 	Create(ctx context.Context, item *model.BudgetModel) (int64, error)
 	List(ctx context.Context, filters *dto.ListBudgetsFilters) ([]model.BudgetModel, int64, error)
+	GetGrossValueRange(ctx context.Context, filters *dto.ListBudgetsFilters) (*dto.BudgetGrossValueRangeResponse, error)
 	ListDeliveryMonitor(ctx context.Context, filters *dto.ListBudgetDeliveryMonitorFilters) ([]model.BudgetDeliveryMonitorModel, int64, *dto.BudgetDeliveryMonitorSummaryResponse, error)
 	ExistsByNumberAndYear(ctx context.Context, budgetNumber string, yearBudget int) (bool, error)
 	ExistsBySourceAndNumberAndYear(ctx context.Context, sourceCompany string, budgetNumber string, yearBudget int) (bool, error)
@@ -272,6 +273,28 @@ func (r *repository) List(ctx context.Context, filters *dto.ListBudgetsFilters) 
 	}
 
 	return items, total, nil
+}
+
+func (r *repository) GetGrossValueRange(ctx context.Context, filters *dto.ListBudgetsFilters) (*dto.BudgetGrossValueRangeResponse, error) {
+	baseQuery := `
+		SELECT
+			COALESCE(MIN(b.gross_value), 0),
+			COALESCE(MAX(b.gross_value), 0)
+		FROM budgets b
+		LEFT JOIN projects p ON p.id = b.project_id
+	`
+
+	filtersWithoutGrossRange := cloneListFiltersWithoutGrossRange(filters)
+	whereClause, args := buildListWhereClause(filtersWithoutGrossRange)
+
+	row := r.db.QueryRowContext(ctx, baseQuery+whereClause, args...)
+
+	response := &dto.BudgetGrossValueRangeResponse{}
+	if err := row.Scan(&response.Min, &response.Max); err != nil {
+		return nil, err
+	}
+
+	return response, nil
 }
 
 func (r *repository) ListDeliveryMonitor(
@@ -520,6 +543,18 @@ func buildListWhereClause(filters *dto.ListBudgetsFilters) (string, []interface{
 	return builder.String(), args
 }
 
+func cloneListFiltersWithoutGrossRange(filters *dto.ListBudgetsFilters) *dto.ListBudgetsFilters {
+	if filters == nil {
+		return &dto.ListBudgetsFilters{}
+	}
+
+	clonedFilters := *filters
+	clonedFilters.GrossValueMin = nil
+	clonedFilters.GrossValueMax = nil
+
+	return &clonedFilters
+}
+
 func buildDeliveryMonitorWhereClause(filters *dto.ListBudgetDeliveryMonitorFilters, statusExpression string) (string, []interface{}) {
 	conditions := make([]string, 0)
 	args := make([]interface{}, 0)
@@ -532,7 +567,7 @@ func buildDeliveryMonitorWhereClause(filters *dto.ListBudgetDeliveryMonitorFilte
 		args = append(args, *filters.StatusID)
 		conditions = append(conditions, fmt.Sprintf("b.status_id = $%d", len(args)))
 	} else {
-		conditions = append(conditions, "(UPPER(COALESCE(bs.code, '')) = 'PEDIDO' OR LOWER(COALESCE(bs.name, '')) = 'pedido')")
+		conditions = append(conditions, "(UPPER(COALESCE(bs.code, '')) = 'PEDIDO' OR LOWER(COALESCE(bs.name, '')) IN ('pedido', 'fechado'))")
 	}
 	if filters.RestrictedSalespersonID != nil {
 		args = append(args, *filters.RestrictedSalespersonID)

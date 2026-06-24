@@ -1,6 +1,7 @@
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import ApartmentRoundedIcon from "@mui/icons-material/ApartmentRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
+import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
@@ -23,6 +24,7 @@ import {
   DialogTitle,
   MenuItem,
   Pagination,
+  Slider,
   Table,
   TableBody,
   TableCell,
@@ -53,16 +55,36 @@ import {
   filterGroupTitleSx,
 } from "../../../components/common/FilterField";
 import { PageHeader } from "../../../components/common/PageHeader";
+import {
+  ResizableTableHeadCell,
+  useResizableTableColumns,
+  type ResizableColumnDefinition,
+} from "../../../components/common/ResizableTable";
 import { SectionCard } from "../../../components/common/SectionCard";
+import {
+  formatCurrencyInputValue,
+  parseCurrencyInputToNumericString,
+} from "../../../shared/utils/currencyInput";
+import { exportSheetToExcel } from "../../../shared/utils/excel";
 import { useAuth } from "../../auth/hooks/useAuth";
 import {
   deleteBudgetRequest,
   getBudgetCatalogsRequest,
+  getBudgetGrossValueRangeRequest,
   getBudgetManagementCatalogsRequest,
   getBudgetListCatalogsRequest,
   getBudgetListRequest,
   getBudgetProjectListRequest,
 } from "../api/budgets";
+import {
+  getBudgetStatusDisplayName,
+  getFactorFieldLabel,
+  isWonStatusLabel,
+} from "../utils/businessTerms";
+import {
+  getBudgetPriorityLabel,
+  getPriorityDisplayLabel,
+} from "../utils/priorityRanges";
 import type {
   BudgetCatalogItem,
   BudgetListFilters,
@@ -85,11 +107,6 @@ const dateTimeFormatter = new Intl.DateTimeFormat("pt-BR", {
   timeStyle: "short",
 });
 
-const decimalFormatter = new Intl.NumberFormat("pt-BR", {
-  maximumFractionDigits: 2,
-  minimumFractionDigits: 2,
-});
-
 const defaultPageSize = 50;
 const budgetGridBlue = "var(--app-accent-text)";
 const budgetTintedDarkText = "#020617";
@@ -99,6 +116,7 @@ const defaultFilters: BudgetListFilters = {
   sourceCompany: "",
   yearBudget: "",
   statusId: "",
+  priorityId: "",
   installerId: "",
   systemTypeId: "",
   projectCode: "",
@@ -108,6 +126,8 @@ const defaultFilters: BudgetListFilters = {
   estimatorId: "",
   sentAtFrom: "",
   sentAtTo: "",
+  grossValueMin: "",
+  grossValueMax: "",
   page: 1,
   pageSize: defaultPageSize,
   sortBy: "sent_at",
@@ -139,6 +159,55 @@ function parsePositiveInteger(value: string | null, fallback: number) {
   return parsedValue;
 }
 
+function parseNonNegativeDecimalString(value: string | null) {
+  if (value === null) {
+    return "";
+  }
+
+  const parsedValue = Number(value);
+  if (!Number.isFinite(parsedValue) || parsedValue < 0) {
+    return "";
+  }
+
+  return String(parsedValue);
+}
+
+function parseDraftCurrencyValue(value: string) {
+  if (!value.trim()) {
+    return null;
+  }
+
+  const parsedValue = Number(value);
+  if (!Number.isFinite(parsedValue) || parsedValue < 0) {
+    return null;
+  }
+
+  return parsedValue;
+}
+
+function formatCurrencyRangeValue(value: string, fallback: number) {
+  const parsedValue = parseDraftCurrencyValue(value);
+
+  return currencyFormatter.format(parsedValue ?? fallback);
+}
+
+function normalizeGrossValueDraftRange(minValue: string, maxValue: string) {
+  const parsedMin = parseDraftCurrencyValue(minValue);
+  const parsedMax = parseDraftCurrencyValue(maxValue);
+
+  if (parsedMin !== null && parsedMax !== null && parsedMin > parsedMax) {
+    return {
+      grossValueMin: String(parsedMax),
+      grossValueMax: String(parsedMin),
+    };
+  }
+
+  return {
+    grossValueMin: parsedMin === null ? "" : String(parsedMin),
+    grossValueMax: parsedMax === null ? "" : String(parsedMax),
+  };
+}
+
 function getFiltersFromSearchParams(
   searchParams: URLSearchParams,
 ): BudgetListFilters {
@@ -152,6 +221,7 @@ function getFiltersFromSearchParams(
       searchParams.get("sourceCompany") ?? defaultFilters.sourceCompany,
     yearBudget: searchParams.get("yearBudget") ?? defaultFilters.yearBudget,
     statusId: searchParams.get("statusId") ?? defaultFilters.statusId,
+    priorityId: searchParams.get("priorityId") ?? defaultFilters.priorityId,
     installerId: searchParams.get("installerId") ?? defaultFilters.installerId,
     systemTypeId:
       searchParams.get("systemTypeId") ?? defaultFilters.systemTypeId,
@@ -163,6 +233,12 @@ function getFiltersFromSearchParams(
     estimatorId: searchParams.get("estimatorId") ?? defaultFilters.estimatorId,
     sentAtFrom: searchParams.get("sentAtFrom") ?? defaultFilters.sentAtFrom,
     sentAtTo: searchParams.get("sentAtTo") ?? defaultFilters.sentAtTo,
+    grossValueMin:
+      parseNonNegativeDecimalString(searchParams.get("grossValueMin")) ??
+      defaultFilters.grossValueMin,
+    grossValueMax:
+      parseNonNegativeDecimalString(searchParams.get("grossValueMax")) ??
+      defaultFilters.grossValueMax,
     page: parsePositiveInteger(searchParams.get("page"), defaultFilters.page),
     pageSize: parsePositiveInteger(
       searchParams.get("pageSize"),
@@ -187,6 +263,9 @@ function buildSearchParams(filters: BudgetListFilters) {
   }
   if (filters.statusId) {
     nextSearchParams.set("statusId", filters.statusId);
+  }
+  if (filters.priorityId) {
+    nextSearchParams.set("priorityId", filters.priorityId);
   }
   if (filters.installerId) {
     nextSearchParams.set("installerId", filters.installerId);
@@ -214,6 +293,12 @@ function buildSearchParams(filters: BudgetListFilters) {
   }
   if (filters.sentAtTo) {
     nextSearchParams.set("sentAtTo", filters.sentAtTo);
+  }
+  if (filters.grossValueMin) {
+    nextSearchParams.set("grossValueMin", filters.grossValueMin);
+  }
+  if (filters.grossValueMax) {
+    nextSearchParams.set("grossValueMax", filters.grossValueMax);
   }
   if (filters.page !== defaultFilters.page) {
     nextSearchParams.set("page", String(filters.page));
@@ -337,11 +422,11 @@ function normalizeValue(value: string | null | undefined) {
 }
 
 function getBudgetStatusCategory(statusName: string): BudgetStatusCategory {
-  const normalizedStatusName = normalizeValue(statusName);
-
-  if (normalizedStatusName === "pedido") {
+  if (isWonStatusLabel(statusName)) {
     return "pedido";
   }
+
+  const normalizedStatusName = normalizeValue(statusName);
 
   if (normalizedStatusName === "cancelado") {
     return "cancelado";
@@ -476,6 +561,15 @@ const budgetSecondaryFiltersGridSx = {
   },
 } as const;
 
+const budgetValueRangeGridSx = {
+  display: "grid",
+  gap: 2,
+  gridTemplateColumns: {
+    md: "repeat(2, minmax(0, 1fr))",
+    xs: "minmax(0, 1fr)",
+  },
+} as const;
+
 const budgetWideFilterGroupSx: SxProps<Theme> = {
   ...(filterGroupSx as Record<string, unknown>),
   gridColumn: {
@@ -598,6 +692,45 @@ const budgetNumberColumnWidth = 140;
 const floatingBudgetMirrorColumnWidth = 156;
 const tableMaxHeight = "calc(100vh - 280px)";
 
+const budgetListColumnDefinitions: ResizableColumnDefinition[] = [
+  { key: "row", minWidth: rowNumberColumnWidth, width: rowNumberColumnWidth },
+  {
+    key: "budgetNumber",
+    minWidth: budgetNumberColumnWidth,
+    width: budgetNumberColumnWidth,
+  },
+  { key: "yearBudget", minWidth: 110, width: 110 },
+  { key: "sourceCompany", minWidth: 130, width: 130 },
+  { key: "revision", minWidth: 110, width: 110 },
+  { key: "sentAt", minWidth: 130, width: 130 },
+  { key: "status", minWidth: 150, width: 150 },
+  { key: "priority", minWidth: 170, width: 170 },
+  { key: "installer", minWidth: 170, width: 170 },
+  { key: "productLine", minWidth: 180, width: 180 },
+  { key: "systemType", minWidth: 180, width: 180 },
+  { key: "project", minWidth: 220, width: 220 },
+  { key: "constructionCompany", minWidth: 190, width: 190 },
+  { key: "salesperson", minWidth: 170, width: 170 },
+  { key: "estimator", minWidth: 170, width: 170 },
+  { key: "contact", minWidth: 170, width: 170 },
+  { key: "lossReason", minWidth: 190, width: 190 },
+  { key: "projetista", minWidth: 180, width: 180 },
+  { key: "competitor", minWidth: 180, width: 180 },
+  { key: "competitorPrice", minWidth: 170, width: 170 },
+  { key: "specificationDetails", minWidth: 220, width: 220 },
+  { key: "currentFollowUp", minWidth: 220, width: 220 },
+  { key: "commissionValue", minWidth: 160, width: 160 },
+  { key: "grossValue", minWidth: 170, width: 170 },
+  { key: "createdAt", minWidth: 160, width: 160 },
+  { key: "updatedAt", minWidth: 160, width: 160 },
+  { key: "actions", minWidth: 170, width: 170 },
+  {
+    key: "budgetNumberMirror",
+    minWidth: floatingBudgetMirrorColumnWidth,
+    width: floatingBudgetMirrorColumnWidth,
+  },
+];
+
 export function BudgetListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -632,11 +765,16 @@ export function BudgetListPage() {
   const listTableContainerRef = useRef<HTMLDivElement | null>(null);
   const [showFloatingBudgetMirror, setShowFloatingBudgetMirror] =
     useState(false);
+  const { createResizeHandler, getColumnWidth } = useResizableTableColumns(
+    "budget-list-columns:v1",
+    budgetListColumnDefinitions,
+  );
   const [draftFilters, setDraftFilters] = useState(() => ({
     budgetNumber: effectiveFilters.budgetNumber,
     sourceCompany: effectiveFilters.sourceCompany,
     yearBudget: effectiveFilters.yearBudget,
     statusId: effectiveFilters.statusId,
+    priorityId: effectiveFilters.priorityId,
     installerId: effectiveFilters.installerId,
     systemTypeId: effectiveFilters.systemTypeId,
     projectCode: effectiveFilters.projectCode,
@@ -645,6 +783,8 @@ export function BudgetListPage() {
     estimatorId: effectiveFilters.estimatorId,
     sentAtFrom: effectiveFilters.sentAtFrom,
     sentAtTo: effectiveFilters.sentAtTo,
+    grossValueMin: effectiveFilters.grossValueMin,
+    grossValueMax: effectiveFilters.grossValueMax,
   }));
   const [viewMode, setViewMode] = useState<BudgetViewMode>("list");
 
@@ -665,9 +805,48 @@ export function BudgetListPage() {
     setSearchParams,
   ]);
 
+  useEffect(() => {
+    setDraftFilters({
+      budgetNumber: effectiveFilters.budgetNumber,
+      sourceCompany: effectiveFilters.sourceCompany,
+      yearBudget: effectiveFilters.yearBudget,
+      statusId: effectiveFilters.statusId,
+      priorityId: effectiveFilters.priorityId,
+      installerId: effectiveFilters.installerId,
+      systemTypeId: effectiveFilters.systemTypeId,
+      projectCode: effectiveFilters.projectCode,
+      projectName: effectiveFilters.projectName,
+      salespersonId: effectiveFilters.salespersonId,
+      estimatorId: effectiveFilters.estimatorId,
+      sentAtFrom: effectiveFilters.sentAtFrom,
+      sentAtTo: effectiveFilters.sentAtTo,
+      grossValueMin: effectiveFilters.grossValueMin,
+      grossValueMax: effectiveFilters.grossValueMax,
+    });
+  }, [effectiveFilters]);
+
   const budgetListQuery = useQuery({
     queryKey: ["budgets", user?.id ?? "anonymous", effectiveFilters],
     queryFn: () => getBudgetListRequest(effectiveFilters),
+    placeholderData: keepPreviousData,
+  });
+  const grossValueRangeFilters = useMemo(
+    () => ({
+      ...effectiveFilters,
+      grossValueMin: "",
+      grossValueMax: "",
+      page: 1,
+    }),
+    [effectiveFilters],
+  );
+  const grossValueRangeQuery = useQuery({
+    queryKey: [
+      "budgets",
+      "gross-value-range",
+      user?.id ?? "anonymous",
+      grossValueRangeFilters,
+    ],
+    queryFn: () => getBudgetGrossValueRangeRequest(grossValueRangeFilters),
     placeholderData: keepPreviousData,
   });
   const projectBudgetFilters = useMemo(
@@ -722,11 +901,23 @@ export function BudgetListPage() {
     },
   });
   const statusMap = useMemo(
-    () => createCatalogMap(budgetCatalogsQuery.data?.statuses ?? []),
+    () =>
+      new Map(
+        (budgetCatalogsQuery.data?.statuses ?? []).map((item) => [
+          item.id,
+          getBudgetStatusDisplayName(item.name),
+        ]),
+      ),
     [budgetCatalogsQuery.data?.statuses],
   );
   const priorityMap = useMemo(
-    () => createCatalogMap(budgetCatalogsQuery.data?.priorities ?? []),
+    () =>
+      new Map(
+        (budgetCatalogsQuery.data?.priorities ?? []).map((item) => [
+          item.id,
+          getPriorityDisplayLabel(item.name),
+        ]),
+      ),
     [budgetCatalogsQuery.data?.priorities],
   );
   const installerMap = useMemo(
@@ -761,6 +952,58 @@ export function BudgetListPage() {
     () => createCatalogMap(budgetCatalogsQuery.data?.lossReasons ?? []),
     [budgetCatalogsQuery.data?.lossReasons],
   );
+  const grossValueRange = useMemo(() => {
+    const min = grossValueRangeQuery.data?.min ?? 0;
+    const max = grossValueRangeQuery.data?.max ?? min;
+
+    return {
+      min,
+      max: Math.max(min, max),
+    };
+  }, [grossValueRangeQuery.data?.max, grossValueRangeQuery.data?.min]);
+  const isGrossValueSliderDisabled =
+    grossValueRangeQuery.isLoading ||
+    grossValueRange.max <= grossValueRange.min;
+  const grossValueSliderStep = useMemo(() => {
+    const span = grossValueRange.max - grossValueRange.min;
+
+    if (span <= 10000) {
+      return 100;
+    }
+
+    if (span <= 100000) {
+      return 500;
+    }
+
+    return 1000;
+  }, [grossValueRange.max, grossValueRange.min]);
+  const grossValueSliderValue = useMemo<[number, number]>(() => {
+    const resolvedMin =
+      parseDraftCurrencyValue(draftFilters.grossValueMin) ??
+      grossValueRange.min;
+    const resolvedMax =
+      parseDraftCurrencyValue(draftFilters.grossValueMax) ??
+      grossValueRange.max;
+    const normalizedMin = Math.min(
+      Math.max(resolvedMin, grossValueRange.min),
+      grossValueRange.max,
+    );
+    const normalizedMax = Math.max(
+      Math.min(resolvedMax, grossValueRange.max),
+      grossValueRange.min,
+    );
+
+    if (normalizedMin <= normalizedMax) {
+      return [normalizedMin, normalizedMax];
+    }
+
+    return [normalizedMax, normalizedMin];
+  }, [
+    draftFilters.grossValueMax,
+    draftFilters.grossValueMin,
+    grossValueRange.max,
+    grossValueRange.min,
+  ]);
   const selectedProjectFilterLabel = useMemo(() => {
     if (!effectiveFilters.projectId) {
       return effectiveFilters.projectName.trim();
@@ -799,6 +1042,11 @@ export function BudgetListPage() {
         `Status ${formatCatalogName(Number(effectiveFilters.statusId), statusMap, "Status")}`,
       );
     }
+    if (effectiveFilters.priorityId) {
+      chips.push(
+        `Prioridade ${formatCatalogName(Number(effectiveFilters.priorityId), priorityMap, "Prioridade")}`,
+      );
+    }
     if (effectiveFilters.installerId) {
       chips.push(
         `Instalador ${formatCatalogName(Number(effectiveFilters.installerId), installerMap, "Instalador")}`,
@@ -824,6 +1072,11 @@ export function BudgetListPage() {
         `Período ${effectiveFilters.sentAtFrom || "início"} até ${effectiveFilters.sentAtTo || "hoje"}`,
       );
     }
+    if (effectiveFilters.grossValueMin || effectiveFilters.grossValueMax) {
+      chips.push(
+        `Valor bruto ${formatCurrencyRangeValue(effectiveFilters.grossValueMin, grossValueRange.min)} até ${formatCurrencyRangeValue(effectiveFilters.grossValueMax, grossValueRange.max)}`,
+      );
+    }
 
     return chips;
   }, [
@@ -834,14 +1087,20 @@ export function BudgetListPage() {
     effectiveFilters.projectId,
     effectiveFilters.projectName,
     effectiveFilters.statusId,
+    effectiveFilters.priorityId,
     effectiveFilters.installerId,
     effectiveFilters.systemTypeId,
     effectiveFilters.salespersonId,
     effectiveFilters.estimatorId,
     effectiveFilters.sentAtFrom,
     effectiveFilters.sentAtTo,
+    effectiveFilters.grossValueMax,
+    effectiveFilters.grossValueMin,
     estimatorMap,
+    grossValueRange.max,
+    grossValueRange.min,
     installerMap,
+    priorityMap,
     selectedProjectFilterLabel,
     salespersonMap,
     statusMap,
@@ -991,11 +1250,39 @@ export function BudgetListPage() {
     () => projectGroups.length,
     [projectGroups],
   );
+  const listTableMinWidth = useMemo(
+    () =>
+      budgetListColumnDefinitions.reduce(
+        (currentWidth, column) => currentWidth + getColumnWidth(column.key),
+        0,
+      ),
+    [getColumnWidth],
+  );
   const isProjectView = viewMode === "project";
   const activeBudgetItems = isProjectView ? projectBudgetItems : budgetItems;
   const activeBudgetQuery = isProjectView
     ? projectBudgetListQuery
     : budgetListQuery;
+  const getResizableColumnSx = (
+    columnKey: string,
+    overrides: Record<string, unknown> = {},
+  ) => ({
+    ...singleLineTableCellSx,
+    maxWidth: getColumnWidth(columnKey),
+    minWidth: getColumnWidth(columnKey),
+    width: getColumnWidth(columnKey),
+    ...overrides,
+  });
+  const getResizableDetailColumnSx = (
+    columnKey: string,
+    overrides: Record<string, unknown> = {},
+  ) => ({
+    ...tableDetailCellSx,
+    maxWidth: getColumnWidth(columnKey),
+    minWidth: getColumnWidth(columnKey),
+    width: getColumnWidth(columnKey),
+    ...overrides,
+  });
 
   useEffect(() => {
     setShowFloatingBudgetMirror(false);
@@ -1020,15 +1307,52 @@ export function BudgetListPage() {
     }));
   };
 
+  const handleGrossValueSliderChange = (
+    _event: Event,
+    value: number | number[],
+  ) => {
+    if (!Array.isArray(value)) {
+      return;
+    }
+
+    const [nextMin, nextMax] = value;
+    setDraftFilters((currentDraft) => ({
+      ...currentDraft,
+      grossValueMin: String(Math.round(nextMin)),
+      grossValueMax: String(Math.round(nextMax)),
+    }));
+  };
+
+  const handleGrossValueRangeBlur = () => {
+    const normalizedRange = normalizeGrossValueDraftRange(
+      draftFilters.grossValueMin,
+      draftFilters.grossValueMax,
+    );
+
+    setDraftFilters((currentDraft) => ({
+      ...currentDraft,
+      ...normalizedRange,
+    }));
+  };
+
   const handleApplyFilters = () => {
+    const normalizedGrossValueRange = normalizeGrossValueDraftRange(
+      draftFilters.grossValueMin,
+      draftFilters.grossValueMax,
+    );
     const nextFilters: BudgetListFilters = {
       ...effectiveFilters,
       ...draftFilters,
+      ...normalizedGrossValueRange,
       page: 1,
       salespersonId: canManageBudgetScreen ? draftFilters.salespersonId : "",
       estimatorId: canManageBudgetScreen ? draftFilters.estimatorId : "",
     };
 
+    setDraftFilters((currentDraft) => ({
+      ...currentDraft,
+      ...normalizedGrossValueRange,
+    }));
     setSearchParams(buildSearchParams(nextFilters));
   };
 
@@ -1038,6 +1362,7 @@ export function BudgetListPage() {
       sourceCompany: defaultFilters.sourceCompany,
       yearBudget: defaultFilters.yearBudget,
       statusId: defaultFilters.statusId,
+      priorityId: defaultFilters.priorityId,
       installerId: defaultFilters.installerId,
       systemTypeId: defaultFilters.systemTypeId,
       projectCode: defaultFilters.projectCode,
@@ -1046,6 +1371,8 @@ export function BudgetListPage() {
       estimatorId: canManageBudgetScreen ? defaultFilters.estimatorId : "",
       sentAtFrom: defaultFilters.sentAtFrom,
       sentAtTo: defaultFilters.sentAtTo,
+      grossValueMin: defaultFilters.grossValueMin,
+      grossValueMax: defaultFilters.grossValueMax,
     });
     setSearchParams(
       buildSearchParams({
@@ -1149,29 +1476,157 @@ export function BudgetListPage() {
     }
   };
 
+  const handleExportBudgetsXlsx = async () => {
+    if (budgetItems.length === 0) {
+      return;
+    }
+
+    await exportSheetToExcel({
+      columns: [
+        {
+          header: "Linha",
+          format: "integer",
+          value: (_budget, index) =>
+            (filters.page - 1) * filters.pageSize + index + 1,
+        },
+        {
+          header: "Orcamento",
+          value: (budget) => budget.budgetNumber,
+        },
+        {
+          header: "Ano",
+          format: "integer",
+          value: (budget) => budget.yearBudget,
+        },
+        {
+          header: "Empresa origem",
+          value: (budget) => budget.sourceCompany || "Nao informado",
+        },
+        {
+          header: "Revisao",
+          format: "integer",
+          value: (budget) => budget.revision,
+        },
+        {
+          header: "Enviado em",
+          value: (budget) => dateFormatter.format(new Date(budget.sentAt)),
+        },
+        {
+          header: "Status",
+          value: (budget) =>
+            formatResolvedCatalogName(
+              budget.statusId,
+              budget.statusName,
+              statusMap,
+            ),
+        },
+        {
+          header: "Prioridade",
+          value: (budget) => getBudgetPriorityLabel(budget),
+        },
+        {
+          header: "Codigo da obra",
+          value: (budget) => budget.projectCode ?? "Nao informado",
+        },
+        {
+          header: "Obra",
+          value: (budget) =>
+            formatResolvedCatalogName(
+              budget.projectId,
+              budget.projectName,
+              projectMap,
+            ),
+        },
+        {
+          header: "Vendedor",
+          value: (budget) =>
+            formatResolvedCatalogName(
+              budget.salespersonId,
+              budget.salespersonName,
+              salespersonMap,
+            ),
+        },
+        {
+          header: "Orcamentista",
+          value: (budget) =>
+            formatResolvedCatalogName(
+              budget.estimatorId,
+              budget.estimatorName,
+              estimatorMap,
+            ),
+        },
+        {
+          header: "Instalador",
+          value: (budget) =>
+            formatResolvedCatalogName(
+              budget.installerId,
+              budget.installerName,
+              installerMap,
+            ),
+        },
+        {
+          header: "Tipo de sistema",
+          value: (budget) =>
+            formatResolvedCatalogName(
+              budget.systemTypeId,
+              budget.systemTypeName,
+              systemTypeMap,
+            ),
+        },
+        {
+          header: getFactorFieldLabel(),
+          format: "currency",
+          value: (budget) => budget.commissionValue,
+        },
+        {
+          header: "Valor bruto",
+          format: "currency",
+          value: (budget) => budget.grossValue,
+        },
+        {
+          header: "Atualizado em",
+          value: (budget) =>
+            dateTimeFormatter.format(new Date(budget.updatedAt)),
+        },
+      ],
+      fileName: `orcamentos-grid-pagina-${filters.page}`,
+      items: budgetItems,
+      sheetName: "Orcamentos",
+    });
+  };
+
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
       <PageHeader
         action={
-          canCreateBudget ? (
-            <Box
-              sx={{
-                display: "flex",
-                flexDirection: { sm: "row", xs: "column" },
-                gap: 1.25,
-                width: "100%",
-              }}
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: { sm: "row", xs: "column" },
+              gap: 1.25,
+              width: "100%",
+            }}
+          >
+            <Button
+              disabled={budgetItems.length === 0}
+              onClick={handleExportBudgetsXlsx}
+              startIcon={<DownloadRoundedIcon />}
+              sx={budgetSecondaryActionButtonSx}
+              variant="outlined"
             >
-              {isAdmin ? (
-                <Button
-                  onClick={() => navigate("/budgets/import")}
-                  startIcon={<UploadFileRoundedIcon />}
-                  sx={budgetSecondaryActionButtonSx}
-                  variant="outlined"
-                >
-                  Importar planilha
-                </Button>
-              ) : null}
+              Exportar Excel
+            </Button>
+            {isAdmin ? (
+              <Button
+                onClick={() => navigate("/budgets/import")}
+                startIcon={<UploadFileRoundedIcon />}
+                sx={budgetSecondaryActionButtonSx}
+                variant="outlined"
+              >
+                Importar planilha
+              </Button>
+            ) : null}
+            {canCreateBudget ? (
               <Button
                 onClick={() => navigate("/budgets/new")}
                 startIcon={<AddRoundedIcon />}
@@ -1179,8 +1634,8 @@ export function BudgetListPage() {
               >
                 Novo orçamento
               </Button>
-            </Box>
-          ) : undefined
+            ) : null}
+          </Box>
         }
         description="Gerencie a operação comercial com filtros avançados, leitura por obra e visualização detalhada dos orçamentos mais relevantes."
         title="Orçamentos"
@@ -1300,6 +1755,26 @@ export function BudgetListPage() {
                       (status) => (
                         <MenuItem key={status.id} value={String(status.id)}>
                           {status.name}
+                        </MenuItem>
+                      ),
+                    )}
+                  </TextField>
+                </FilterField>
+                <FilterField label="Prioridade">
+                  <TextField
+                    onChange={(event) =>
+                      handleDraftChange("priorityId", event.target.value)
+                    }
+                    select
+                    size="small"
+                    sx={compactFilterFieldSx}
+                    value={draftFilters.priorityId}
+                  >
+                    <MenuItem value="">Todas</MenuItem>
+                    {(budgetCatalogsQuery.data?.priorities ?? []).map(
+                      (priority) => (
+                        <MenuItem key={priority.id} value={String(priority.id)}>
+                          {getPriorityDisplayLabel(priority.name)}
                         </MenuItem>
                       ),
                     )}
@@ -1431,6 +1906,108 @@ export function BudgetListPage() {
                     value={draftFilters.sentAtTo}
                   />
                 </FilterField>
+              </Box>
+            </Box>
+
+            <Box sx={budgetWideFilterGroupSx}>
+              <Typography sx={filterGroupTitleSx} variant="subtitle2">
+                Valor da obra
+              </Typography>
+              <Typography sx={budgetActionPanelBodySx} variant="body2">
+                Ajuste a faixa pelo slider e refine manualmente os limites
+                mínimo e máximo quando precisar de mais precisão.
+              </Typography>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <Box sx={budgetValueRangeGridSx}>
+                  <FilterField label="Valor mínimo">
+                    <TextField
+                      onBlur={handleGrossValueRangeBlur}
+                      onChange={(event) =>
+                        handleDraftChange(
+                          "grossValueMin",
+                          parseCurrencyInputToNumericString(event.target.value),
+                        )
+                      }
+                      placeholder={currencyFormatter.format(
+                        grossValueRange.min,
+                      )}
+                      size="small"
+                      slotProps={{
+                        htmlInput: {
+                          inputMode: "numeric",
+                        },
+                      }}
+                      sx={compactFilterFieldSx}
+                      value={formatCurrencyInputValue(
+                        draftFilters.grossValueMin,
+                      )}
+                    />
+                  </FilterField>
+                  <FilterField label="Valor máximo">
+                    <TextField
+                      onBlur={handleGrossValueRangeBlur}
+                      onChange={(event) =>
+                        handleDraftChange(
+                          "grossValueMax",
+                          parseCurrencyInputToNumericString(event.target.value),
+                        )
+                      }
+                      placeholder={currencyFormatter.format(
+                        grossValueRange.max,
+                      )}
+                      size="small"
+                      slotProps={{
+                        htmlInput: {
+                          inputMode: "numeric",
+                        },
+                      }}
+                      sx={compactFilterFieldSx}
+                      value={formatCurrencyInputValue(
+                        draftFilters.grossValueMax,
+                      )}
+                    />
+                  </FilterField>
+                </Box>
+                <Box sx={{ px: 1 }}>
+                  <Slider
+                    disableSwap
+                    disabled={isGrossValueSliderDisabled}
+                    max={grossValueRange.max}
+                    min={grossValueRange.min}
+                    onChange={handleGrossValueSliderChange}
+                    step={grossValueSliderStep}
+                    sx={{ mt: 1 }}
+                    value={grossValueSliderValue}
+                    valueLabelDisplay="auto"
+                    valueLabelFormat={(value) =>
+                      currencyFormatter.format(value)
+                    }
+                  />
+                  <Box
+                    sx={{
+                      alignItems: { sm: "center", xs: "flex-start" },
+                      display: "flex",
+                      flexDirection: { sm: "row", xs: "column" },
+                      gap: 1,
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <Typography color="text.secondary" variant="caption">
+                      Faixa disponível:{" "}
+                      {`${currencyFormatter.format(grossValueRange.min)} até ${currencyFormatter.format(grossValueRange.max)}`}
+                    </Typography>
+                    <Typography color="text.secondary" variant="caption">
+                      Faixa atual:{" "}
+                      {`${currencyFormatter.format(grossValueSliderValue[0])} até ${currencyFormatter.format(grossValueSliderValue[1])}`}
+                    </Typography>
+                  </Box>
+                </Box>
+                {grossValueRangeQuery.isError ? (
+                  <Alert severity="warning" variant="outlined">
+                    Não foi possível carregar a faixa automática de valores. Os
+                    campos manuais continuam disponíveis.
+                  </Alert>
+                ) : null}
               </Box>
             </Box>
           </Box>
@@ -1649,7 +2226,7 @@ export function BudgetListPage() {
                   {isProjectView
                     ? hasProjectCodeFilter
                       ? `${groupedProjectsCount} obra(s) encontrada(s) para o código filtrado.`
-                      : `${groupedProjectsCount} obra(s) sem PEDIDO definido entre as 20 mais recentes, com prioridade para quem tem mais orçamentos.`
+                      : `${groupedProjectsCount} obra(s) sem FECHADO definido entre as 20 mais recentes, com prioridade para quem tem mais orçamentos.`
                     : "A listagem abaixo prioriza leitura operacional, comparação rápida e acesso direto às ações principais."}
                 </Typography>
               </Box>
@@ -1708,12 +2285,12 @@ export function BudgetListPage() {
                     <>
                       Como há filtro por <strong>Código da Obra</strong>, a
                       visualização exibe também obras que já possuem{" "}
-                      <strong>PEDIDO</strong> definido.
+                      <strong>FECHADO</strong> definido.
                     </>
                   ) : (
                     <>
                       Nesta visualização aparecem apenas obras sem{" "}
-                      <strong>PEDIDO</strong> definido, limitados aos 20 mais
+                      <strong>FECHADO</strong> definido, limitados aos 20 mais
                       recentes pela última atualização dos orçamentos do grupo e
                       ordenados no topo por quantidade de orçamentos vinculados.
                     </>
@@ -1749,8 +2326,8 @@ export function BudgetListPage() {
                           {projectBudgetItems.length} orçamento(s)
                         </strong>{" "}
                         na busca atual, mas todas as obras já possuem{" "}
-                        <strong>PEDIDO</strong> definido e por isso não aparecem
-                        nesta visualização.
+                        <strong>FECHADO</strong> definido e por isso não
+                        aparecem nesta visualização.
                       </>
                     )}
                   </Alert>
@@ -1821,7 +2398,7 @@ export function BudgetListPage() {
                               }
                               label={
                                 group.needsAttention
-                                  ? "Sem PEDIDO definido"
+                                  ? "Sem FECHADO definido"
                                   : "Com vencedor definido"
                               }
                               size="small"
@@ -2097,21 +2674,7 @@ export function BudgetListPage() {
                                       Prioridade
                                     </Typography>
                                     <Typography variant="body2">
-                                      {formatCatalogName(
-                                        budget.priorityId,
-                                        priorityMap,
-                                      )}
-                                    </Typography>
-                                  </Box>
-                                  <Box>
-                                    <Typography
-                                      color="text.secondary"
-                                      variant="caption"
-                                    >
-                                      Área m2
-                                    </Typography>
-                                    <Typography variant="body2">
-                                      {decimalFormatter.format(budget.areaM2)}
+                                      {getBudgetPriorityLabel(budget)}
                                     </Typography>
                                   </Box>
                                   <Box>
@@ -2217,7 +2780,7 @@ export function BudgetListPage() {
                     sx={{
                       borderCollapse: "separate",
                       borderSpacing: 0,
-                      minWidth: 1980,
+                      minWidth: listTableMinWidth,
                       "& .MuiTableHead-root": {
                         position: "relative",
                         zIndex: 3,
@@ -2244,74 +2807,213 @@ export function BudgetListPage() {
                   >
                     <TableHead>
                       <TableRow>
-                        <TableCell
+                        <ResizableTableHeadCell
                           align="center"
+                          onResizeStart={createResizeHandler("row")}
                           sx={{
                             ...tableHeadCellSx,
-                            minWidth: rowNumberColumnWidth,
-                            width: rowNumberColumnWidth,
                           }}
+                          width={getColumnWidth("row")}
                         >
                           #
-                        </TableCell>
-                        <TableCell
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          onResizeStart={createResizeHandler("budgetNumber")}
                           sx={{
                             ...tableHeadCellSx,
-                            minWidth: budgetNumberColumnWidth,
-                            width: budgetNumberColumnWidth,
                           }}
+                          width={getColumnWidth("budgetNumber")}
                         >
                           Orçamento
-                        </TableCell>
-                        <TableCell sx={tableHeadCellSx}>Ano</TableCell>
-                        <TableCell sx={tableHeadCellSx}>Empresa</TableCell>
-                        <TableCell sx={tableHeadCellSx}>Revisão</TableCell>
-                        <TableCell sx={tableHeadCellSx}>Envio</TableCell>
-                        <TableCell sx={tableHeadCellSx}>Status</TableCell>
-                        <TableCell sx={tableHeadCellSx}>Prioridade</TableCell>
-                        <TableCell sx={tableHeadCellSx}>Instalador</TableCell>
-                        <TableCell sx={tableHeadCellSx}>
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          onResizeStart={createResizeHandler("yearBudget")}
+                          sx={tableHeadCellSx}
+                          width={getColumnWidth("yearBudget")}
+                        >
+                          Ano
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          onResizeStart={createResizeHandler("sourceCompany")}
+                          sx={tableHeadCellSx}
+                          width={getColumnWidth("sourceCompany")}
+                        >
+                          Empresa
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          onResizeStart={createResizeHandler("revision")}
+                          sx={tableHeadCellSx}
+                          width={getColumnWidth("revision")}
+                        >
+                          Revisão
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          onResizeStart={createResizeHandler("sentAt")}
+                          sx={tableHeadCellSx}
+                          width={getColumnWidth("sentAt")}
+                        >
+                          Envio
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          onResizeStart={createResizeHandler("status")}
+                          sx={tableHeadCellSx}
+                          width={getColumnWidth("status")}
+                        >
+                          Status
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          onResizeStart={createResizeHandler("priority")}
+                          sx={tableHeadCellSx}
+                          width={getColumnWidth("priority")}
+                        >
+                          Prioridade
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          onResizeStart={createResizeHandler("installer")}
+                          sx={tableHeadCellSx}
+                          width={getColumnWidth("installer")}
+                        >
+                          Instalador
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          onResizeStart={createResizeHandler("productLine")}
+                          sx={tableHeadCellSx}
+                          width={getColumnWidth("productLine")}
+                        >
                           Linha de produtos
-                        </TableCell>
-                        <TableCell sx={tableHeadCellSx}>
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          onResizeStart={createResizeHandler("systemType")}
+                          sx={tableHeadCellSx}
+                          width={getColumnWidth("systemType")}
+                        >
                           Tipo de Sistema
-                        </TableCell>
-                        <TableCell sx={tableHeadCellSx}>Obra</TableCell>
-                        <TableCell sx={tableHeadCellSx}>Construtora</TableCell>
-                        <TableCell sx={tableHeadCellSx}>Vendedor</TableCell>
-                        <TableCell sx={tableHeadCellSx}>Orçamentista</TableCell>
-                        <TableCell sx={tableHeadCellSx}>Contato</TableCell>
-                        <TableCell sx={tableHeadCellSx}>
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          onResizeStart={createResizeHandler("project")}
+                          sx={tableHeadCellSx}
+                          width={getColumnWidth("project")}
+                        >
+                          Obra
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          onResizeStart={createResizeHandler(
+                            "constructionCompany",
+                          )}
+                          sx={tableHeadCellSx}
+                          width={getColumnWidth("constructionCompany")}
+                        >
+                          Construtora
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          onResizeStart={createResizeHandler("salesperson")}
+                          sx={tableHeadCellSx}
+                          width={getColumnWidth("salesperson")}
+                        >
+                          Vendedor
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          onResizeStart={createResizeHandler("estimator")}
+                          sx={tableHeadCellSx}
+                          width={getColumnWidth("estimator")}
+                        >
+                          Orçamentista
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          onResizeStart={createResizeHandler("contact")}
+                          sx={tableHeadCellSx}
+                          width={getColumnWidth("contact")}
+                        >
+                          Contato
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          onResizeStart={createResizeHandler("lossReason")}
+                          sx={tableHeadCellSx}
+                          width={getColumnWidth("lossReason")}
+                        >
                           Motivo de perda
-                        </TableCell>
-                        <TableCell sx={tableHeadCellSx}>Projetista</TableCell>
-                        <TableCell sx={tableHeadCellSx}>Concorrente</TableCell>
-                        <TableCell align="right" sx={tableHeadCellSx}>
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          onResizeStart={createResizeHandler("projetista")}
+                          sx={tableHeadCellSx}
+                          width={getColumnWidth("projetista")}
+                        >
+                          Projetista
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          onResizeStart={createResizeHandler("competitor")}
+                          sx={tableHeadCellSx}
+                          width={getColumnWidth("competitor")}
+                        >
+                          Concorrente
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          align="right"
+                          onResizeStart={createResizeHandler("competitorPrice")}
+                          sx={tableHeadCellSx}
+                          width={getColumnWidth("competitorPrice")}
+                        >
                           Preço concorrente
-                        </TableCell>
-                        <TableCell sx={tableHeadCellSx}>
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          onResizeStart={createResizeHandler(
+                            "specificationDetails",
+                          )}
+                          sx={tableHeadCellSx}
+                          width={getColumnWidth("specificationDetails")}
+                        >
                           Especificações
-                        </TableCell>
-                        <TableCell sx={tableHeadCellSx}>
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          onResizeStart={createResizeHandler("currentFollowUp")}
+                          sx={tableHeadCellSx}
+                          width={getColumnWidth("currentFollowUp")}
+                        >
                           Follow-up atual
-                        </TableCell>
-                        <TableCell align="right" sx={tableHeadCellSx}>
-                          Área m2
-                        </TableCell>
-                        <TableCell align="right" sx={tableHeadCellSx}>
-                          Comissão
-                        </TableCell>
-                        <TableCell align="right" sx={tableHeadCellSx}>
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          align="right"
+                          onResizeStart={createResizeHandler("commissionValue")}
+                          sx={tableHeadCellSx}
+                          width={getColumnWidth("commissionValue")}
+                        >
+                          {getFactorFieldLabel()}
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          align="right"
+                          onResizeStart={createResizeHandler("grossValue")}
+                          sx={tableHeadCellSx}
+                          width={getColumnWidth("grossValue")}
+                        >
                           Valor bruto
-                        </TableCell>
-                        <TableCell sx={tableHeadCellSx}>Criado em</TableCell>
-                        <TableCell sx={tableHeadCellSx}>
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          onResizeStart={createResizeHandler("createdAt")}
+                          sx={tableHeadCellSx}
+                          width={getColumnWidth("createdAt")}
+                        >
+                          Criado em
+                        </ResizableTableHeadCell>
+                        <ResizableTableHeadCell
+                          onResizeStart={createResizeHandler("updatedAt")}
+                          sx={tableHeadCellSx}
+                          width={getColumnWidth("updatedAt")}
+                        >
                           Atualizado em
-                        </TableCell>
+                        </ResizableTableHeadCell>
                         {user ? (
-                          <TableCell sx={tableHeadCellSx}>Ações</TableCell>
+                          <ResizableTableHeadCell
+                            onResizeStart={createResizeHandler("actions")}
+                            sx={tableHeadCellSx}
+                            width={getColumnWidth("actions")}
+                          >
+                            Ações
+                          </ResizableTableHeadCell>
                         ) : null}
-                        <TableCell
+                        <ResizableTableHeadCell
+                          onResizeStart={createResizeHandler(
+                            "budgetNumberMirror",
+                          )}
                           sx={{
                             ...tableHeadCellSx,
                             borderLeft: (theme) =>
@@ -2333,12 +3035,12 @@ export function BudgetListPage() {
                               : "translateX(12px)",
                             transition:
                               "opacity 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease",
-                            width: floatingBudgetMirrorColumnWidth,
                             zIndex: 4,
                           }}
+                          width={getColumnWidth("budgetNumberMirror")}
                         >
                           Orçamento
-                        </TableCell>
+                        </ResizableTableHeadCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -2355,44 +3057,36 @@ export function BudgetListPage() {
                         >
                           <TableCell
                             align="center"
-                            sx={{
-                              ...singleLineTableCellSx,
+                            sx={getResizableColumnSx("row", {
                               fontWeight: 700,
-                              maxWidth: rowNumberColumnWidth,
-                              minWidth: rowNumberColumnWidth,
-                              width: rowNumberColumnWidth,
-                            }}
+                            })}
                           >
                             {(filters.page - 1) * filters.pageSize + index + 1}
                           </TableCell>
                           <TableCell
-                            sx={{
-                              ...singleLineTableCellSx,
+                            sx={getResizableColumnSx("budgetNumber", {
                               fontWeight: 600,
-                              maxWidth: budgetNumberColumnWidth,
-                              minWidth: budgetNumberColumnWidth,
-                              width: budgetNumberColumnWidth,
-                            }}
+                            })}
                             title={budget.budgetNumber}
                           >
                             {budget.budgetNumber}
                           </TableCell>
-                          <TableCell sx={singleLineTableCellSx}>
+                          <TableCell sx={getResizableColumnSx("yearBudget")}>
                             {budget.yearBudget}
                           </TableCell>
                           <TableCell
-                            sx={singleLineTableCellSx}
+                            sx={getResizableColumnSx("sourceCompany")}
                             title={budget.sourceCompany || "Não informado"}
                           >
                             {budget.sourceCompany || "Não informado"}
                           </TableCell>
-                          <TableCell sx={singleLineTableCellSx}>
+                          <TableCell sx={getResizableColumnSx("revision")}>
                             {budget.revision}
                           </TableCell>
-                          <TableCell sx={singleLineTableCellSx}>
+                          <TableCell sx={getResizableColumnSx("sentAt")}>
                             {dateFormatter.format(new Date(budget.sentAt))}
                           </TableCell>
-                          <TableCell sx={tableDetailCellSx}>
+                          <TableCell sx={getResizableDetailColumnSx("status")}>
                             <Chip
                               color="primary"
                               label={formatResolvedCatalogName(
@@ -2410,21 +3104,13 @@ export function BudgetListPage() {
                             />
                           </TableCell>
                           <TableCell
-                            sx={singleLineTableCellSx}
-                            title={formatResolvedCatalogName(
-                              budget.priorityId,
-                              budget.priorityName,
-                              priorityMap,
-                            )}
+                            sx={getResizableColumnSx("priority")}
+                            title={getBudgetPriorityLabel(budget)}
                           >
-                            {formatResolvedCatalogName(
-                              budget.priorityId,
-                              budget.priorityName,
-                              priorityMap,
-                            )}
+                            {getBudgetPriorityLabel(budget)}
                           </TableCell>
                           <TableCell
-                            sx={singleLineTableCellSx}
+                            sx={getResizableColumnSx("installer")}
                             title={formatResolvedCatalogName(
                               budget.installerId,
                               budget.installerName,
@@ -2440,7 +3126,7 @@ export function BudgetListPage() {
                             )}
                           </TableCell>
                           <TableCell
-                            sx={singleLineTableCellSx}
+                            sx={getResizableColumnSx("productLine")}
                             title={formatResolvedCatalogName(
                               budget.productLineId,
                               budget.productLineName,
@@ -2454,7 +3140,7 @@ export function BudgetListPage() {
                             )}
                           </TableCell>
                           <TableCell
-                            sx={singleLineTableCellSx}
+                            sx={getResizableColumnSx("systemType")}
                             title={formatResolvedCatalogName(
                               budget.systemTypeId,
                               budget.systemTypeName,
@@ -2468,7 +3154,7 @@ export function BudgetListPage() {
                             )}
                           </TableCell>
                           <TableCell
-                            sx={singleLineTableCellSx}
+                            sx={getResizableColumnSx("project")}
                             title={formatResolvedCatalogName(
                               budget.projectId,
                               budget.projectName,
@@ -2482,7 +3168,7 @@ export function BudgetListPage() {
                             )}
                           </TableCell>
                           <TableCell
-                            sx={singleLineTableCellSx}
+                            sx={getResizableColumnSx("constructionCompany")}
                             title={formatOptionalText(
                               budget.constructionCompany,
                             )}
@@ -2490,7 +3176,7 @@ export function BudgetListPage() {
                             {formatOptionalText(budget.constructionCompany)}
                           </TableCell>
                           <TableCell
-                            sx={singleLineTableCellSx}
+                            sx={getResizableColumnSx("salesperson")}
                             title={formatResolvedCatalogName(
                               budget.salespersonId,
                               budget.salespersonName,
@@ -2504,7 +3190,7 @@ export function BudgetListPage() {
                             )}
                           </TableCell>
                           <TableCell
-                            sx={singleLineTableCellSx}
+                            sx={getResizableColumnSx("estimator")}
                             title={formatResolvedCatalogName(
                               budget.estimatorId,
                               budget.estimatorName,
@@ -2518,7 +3204,7 @@ export function BudgetListPage() {
                             )}
                           </TableCell>
                           <TableCell
-                            sx={singleLineTableCellSx}
+                            sx={getResizableColumnSx("contact")}
                             title={formatResolvedCatalogName(
                               budget.contactId,
                               budget.contactName,
@@ -2532,7 +3218,7 @@ export function BudgetListPage() {
                             )}
                           </TableCell>
                           <TableCell
-                            sx={singleLineTableCellSx}
+                            sx={getResizableColumnSx("lossReason")}
                             title={formatResolvedCatalogName(
                               budget.lossReasonId,
                               budget.lossReasonName,
@@ -2546,22 +3232,25 @@ export function BudgetListPage() {
                             )}
                           </TableCell>
                           <TableCell
-                            sx={singleLineTableCellSx}
+                            sx={getResizableColumnSx("projetista")}
                             title={formatOptionalText(budget.projetistaName)}
                           >
                             {formatOptionalText(budget.projetistaName)}
                           </TableCell>
                           <TableCell
-                            sx={singleLineTableCellSx}
+                            sx={getResizableColumnSx("competitor")}
                             title={formatOptionalText(budget.competitorName)}
                           >
                             {formatOptionalText(budget.competitorName)}
                           </TableCell>
-                          <TableCell align="right" sx={singleLineTableCellSx}>
+                          <TableCell
+                            align="right"
+                            sx={getResizableColumnSx("competitorPrice")}
+                          >
                             {formatOptionalCurrency(budget.competitorPrice)}
                           </TableCell>
                           <TableCell
-                            sx={{ ...singleLineTableCellSx, minWidth: 220 }}
+                            sx={getResizableColumnSx("specificationDetails")}
                             title={formatOptionalText(
                               budget.specificationDetails,
                             )}
@@ -2569,36 +3258,38 @@ export function BudgetListPage() {
                             {formatOptionalText(budget.specificationDetails)}
                           </TableCell>
                           <TableCell
-                            sx={{ ...singleLineTableCellSx, minWidth: 220 }}
+                            sx={getResizableColumnSx("currentFollowUp")}
                             title={formatOptionalText(budget.currentFollowUp)}
                           >
                             {formatOptionalText(budget.currentFollowUp)}
                           </TableCell>
-                          <TableCell align="right" sx={singleLineTableCellSx}>
-                            {decimalFormatter.format(budget.areaM2)}
-                          </TableCell>
-                          <TableCell align="right" sx={singleLineTableCellSx}>
+                          <TableCell
+                            align="right"
+                            sx={getResizableColumnSx("commissionValue")}
+                          >
                             {currencyFormatter.format(budget.commissionValue)}
                           </TableCell>
-                          <TableCell align="right" sx={singleLineTableCellSx}>
+                          <TableCell
+                            align="right"
+                            sx={getResizableColumnSx("grossValue")}
+                          >
                             {currencyFormatter.format(budget.grossValue)}
                           </TableCell>
-                          <TableCell sx={singleLineTableCellSx}>
+                          <TableCell sx={getResizableColumnSx("createdAt")}>
                             {dateTimeFormatter.format(
                               new Date(budget.createdAt),
                             )}
                           </TableCell>
-                          <TableCell sx={singleLineTableCellSx}>
+                          <TableCell sx={getResizableColumnSx("updatedAt")}>
                             {dateTimeFormatter.format(
                               new Date(budget.updatedAt),
                             )}
                           </TableCell>
                           {user ? (
                             <TableCell
-                              sx={{
-                                ...tableDetailCellSx,
+                              sx={getResizableDetailColumnSx("actions", {
                                 whiteSpace: "nowrap",
-                              }}
+                              })}
                             >
                               <Button
                                 onClick={() =>
@@ -2653,7 +3344,7 @@ export function BudgetListPage() {
                                 : "translateX(12px)",
                               transition:
                                 "opacity 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease",
-                              width: floatingBudgetMirrorColumnWidth,
+                              width: getColumnWidth("budgetNumberMirror"),
                               zIndex: 1,
                             }}
                           >

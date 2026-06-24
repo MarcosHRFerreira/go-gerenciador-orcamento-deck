@@ -12,6 +12,7 @@ import (
 
 type Repository interface {
 	GetSummary(ctx context.Context, filters *dto.DashboardSalespeopleFilters) (*dto.DashboardSummaryResponse, error)
+	GetGrossValueRange(ctx context.Context, filters *dto.DashboardSalespeopleFilters) (*dto.DashboardGrossValueRangeResponse, error)
 	ListSalespersonSummaries(ctx context.Context, filters *dto.DashboardSalespeopleFilters) ([]dto.DashboardSalespersonSummaryResponse, error)
 	ListEstimatorSummaries(ctx context.Context, filters *dto.DashboardSalespeopleFilters) ([]dto.DashboardEstimatorSummaryResponse, error)
 	ListStaleBudgets(ctx context.Context, filters *dto.DashboardSalespeopleFilters, limit int) ([]dto.DashboardStaleBudgetResponse, error)
@@ -29,6 +30,26 @@ type repository struct {
 
 func NewRepository(db *sql.DB) Repository {
 	return &repository{db: db}
+}
+
+func (r *repository) GetGrossValueRange(
+	ctx context.Context,
+	filters *dto.DashboardSalespeopleFilters,
+) (*dto.DashboardGrossValueRangeResponse, error) {
+	query, args := buildFilteredBudgetsCTE(withoutGrossValueFilters(filters), `
+		SELECT
+			COALESCE(MIN(gross_value), 0)::double precision,
+			COALESCE(MAX(gross_value), 0)::double precision
+		FROM filtered_budgets
+	`)
+
+	row := r.db.QueryRowContext(ctx, query, args...)
+	response := &dto.DashboardGrossValueRangeResponse{}
+	if err := row.Scan(&response.Min, &response.Max); err != nil {
+		return nil, err
+	}
+
+	return response, nil
 }
 
 func (r *repository) GetSummary(
@@ -511,7 +532,7 @@ func (r *repository) ListClosingTimeSummaries(
 			FROM closed_budgets
 			UNION ALL
 			SELECT
-				'Pedidos' AS label,
+				'Fechados' AS label,
 				COUNT(*)::int AS budget_count,
 				COALESCE(AVG(closing_days), 0)::double precision AS average_closing_days,
 				COALESCE(SUM(gross_value), 0)::double precision AS gross_value,
@@ -612,7 +633,21 @@ func withoutPeriodFilters(filters *dto.DashboardSalespeopleFilters) *dto.Dashboa
 		SourceCompany:           filters.SourceCompany,
 		SalespersonID:           filters.SalespersonID,
 		RestrictedSalespersonID: filters.RestrictedSalespersonID,
+		GrossValueMin:           filters.GrossValueMin,
+		GrossValueMax:           filters.GrossValueMax,
 	}
+}
+
+func withoutGrossValueFilters(filters *dto.DashboardSalespeopleFilters) *dto.DashboardSalespeopleFilters {
+	if filters == nil {
+		return nil
+	}
+
+	clonedFilters := *filters
+	clonedFilters.GrossValueMin = nil
+	clonedFilters.GrossValueMax = nil
+
+	return &clonedFilters
 }
 
 func buildWhereClause(filters *dto.DashboardSalespeopleFilters) (string, []interface{}) {
@@ -667,6 +702,20 @@ func buildWhereClause(filters *dto.DashboardSalespeopleFilters) (string, []inter
 			conditions = append(
 				conditions,
 				fmt.Sprintf("EXTRACT(MONTH FROM b.sent_at) = $%d", len(args)),
+			)
+		}
+		if filters.GrossValueMin != nil {
+			args = append(args, *filters.GrossValueMin)
+			conditions = append(
+				conditions,
+				fmt.Sprintf("b.gross_value >= $%d", len(args)),
+			)
+		}
+		if filters.GrossValueMax != nil {
+			args = append(args, *filters.GrossValueMax)
+			conditions = append(
+				conditions,
+				fmt.Sprintf("b.gross_value <= $%d", len(args)),
 			)
 		}
 	}

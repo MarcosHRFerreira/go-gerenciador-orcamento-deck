@@ -13,6 +13,7 @@ export type BudgetListFilters = {
   sourceCompany: string;
   yearBudget: string;
   statusId: string;
+  priorityId: string;
   installerId: string;
   systemTypeId: string;
   projectCode: string;
@@ -21,6 +22,8 @@ export type BudgetListFilters = {
   estimatorId: string;
   sentAtFrom: string;
   sentAtTo: string;
+  grossValueMin: string;
+  grossValueMax: string;
   projectId?: string;
   page: number;
   pageSize: number;
@@ -130,6 +133,16 @@ export type BudgetListResult = {
   page: number;
   pageSize: number;
   total: number;
+};
+
+export type BudgetGrossValueRangeApiResponse = {
+  min: number;
+  max: number;
+};
+
+export type BudgetGrossValueRangeResult = {
+  min: number;
+  max: number;
 };
 
 export type BudgetDeliveryStatus =
@@ -282,6 +295,7 @@ export type BudgetCreatePayload = {
   estimatorId: number | null;
   contactId: number | null;
   lossReasonId: number | null;
+  constructionCompany: string;
   competitorName: string;
   competitorPrice: number | null;
   projetistaName: string;

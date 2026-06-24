@@ -53,7 +53,7 @@ func (r *repository) ListDueInTwoDaysCandidates(ctx context.Context, referenceDa
 		WHERE b.delivery_date = ($1::date + 2)
 			AND (
 				UPPER(COALESCE(bs.code, '')) = 'PEDIDO'
-				OR LOWER(COALESCE(bs.name, '')) = 'pedido'
+				OR LOWER(COALESCE(bs.name, '')) IN ('pedido', 'fechado')
 			)
 			AND b.salesperson_id IS NOT NULL
 			AND NOT EXISTS (

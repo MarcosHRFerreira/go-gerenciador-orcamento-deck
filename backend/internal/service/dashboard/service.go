@@ -17,6 +17,12 @@ import (
 )
 
 type Service interface {
+	GetGrossValueRange(
+		ctx context.Context,
+		filters *dto.DashboardSalespeopleFilters,
+		role model.UserRole,
+		username string,
+	) (*dto.DashboardGrossValueRangeResponse, error)
 	GetSalespeopleDashboard(
 		ctx context.Context,
 		filters *dto.DashboardSalespeopleFilters,
@@ -148,6 +154,41 @@ func (s *service) GetSalespeopleDashboard(
 	), nil
 }
 
+func (s *service) GetGrossValueRange(
+	ctx context.Context,
+	filters *dto.DashboardSalespeopleFilters,
+	role model.UserRole,
+	username string,
+) (*dto.DashboardGrossValueRangeResponse, error) {
+	normalizedFilters, err := normalizeDashboardFilters(filters)
+	if err != nil {
+		return nil, err
+	}
+
+	scope, err := accessscope.ResolveBudgetScope(
+		ctx,
+		role,
+		username,
+		s.userRepo,
+		s.salespersonRepo,
+		s.estimatorRepo,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if role == model.RoleUser && scope.UserKind == model.UserKindEstimator {
+		return nil, apperror.Forbidden("Perfil estimator nao pode acessar dashboard comercial")
+	}
+	normalizedFilters.RestrictedSalespersonID = scope.RestrictedSalespersonID
+
+	response, err := s.repo.GetGrossValueRange(ctx, normalizedFilters)
+	if err != nil {
+		return nil, apperror.Internal("failed to load dashboard gross value range", err)
+	}
+
+	return response, nil
+}
+
 func normalizeDashboardFilters(
 	filters *dto.DashboardSalespeopleFilters,
 ) (*dto.DashboardSalespeopleFilters, error) {
@@ -172,6 +213,15 @@ func normalizeDashboardFilters(
 	}
 	if normalized.Month != nil && (*normalized.Month < 1 || *normalized.Month > 12) {
 		return nil, apperror.BadRequest("month deve estar entre 1 e 12")
+	}
+	if normalized.GrossValueMin != nil && *normalized.GrossValueMin < 0 {
+		return nil, apperror.BadRequest("gross_value_min deve ser maior ou igual a zero")
+	}
+	if normalized.GrossValueMax != nil && *normalized.GrossValueMax < 0 {
+		return nil, apperror.BadRequest("gross_value_max deve ser maior ou igual a zero")
+	}
+	if normalized.GrossValueMin != nil && normalized.GrossValueMax != nil && *normalized.GrossValueMin > *normalized.GrossValueMax {
+		return nil, apperror.BadRequest("gross_value_min nao pode ser maior que gross_value_max")
 	}
 
 	return &normalized, nil

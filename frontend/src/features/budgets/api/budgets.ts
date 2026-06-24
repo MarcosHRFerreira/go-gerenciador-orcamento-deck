@@ -1,4 +1,5 @@
 import { api } from "../../../lib/axios/api";
+import { getPriorityDisplayLabel } from "../utils/priorityRanges";
 import type {
   BudgetCatalogItem,
   BudgetCatalogsResult,
@@ -8,6 +9,8 @@ import type {
   BudgetDeliveryMonitorFilters,
   BudgetDeliveryMonitorResult,
   BudgetElectWinnerPayload,
+  BudgetGrossValueRangeApiResponse,
+  BudgetGrossValueRangeResult,
   BudgetImportExecutionResult,
   BudgetImportPreviewOptions,
   BudgetImportPreviewResult,
@@ -50,7 +53,10 @@ function mapBudgetListItem(item: BudgetApiItem) {
     competitorPrice: item.competitor_price ?? null,
     sourceCompany: item.source_company,
     statusName: item.status_name ?? null,
-    priorityName: item.priority_name ?? null,
+    priorityName:
+      item.priority_name === null || item.priority_name === undefined
+        ? null
+        : getPriorityDisplayLabel(item.priority_name),
     installerName: item.installer_name ?? null,
     productLineCode: item.product_line_code ?? null,
     productLineName: item.product_line_name ?? null,
@@ -129,6 +135,7 @@ type CreateBudgetApiPayload = {
   estimator_id: number | null;
   contact_id: number | null;
   loss_reason_id: number | null;
+  construction_company: string;
   competitor_name: string;
   competitor_price: number | null;
   projetista_name: string;
@@ -249,6 +256,13 @@ function mapNamedCatalogItem(item: NamedCatalogApiItem): BudgetCatalogItem {
   };
 }
 
+function mapPriorityCatalogItem(item: NamedCatalogApiItem): BudgetCatalogItem {
+  return {
+    id: item.id,
+    name: getPriorityDisplayLabel(item.name),
+  };
+}
+
 function mapBudgetImportPreviewOptions(
   options: BudgetImportPreviewApiOptions,
 ): BudgetImportPreviewOptions {
@@ -359,6 +373,7 @@ function mapCreateBudgetPayload(
     area_m2: payload.areaM2,
     budget_number: payload.budgetNumber,
     commission_value: payload.commissionValue,
+    construction_company: payload.constructionCompany,
     competitor_name: payload.competitorName,
     competitor_price: payload.competitorPrice,
     contact_id: payload.contactId,
@@ -388,6 +403,7 @@ function buildBudgetListParams(filters: BudgetListFilters) {
     source_company: filters.sourceCompany || undefined,
     year_budget: filters.yearBudget || undefined,
     status_id: filters.statusId || undefined,
+    priority_id: filters.priorityId || undefined,
     installer_id: filters.installerId || undefined,
     system_type_id: filters.systemTypeId || undefined,
     project_code: filters.projectCode || undefined,
@@ -396,6 +412,8 @@ function buildBudgetListParams(filters: BudgetListFilters) {
     estimator_id: filters.estimatorId || undefined,
     sent_at_from: filters.sentAtFrom || undefined,
     sent_at_to: filters.sentAtTo || undefined,
+    gross_value_min: filters.grossValueMin || undefined,
+    gross_value_max: filters.grossValueMax || undefined,
     project_id: filters.projectId || undefined,
     page: filters.page,
     page_size: filters.pageSize,
@@ -453,6 +471,22 @@ export async function getBudgetListRequest(
     page: response.data.page,
     pageSize: response.data.page_size,
     total: response.data.total,
+  };
+}
+
+export async function getBudgetGrossValueRangeRequest(
+  filters: BudgetListFilters,
+): Promise<BudgetGrossValueRangeResult> {
+  const response = await api.get<BudgetGrossValueRangeApiResponse>(
+    "/budgets/gross-value-range",
+    {
+      params: buildBudgetListParams(filters),
+    },
+  );
+
+  return {
+    min: response.data.min,
+    max: response.data.max,
   };
 }
 
@@ -520,7 +554,7 @@ export async function getBudgetCatalogsRequest(): Promise<BudgetCatalogsResult> 
 
   return {
     statuses: statusesResponse.data.map(mapNamedCatalogItem),
-    priorities: prioritiesResponse.data.map(mapNamedCatalogItem),
+    priorities: prioritiesResponse.data.map(mapPriorityCatalogItem),
     installers: installersResponse.data.map(mapNamedCatalogItem),
     productLines: productLinesResponse.data.map(mapNamedCatalogItem),
     systemTypes: systemTypesResponse.data.map(mapNamedCatalogItem),
@@ -555,7 +589,7 @@ export async function getBudgetManagementCatalogsRequest(): Promise<BudgetCatalo
 
   return {
     statuses: statusesResponse.data.map(mapNamedCatalogItem),
-    priorities: prioritiesResponse.data.map(mapNamedCatalogItem),
+    priorities: prioritiesResponse.data.map(mapPriorityCatalogItem),
     installers: installersResponse.data.map(mapNamedCatalogItem),
     productLines: productLinesResponse.data.map(mapNamedCatalogItem),
     systemTypes: systemTypesResponse.data.map(mapNamedCatalogItem),
@@ -586,7 +620,7 @@ export async function getBudgetListCatalogsRequest(): Promise<BudgetCatalogsResu
 
   return {
     statuses: statusesResponse.data.map(mapNamedCatalogItem),
-    priorities: prioritiesResponse.data.map(mapNamedCatalogItem),
+    priorities: prioritiesResponse.data.map(mapPriorityCatalogItem),
     installers: installersResponse.data.map(mapNamedCatalogItem),
     productLines: productLinesResponse.data.map(mapNamedCatalogItem),
     systemTypes: systemTypesResponse.data.map(mapNamedCatalogItem),

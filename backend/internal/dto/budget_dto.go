@@ -140,6 +140,11 @@ type ListBudgetsResponse struct {
 	Total    int64            `json:"total"`
 }
 
+type BudgetGrossValueRangeResponse struct {
+	Min float64 `json:"min"`
+	Max float64 `json:"max"`
+}
+
 type ListBudgetDeliveryMonitorFilters struct {
 	BudgetNumber            string
 	ProjectName             string

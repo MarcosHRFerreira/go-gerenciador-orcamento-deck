@@ -10,6 +10,13 @@ type DashboardSalespeopleFilters struct {
 	RestrictedSalespersonID *int64
 	Year                    *int
 	Month                   *int
+	GrossValueMin           *float64
+	GrossValueMax           *float64
+}
+
+type DashboardGrossValueRangeResponse struct {
+	Min float64 `json:"min"`
+	Max float64 `json:"max"`
 }
 
 type DashboardSummaryResponse struct {

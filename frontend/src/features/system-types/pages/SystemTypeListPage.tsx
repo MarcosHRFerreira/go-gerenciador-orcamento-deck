@@ -34,6 +34,10 @@ import {
   filterSectionCardSx,
 } from "../../../components/common/FilterField";
 import { PageHeader } from "../../../components/common/PageHeader";
+import {
+  ResizableTableHeadCell,
+  useResizableTableColumns,
+} from "../../../components/common/ResizableTable";
 import { SectionCard } from "../../../components/common/SectionCard";
 import {
   createSystemTypeRequest,
@@ -104,6 +108,15 @@ const tableDetailCellSx = {
   verticalAlign: "top",
 };
 
+const systemTypeListColumnDefinitions = [
+  { key: "code", width: 140, minWidth: 120 },
+  { key: "name", width: 220, minWidth: 180 },
+  { key: "description", width: 300, minWidth: 240 },
+  { key: "createdAt", width: 180, minWidth: 160 },
+  { key: "updatedAt", width: 180, minWidth: 160 },
+  { key: "actions", width: 220, minWidth: 180 },
+] as const;
+
 function formatDateTime(value: string) {
   return dateTimeFormatter.format(new Date(value));
 }
@@ -150,6 +163,10 @@ function getDialogSubmitLabel(dialogState: SystemTypeDialogState | null) {
 
 export default function SystemTypeListPage() {
   const queryClient = useQueryClient();
+  const { createResizeHandler, getColumnWidth } = useResizableTableColumns(
+    "system-type-list-columns:v1",
+    [...systemTypeListColumnDefinitions],
+  );
   const [filters, setFilters] = useState<SystemTypeListFilters>(defaultFilters);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
@@ -419,36 +436,92 @@ export default function SystemTypeListPage() {
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell sx={tableHeadCellSx}>Código</TableCell>
-                    <TableCell sx={tableHeadCellSx}>Nome</TableCell>
-                    <TableCell sx={tableHeadCellSx}>Descrição</TableCell>
-                    <TableCell sx={tableHeadCellSx}>Criado em</TableCell>
-                    <TableCell sx={tableHeadCellSx}>Atualizado em</TableCell>
-                    <TableCell sx={tableHeadCellSx}>Acoes</TableCell>
+                    <ResizableTableHeadCell
+                      onResizeStart={createResizeHandler("code")}
+                      sx={tableHeadCellSx}
+                      width={getColumnWidth("code")}
+                    >
+                      Código
+                    </ResizableTableHeadCell>
+                    <ResizableTableHeadCell
+                      onResizeStart={createResizeHandler("name")}
+                      sx={tableHeadCellSx}
+                      width={getColumnWidth("name")}
+                    >
+                      Nome
+                    </ResizableTableHeadCell>
+                    <ResizableTableHeadCell
+                      onResizeStart={createResizeHandler("description")}
+                      sx={tableHeadCellSx}
+                      width={getColumnWidth("description")}
+                    >
+                      Descrição
+                    </ResizableTableHeadCell>
+                    <ResizableTableHeadCell
+                      onResizeStart={createResizeHandler("createdAt")}
+                      sx={tableHeadCellSx}
+                      width={getColumnWidth("createdAt")}
+                    >
+                      Criado em
+                    </ResizableTableHeadCell>
+                    <ResizableTableHeadCell
+                      onResizeStart={createResizeHandler("updatedAt")}
+                      sx={tableHeadCellSx}
+                      width={getColumnWidth("updatedAt")}
+                    >
+                      Atualizado em
+                    </ResizableTableHeadCell>
+                    <ResizableTableHeadCell
+                      onResizeStart={createResizeHandler("actions")}
+                      sx={tableHeadCellSx}
+                      width={getColumnWidth("actions")}
+                    >
+                      Acoes
+                    </ResizableTableHeadCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {filteredSystemTypes.map((systemType) => (
                     <TableRow key={systemType.id}>
-                      <TableCell sx={tableDetailCellSx}>
+                      <TableCell
+                        sx={{ ...tableDetailCellSx, width: getColumnWidth("code") }}
+                      >
                         {systemType.code}
                       </TableCell>
-                      <TableCell sx={tableDetailCellSx}>
+                      <TableCell
+                        sx={{ ...tableDetailCellSx, width: getColumnWidth("name") }}
+                      >
                         {systemType.name}
                       </TableCell>
-                      <TableCell sx={tableDetailCellSx}>
+                      <TableCell
+                        sx={{
+                          ...tableDetailCellSx,
+                          width: getColumnWidth("description"),
+                        }}
+                      >
                         {systemType.description || "Sem descrição"}
                       </TableCell>
-                      <TableCell sx={tableDetailCellSx}>
+                      <TableCell
+                        sx={{
+                          ...tableDetailCellSx,
+                          width: getColumnWidth("createdAt"),
+                        }}
+                      >
                         {formatDateTime(systemType.createdAt)}
                       </TableCell>
-                      <TableCell sx={tableDetailCellSx}>
+                      <TableCell
+                        sx={{
+                          ...tableDetailCellSx,
+                          width: getColumnWidth("updatedAt"),
+                        }}
+                      >
                         {formatDateTime(systemType.updatedAt)}
                       </TableCell>
                       <TableCell
                         sx={{
                           ...tableDetailCellSx,
                           whiteSpace: "nowrap",
+                          width: getColumnWidth("actions"),
                         }}
                       >
                         <Button

@@ -5,6 +5,8 @@ export type DashboardSalespeopleFilters = {
   statusId: string;
   year: string;
   month: string;
+  grossValueMin: string;
+  grossValueMax: string;
 };
 
 export type DashboardSummary = {

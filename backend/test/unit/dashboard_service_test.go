@@ -44,6 +44,10 @@ func (s *dashboardRepositoryStub) GetSummary(_ context.Context, filters *dto.Das
 	return s.summary, s.summaryErr
 }
 
+func (s *dashboardRepositoryStub) GetGrossValueRange(_ context.Context, _ *dto.DashboardSalespeopleFilters) (*dto.DashboardGrossValueRangeResponse, error) {
+	return &dto.DashboardGrossValueRangeResponse{}, nil
+}
+
 func (s *dashboardRepositoryStub) ListSalespersonSummaries(_ context.Context, _ *dto.DashboardSalespeopleFilters) ([]dto.DashboardSalespersonSummaryResponse, error) {
 	return s.salespeople, s.salespeopleErr
 }

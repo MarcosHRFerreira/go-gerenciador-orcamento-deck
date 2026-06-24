@@ -13,6 +13,7 @@ import {
   Divider,
   LinearProgress,
   MenuItem,
+  Slider,
   TextField,
   Typography,
 } from "@mui/material";
@@ -26,10 +27,22 @@ import {
 } from "../../../components/common/FilterField";
 import { PageHeader } from "../../../components/common/PageHeader";
 import { SectionCard } from "../../../components/common/SectionCard";
+import {
+  formatCurrencyInputValue,
+  parseCurrencyInputToNumericString,
+} from "../../../shared/utils/currencyInput";
 import { useAuth } from "../../auth/hooks/useAuth";
 import { getBudgetCatalogsRequest } from "../../budgets/api/budgets";
 import type { BudgetCatalogItem } from "../../budgets/types/budget";
-import { getSalespeopleDashboardRequest } from "../api/dashboard";
+import {
+  getWonStatusPluralLabel,
+  getWonStatusSingularLabel,
+  isWonStatusLabel,
+} from "../../budgets/utils/businessTerms";
+import {
+  getDashboardGrossValueRangeRequest,
+  getSalespeopleDashboardRequest,
+} from "../api/dashboard";
 import type {
   DashboardEstimatorSummary,
   DashboardMonthlyEvolutionItem,
@@ -65,6 +78,8 @@ type DashboardMetricCard = {
 
 type BudgetListNavigationOptions = {
   budgetNumber?: string;
+  grossValueMax?: string;
+  grossValueMin?: string;
   installerId?: string;
   projectId?: string;
   projectName?: string;
@@ -161,6 +176,15 @@ const dashboardLoaderSx = {
   },
 } as const;
 
+const dashboardValueRangeGridSx = {
+  display: "grid",
+  gap: 2,
+  gridTemplateColumns: {
+    md: "repeat(2, minmax(0, 1fr))",
+    xs: "minmax(0, 1fr)",
+  },
+} as const;
+
 function formatPercentage(value: number) {
   return `${value.toFixed(1)}%`;
 }
@@ -218,6 +242,55 @@ function formatSignedInteger(value: number) {
   }
 
   return String(value);
+}
+
+function parseNonNegativeDecimalString(value: string | null) {
+  if (value === null) {
+    return "";
+  }
+
+  const parsedValue = Number(value);
+  if (!Number.isFinite(parsedValue) || parsedValue < 0) {
+    return "";
+  }
+
+  return String(parsedValue);
+}
+
+function parseDraftCurrencyValue(value: string) {
+  if (!value.trim()) {
+    return null;
+  }
+
+  const parsedValue = Number(value);
+  if (!Number.isFinite(parsedValue) || parsedValue < 0) {
+    return null;
+  }
+
+  return parsedValue;
+}
+
+function formatCurrencyRangeValue(value: string, fallback: number) {
+  const parsedValue = parseDraftCurrencyValue(value);
+
+  return currencyFormatter.format(parsedValue ?? fallback);
+}
+
+function normalizeGrossValueDraftRange(minValue: string, maxValue: string) {
+  const parsedMin = parseDraftCurrencyValue(minValue);
+  const parsedMax = parseDraftCurrencyValue(maxValue);
+
+  if (parsedMin !== null && parsedMax !== null && parsedMin > parsedMax) {
+    return {
+      grossValueMin: String(parsedMax),
+      grossValueMax: String(parsedMin),
+    };
+  }
+
+  return {
+    grossValueMin: parsedMin === null ? "" : String(parsedMin),
+    grossValueMax: parsedMax === null ? "" : String(parsedMax),
+  };
 }
 
 function formatSignedPercentagePoints(value: number) {
@@ -296,6 +369,8 @@ function getMonthDateRange(year: string, month: string) {
 
 function buildBudgetListSearchParams({
   budgetNumber,
+  grossValueMax,
+  grossValueMin,
   installerId,
   month,
   projectId,
@@ -330,6 +405,12 @@ function buildBudgetListSearchParams({
   }
   if (statusId) {
     searchParams.set("statusId", statusId);
+  }
+  if (grossValueMin) {
+    searchParams.set("grossValueMin", grossValueMin);
+  }
+  if (grossValueMax) {
+    searchParams.set("grossValueMax", grossValueMax);
   }
 
   const monthDateRange = getMonthDateRange(year, month);
@@ -367,6 +448,7 @@ function buildDashboardScopeLabel(
   selectedYear: string,
   selectedMonth: string,
   salespersonLabel: string,
+  grossValueLabel: string,
 ) {
   const companyLabel = sourceCompany || "todas as empresas";
   const yearLabel = selectedYear || "todos os anos";
@@ -374,8 +456,9 @@ function buildDashboardScopeLabel(
     monthOptions.find((item) => item.value === selectedMonth)?.label ??
     "todos os meses";
   const salespersonScope = salespersonLabel || "todos os vendedores";
+  const grossValueScope = grossValueLabel || "todos os valores";
 
-  return `${companyLabel}, ${yearLabel}, ${monthLabel} e ${salespersonScope}`;
+  return `${companyLabel}, ${yearLabel}, ${monthLabel}, ${salespersonScope} e ${grossValueScope}`;
 }
 
 function downloadBlob(csvBlob: Blob, fileName: string) {
@@ -719,6 +802,7 @@ async function applyWorksheetFormatting(
 function buildDashboardWorkbookSheets({
   dashboardData,
   selectedMonth,
+  selectedGrossValueLabel,
   selectedSalespersonLabel,
   selectedYear,
   sourceCompany,
@@ -795,6 +879,7 @@ function buildDashboardWorkbookSheets({
     wonBudgets: number;
   };
   selectedMonth: string;
+  selectedGrossValueLabel: string;
   selectedSalespersonLabel: string;
   selectedYear: string;
   sourceCompany: DashboardCompanyFilter;
@@ -804,6 +889,7 @@ function buildDashboardWorkbookSheets({
     selectedYear,
     selectedMonth,
     selectedSalespersonLabel,
+    selectedGrossValueLabel,
   );
   const topSalespersonByValue = dashboardData.topSalespeopleByValue[0];
   const topSalespersonByBudgetCount =
@@ -923,7 +1009,7 @@ function buildDashboardWorkbookSheets({
         ],
         [],
         ["Resumo da carteira", "Valor"],
-        ["Pedidos", dashboardData.wonBudgets],
+        [getWonStatusPluralLabel(), dashboardData.wonBudgets],
         ["Em negociação", dashboardData.negotiationBudgets],
         ["Cancelados", dashboardData.lostBudgets],
         ["Conversão", formatPercentage(dashboardData.conversionRate)],
@@ -1129,7 +1215,7 @@ function buildDashboardWorkbookSheets({
           "Posição",
           "Vendedor",
           "Conversão",
-          "Pedidos",
+          getWonStatusPluralLabel(),
           "Orçamentos",
           "Ticket médio",
         ],
@@ -1261,7 +1347,13 @@ function buildDashboardWorkbookSheets({
       headerStyle: "table",
       name: "Evolução Mensal",
       rows: [
-        ["Mês", "Orçamentos", "Valor bruto", "Pedidos", "Valor convertido"],
+        [
+          "Mês",
+          "Orçamentos",
+          "Valor bruto",
+          getWonStatusPluralLabel(),
+          "Valor convertido",
+        ],
         ...dashboardData.monthlyEvolution.map((item) => [
           item.monthLabel,
           item.budgetCount,
@@ -1382,7 +1474,7 @@ function buildDashboardWorkbookSheets({
           "Vendedor",
           "Total de orçamentos",
           "Em negociação",
-          "Pedidos",
+          getWonStatusPluralLabel(),
           "Cancelados",
           "Conversão",
         ],
@@ -1569,9 +1661,21 @@ export function DashboardPage() {
   const [selectedInstallerId, setSelectedInstallerId] = useState("");
   const [selectedSalespersonId, setSelectedSalespersonId] = useState("");
   const [selectedStatusId, setSelectedStatusId] = useState("");
+  const [selectedGrossValueMin, setSelectedGrossValueMin] = useState("");
+  const [selectedGrossValueMax, setSelectedGrossValueMax] = useState("");
+  const normalizedGrossValueRange = useMemo(
+    () =>
+      normalizeGrossValueDraftRange(
+        selectedGrossValueMin,
+        selectedGrossValueMax,
+      ),
+    [selectedGrossValueMax, selectedGrossValueMin],
+  );
 
   const dashboardFilters = useMemo<DashboardSalespeopleFilters>(
     () => ({
+      grossValueMax: normalizedGrossValueRange.grossValueMax,
+      grossValueMin: normalizedGrossValueRange.grossValueMin,
       installerId: selectedInstallerId,
       sourceCompany,
       salespersonId: selectedSalespersonId,
@@ -1580,6 +1684,8 @@ export function DashboardPage() {
       month: selectedMonth,
     }),
     [
+      normalizedGrossValueRange.grossValueMax,
+      normalizedGrossValueRange.grossValueMin,
       selectedInstallerId,
       selectedMonth,
       selectedSalespersonId,
@@ -1596,6 +1702,19 @@ export function DashboardPage() {
     gcTime: 1000 * 60 * 15,
     refetchOnWindowFocus: false,
     staleTime: 1000 * 60 * 5,
+  });
+
+  const grossValueRangeQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "salespeople",
+      "gross-value-range",
+      dashboardFilters,
+    ],
+    queryFn: () => getDashboardGrossValueRangeRequest(dashboardFilters),
+    enabled: !isEstimatorUser,
+    refetchOnWindowFocus: false,
+    staleTime: 1000 * 60 * 2,
   });
 
   const dashboardQuery = useQuery({
@@ -1689,6 +1808,78 @@ export function DashboardPage() {
     );
   }, [selectedStatusId, statusOptions]);
 
+  const grossValueRange = useMemo(() => {
+    const min = grossValueRangeQuery.data?.min ?? 0;
+    const max = grossValueRangeQuery.data?.max ?? min;
+
+    return {
+      min,
+      max: Math.max(min, max),
+    };
+  }, [grossValueRangeQuery.data?.max, grossValueRangeQuery.data?.min]);
+
+  const isGrossValueSliderDisabled =
+    grossValueRangeQuery.isLoading ||
+    grossValueRange.max <= grossValueRange.min;
+
+  const grossValueSliderStep = useMemo(() => {
+    const span = grossValueRange.max - grossValueRange.min;
+    if (span <= 0) {
+      return 1;
+    }
+    if (span <= 1000) {
+      return 1;
+    }
+
+    return Math.max(100, Math.round(span / 100));
+  }, [grossValueRange.max, grossValueRange.min]);
+
+  const grossValueSliderValue = useMemo<[number, number]>(() => {
+    const resolvedMin =
+      parseDraftCurrencyValue(normalizedGrossValueRange.grossValueMin) ??
+      grossValueRange.min;
+    const resolvedMax =
+      parseDraftCurrencyValue(normalizedGrossValueRange.grossValueMax) ??
+      grossValueRange.max;
+    const nextMin = Math.min(
+      Math.max(resolvedMin, grossValueRange.min),
+      grossValueRange.max,
+    );
+    const nextMax = Math.max(
+      Math.min(resolvedMax, grossValueRange.max),
+      grossValueRange.min,
+    );
+
+    return nextMin <= nextMax ? [nextMin, nextMax] : [nextMax, nextMin];
+  }, [
+    grossValueRange.max,
+    grossValueRange.min,
+    normalizedGrossValueRange.grossValueMax,
+    normalizedGrossValueRange.grossValueMin,
+  ]);
+
+  const selectedGrossValueLabel = useMemo(() => {
+    if (
+      dashboardFilters.grossValueMin.length === 0 &&
+      dashboardFilters.grossValueMax.length === 0
+    ) {
+      return "todos os valores";
+    }
+
+    return `valor bruto de ${formatCurrencyRangeValue(
+      dashboardFilters.grossValueMin,
+      grossValueRange.min,
+    )} até ${formatCurrencyRangeValue(
+      dashboardFilters.grossValueMax,
+      grossValueRange.max,
+    )}`;
+  }, [
+    dashboardFilters.grossValueMax,
+    dashboardFilters.grossValueMin,
+    grossValueRange.max,
+    grossValueRange.min,
+  ]);
+
   const salespersonIdByName = useMemo(() => {
     return salespersonOptions.reduce<Map<string, string>>(
       (currentMap, item) => {
@@ -1708,6 +1899,12 @@ export function DashboardPage() {
       Map<string, string>
     >((currentMap, item) => {
       currentMap.set(normalizeLookupKey(item.name), String(item.id));
+      if (isWonStatusLabel(item.name)) {
+        currentMap.set(
+          normalizeLookupKey(getWonStatusSingularLabel()),
+          String(item.id),
+        );
+      }
       return currentMap;
     }, new Map<string, string>());
   }, [budgetCatalogsQuery.data?.statuses]);
@@ -1900,8 +2097,33 @@ export function DashboardPage() {
   const isDashboardRefreshing =
     dashboardQuery.isFetching && !dashboardQuery.isLoading;
 
+  const handleNormalizeGrossValueInputs = () => {
+    const normalizedRange = normalizeGrossValueDraftRange(
+      selectedGrossValueMin,
+      selectedGrossValueMax,
+    );
+
+    setSelectedGrossValueMin(normalizedRange.grossValueMin);
+    setSelectedGrossValueMax(normalizedRange.grossValueMax);
+  };
+
+  const handleGrossValueSliderChange = (
+    _event: Event,
+    value: number | number[],
+  ) => {
+    if (!Array.isArray(value)) {
+      return;
+    }
+
+    const [nextMin, nextMax] = value;
+    setSelectedGrossValueMin(String(Math.round(nextMin)));
+    setSelectedGrossValueMax(String(Math.round(nextMax)));
+  };
+
   const handleOpenBudgetList = ({
     budgetNumber,
+    grossValueMax,
+    grossValueMin,
     installerId,
     projectId,
     projectName,
@@ -1910,6 +2132,8 @@ export function DashboardPage() {
   }: Partial<BudgetListNavigationOptions> = {}) => {
     const searchParams = buildBudgetListSearchParams({
       budgetNumber,
+      grossValueMax: grossValueMax ?? dashboardFilters.grossValueMax,
+      grossValueMin: grossValueMin ?? dashboardFilters.grossValueMin,
       installerId: installerId ?? selectedInstallerId,
       month: selectedMonth,
       projectId,
@@ -1932,6 +2156,7 @@ export function DashboardPage() {
           selectedYear,
           selectedMonth,
           selectedSalespersonLabel,
+          selectedGrossValueLabel,
         ),
       ]),
       "",
@@ -2022,7 +2247,7 @@ export function DashboardPage() {
         "Mês",
         "Orçamentos",
         "Valor bruto",
-        "Pedidos",
+        getWonStatusPluralLabel(),
         "Valor convertido",
       ]),
       ...dashboardData.monthlyEvolution.map((item) =>
@@ -2210,6 +2435,8 @@ export function DashboardPage() {
       selectedYear || "todos-anos",
       selectedMonth || "todos-meses",
       selectedSalespersonLabel || "todos-vendedores",
+      dashboardFilters.grossValueMin || "min-livre",
+      dashboardFilters.grossValueMax || "max-livre",
     ]
       .join("-")
       .replaceAll(" ", "-")
@@ -2236,6 +2463,8 @@ export function DashboardPage() {
       selectedYear || "todos-anos",
       selectedMonth || "todos-meses",
       selectedSalespersonLabel || "todos-vendedores",
+      dashboardFilters.grossValueMin || "min-livre",
+      dashboardFilters.grossValueMax || "max-livre",
     ]
       .join("-")
       .replaceAll(" ", "-")
@@ -2243,6 +2472,7 @@ export function DashboardPage() {
     const sheets = buildDashboardWorkbookSheets({
       dashboardData,
       selectedMonth,
+      selectedGrossValueLabel,
       selectedSalespersonLabel,
       selectedYear,
       sourceCompany,
@@ -2395,7 +2625,84 @@ export function DashboardPage() {
               ))}
             </TextField>
           </FilterField>
+          <Box sx={dashboardValueRangeGridSx}>
+            <FilterField label="Valor minimo">
+              <TextField
+                onBlur={handleNormalizeGrossValueInputs}
+                onChange={(event) =>
+                  setSelectedGrossValueMin(
+                    parseCurrencyInputToNumericString(event.target.value),
+                  )
+                }
+                placeholder={currencyFormatter.format(grossValueRange.min)}
+                size="small"
+                slotProps={{
+                  htmlInput: {
+                    inputMode: "numeric",
+                  },
+                }}
+                sx={compactFilterFieldSx}
+                value={formatCurrencyInputValue(selectedGrossValueMin)}
+              />
+            </FilterField>
+            <FilterField label="Valor maximo">
+              <TextField
+                onBlur={handleNormalizeGrossValueInputs}
+                onChange={(event) =>
+                  setSelectedGrossValueMax(
+                    parseCurrencyInputToNumericString(event.target.value),
+                  )
+                }
+                placeholder={currencyFormatter.format(grossValueRange.max)}
+                size="small"
+                slotProps={{
+                  htmlInput: {
+                    inputMode: "numeric",
+                  },
+                }}
+                sx={compactFilterFieldSx}
+                value={formatCurrencyInputValue(selectedGrossValueMax)}
+              />
+            </FilterField>
+          </Box>
+          <Box
+            sx={{
+              gridColumn: "1 / -1",
+              px: { md: 1, xs: 0 },
+            }}
+          >
+            <Typography
+              color="text.secondary"
+              sx={{ display: "block", mb: 1, fontSize: "0.82rem" }}
+              variant="caption"
+            >
+              Faixa de valor bruto
+            </Typography>
+            <Slider
+              disableSwap
+              disabled={isGrossValueSliderDisabled}
+              marks={[
+                { value: grossValueRange.min },
+                { value: grossValueRange.max },
+              ]}
+              max={grossValueRange.max}
+              min={grossValueRange.min}
+              onChange={handleGrossValueSliderChange}
+              step={grossValueSliderStep}
+              value={grossValueSliderValue}
+              valueLabelDisplay="auto"
+              valueLabelFormat={(value) => currencyFormatter.format(value)}
+            />
+            <Typography color="text.secondary" variant="caption">
+              {`${currencyFormatter.format(grossValueRange.min)} até ${currencyFormatter.format(grossValueRange.max)}`}
+            </Typography>
+          </Box>
         </Box>
+        {grossValueRangeQuery.isError ? (
+          <Alert severity="warning" sx={{ mt: 2 }} variant="outlined">
+            Não foi possível carregar a faixa de valor bruto do dashboard.
+          </Alert>
+        ) : null}
       </SectionCard>
 
       {dashboardQuery.isLoading || isDashboardRefreshing ? (
@@ -2428,6 +2735,7 @@ export function DashboardPage() {
             selectedYear,
             selectedMonth,
             selectedSalespersonLabel,
+            selectedGrossValueLabel,
           )}.`}
           {isDashboardRefreshing ? " Atualizando dados em segundo plano." : ""}
         </Alert>
@@ -2471,6 +2779,11 @@ export function DashboardPage() {
                 size="small"
                 variant="outlined"
               />
+              <Chip
+                label={`Valor ${selectedGrossValueLabel}`}
+                size="small"
+                variant="outlined"
+              />
             </Box>
             <Box
               sx={{
@@ -2505,14 +2818,14 @@ export function DashboardPage() {
                   handleOpenBudgetList({
                     statusId:
                       statusIdByNormalizedName.get(
-                        normalizeLookupKey("Pedido"),
+                        normalizeLookupKey(getWonStatusSingularLabel()),
                       ) ?? "",
                   })
                 }
                 startIcon={<OpenInNewRoundedIcon />}
                 variant="outlined"
               >
-                Ver pedidos
+                Ver fechados
               </Button>
               <Button
                 onClick={() =>
@@ -3803,7 +4116,7 @@ export function DashboardPage() {
                     >
                       <Chip
                         color="success"
-                        label={`Pedido ${item.wonBudgets}`}
+                        label={`${getWonStatusSingularLabel()} ${item.wonBudgets}`}
                         size="small"
                         variant="outlined"
                       />
@@ -4027,12 +4340,12 @@ export function DashboardPage() {
                       />
                       <Chip
                         color="success"
-                        label={`Pedido ${currencyFormatter.format(item.wonGrossValue)}`}
+                        label={`${getWonStatusSingularLabel()} ${currencyFormatter.format(item.wonGrossValue)}`}
                         size="small"
                         variant="outlined"
                       />
                       <Chip
-                        label={`${item.wonBudgetCount} pedido(s)`}
+                        label={`${item.wonBudgetCount} fechado(s)`}
                         size="small"
                         variant="outlined"
                       />
@@ -4056,7 +4369,7 @@ export function DashboardPage() {
             {[
               {
                 color: "success.main",
-                label: "Pedidos",
+                label: getWonStatusPluralLabel(),
                 value: dashboardData?.wonBudgets ?? 0,
               },
               {

@@ -33,6 +33,7 @@ func (h *Handler) RouteList() {
 	protectedRoutes := h.router.Group("/budgets")
 	protectedRoutes.Use(middleware.Auth(h.secretKey))
 	protectedRoutes.GET("", h.List)
+	protectedRoutes.GET("/gross-value-range", h.GetGrossValueRange)
 	protectedRoutes.GET("/delivery-monitor/items", h.ListDeliveryMonitor)
 	protectedRoutes.GET("/:budget_id", h.GetByID)
 	protectedRoutes.POST("", h.Create)
@@ -80,6 +81,27 @@ func (h *Handler) List(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, items)
+}
+
+func (h *Handler) GetGrossValueRange(c *gin.Context) {
+	filters, err := parseListFilters(c)
+	if err != nil {
+		httpresponse.JSONError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	response, err := h.service.GetGrossValueRange(
+		c.Request.Context(),
+		filters,
+		middleware.Role(c),
+		middleware.Username(c),
+	)
+	if err != nil {
+		httpresponse.JSONAppError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 func (h *Handler) ListDeliveryMonitor(c *gin.Context) {

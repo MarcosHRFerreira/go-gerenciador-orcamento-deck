@@ -32,6 +32,10 @@ import {
   filterSectionCardSx,
 } from "../../../components/common/FilterField";
 import { PageHeader } from "../../../components/common/PageHeader";
+import {
+  ResizableTableHeadCell,
+  useResizableTableColumns,
+} from "../../../components/common/ResizableTable";
 import { SectionCard } from "../../../components/common/SectionCard";
 import {
   deleteProjectRequest,
@@ -66,6 +70,16 @@ const tableDetailCellSx = {
   verticalAlign: "top",
 };
 
+const projectListColumnDefinitions = [
+  { key: "code", width: 140, minWidth: 120 },
+  { key: "name", width: 280, minWidth: 220 },
+  { key: "type", width: 180, minWidth: 160 },
+  { key: "city", width: 160, minWidth: 140 },
+  { key: "state", width: 120, minWidth: 100 },
+  { key: "updatedAt", width: 180, minWidth: 160 },
+  { key: "actions", width: 260, minWidth: 220 },
+] as const;
+
 function normalizeText(value: string) {
   return value
     .normalize("NFD")
@@ -93,6 +107,10 @@ function getMutationErrorMessage(error: unknown, fallbackMessage: string) {
 export default function ProjectListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { createResizeHandler, getColumnWidth } = useResizableTableColumns(
+    "project-list-columns:v1",
+    [...projectListColumnDefinitions],
+  );
   const [search, setSearch] = useState("");
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
@@ -213,42 +231,105 @@ export default function ProjectListPage() {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={tableHeadCellSx}>Código</TableCell>
-                  <TableCell sx={tableHeadCellSx}>Descrição</TableCell>
-                  <TableCell sx={tableHeadCellSx}>Tipo</TableCell>
-                  <TableCell sx={tableHeadCellSx}>Cidade</TableCell>
-                  <TableCell sx={tableHeadCellSx}>Estado</TableCell>
-                  <TableCell sx={tableHeadCellSx}>Atualizado em</TableCell>
-                  <TableCell sx={tableHeadCellSx}>Ações</TableCell>
+                  <ResizableTableHeadCell
+                    onResizeStart={createResizeHandler("code")}
+                    sx={tableHeadCellSx}
+                    width={getColumnWidth("code")}
+                  >
+                    Código
+                  </ResizableTableHeadCell>
+                  <ResizableTableHeadCell
+                    onResizeStart={createResizeHandler("name")}
+                    sx={tableHeadCellSx}
+                    width={getColumnWidth("name")}
+                  >
+                    Descrição
+                  </ResizableTableHeadCell>
+                  <ResizableTableHeadCell
+                    onResizeStart={createResizeHandler("type")}
+                    sx={tableHeadCellSx}
+                    width={getColumnWidth("type")}
+                  >
+                    Tipo
+                  </ResizableTableHeadCell>
+                  <ResizableTableHeadCell
+                    onResizeStart={createResizeHandler("city")}
+                    sx={tableHeadCellSx}
+                    width={getColumnWidth("city")}
+                  >
+                    Cidade
+                  </ResizableTableHeadCell>
+                  <ResizableTableHeadCell
+                    onResizeStart={createResizeHandler("state")}
+                    sx={tableHeadCellSx}
+                    width={getColumnWidth("state")}
+                  >
+                    Estado
+                  </ResizableTableHeadCell>
+                  <ResizableTableHeadCell
+                    onResizeStart={createResizeHandler("updatedAt")}
+                    sx={tableHeadCellSx}
+                    width={getColumnWidth("updatedAt")}
+                  >
+                    Atualizado em
+                  </ResizableTableHeadCell>
+                  <ResizableTableHeadCell
+                    onResizeStart={createResizeHandler("actions")}
+                    sx={tableHeadCellSx}
+                    width={getColumnWidth("actions")}
+                  >
+                    Ações
+                  </ResizableTableHeadCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {filteredProjects.map((item) => (
                   <TableRow hover key={item.id}>
-                    <TableCell sx={tableDetailCellSx}>
+                    <TableCell
+                      sx={{ ...tableDetailCellSx, width: getColumnWidth("code") }}
+                    >
                       <Typography sx={{ fontWeight: 600 }} variant="body2">
                         {item.code}
                       </Typography>
                     </TableCell>
-                    <TableCell sx={tableDetailCellSx}>
+                    <TableCell
+                      sx={{ ...tableDetailCellSx, width: getColumnWidth("name") }}
+                    >
                       <Typography variant="body2">{item.name}</Typography>
                     </TableCell>
-                    <TableCell sx={tableDetailCellSx}>
+                    <TableCell
+                      sx={{ ...tableDetailCellSx, width: getColumnWidth("type") }}
+                    >
                       {item.projectTypeId === null
                         ? "Não informado"
                         : (projectTypeMap.get(item.projectTypeId) ??
                           `#${item.projectTypeId}`)}
                     </TableCell>
-                    <TableCell sx={tableDetailCellSx}>
+                    <TableCell
+                      sx={{ ...tableDetailCellSx, width: getColumnWidth("city") }}
+                    >
                       {item.city.trim() ? item.city : "Não informado"}
                     </TableCell>
-                    <TableCell sx={tableDetailCellSx}>
+                    <TableCell
+                      sx={{ ...tableDetailCellSx, width: getColumnWidth("state") }}
+                    >
                       {item.state.trim() ? item.state : "Não informado"}
                     </TableCell>
-                    <TableCell sx={tableDetailCellSx}>
+                    <TableCell
+                      sx={{
+                        ...tableDetailCellSx,
+                        width: getColumnWidth("updatedAt"),
+                      }}
+                    >
                       {formatDateTime(item.updatedAt)}
                     </TableCell>
-                    <TableCell sx={tableDetailCellSx}>
+                    <TableCell
+                      sx={{
+                        ...tableDetailCellSx,
+                        whiteSpace: "nowrap",
+                        width: getColumnWidth("actions"),
+                      }}
+                    >
                       <Button
                         onClick={() => navigate(`/projects/${item.id}`)}
                         size="small"

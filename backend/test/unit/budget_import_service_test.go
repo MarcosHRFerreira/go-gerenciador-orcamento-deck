@@ -113,6 +113,49 @@ func (s *budgetImportPriorityRepositoryStub) List(_ context.Context) ([]model.Pr
 	return s.items, nil
 }
 
+func (s *budgetImportPriorityRepositoryStub) GetByID(_ context.Context, priorityID int64) (*model.PriorityModel, error) {
+	for _, item := range s.items {
+		if item.ID != priorityID {
+			continue
+		}
+
+		copyItem := item
+		return &copyItem, nil
+	}
+
+	return nil, nil
+}
+
+func (s *budgetImportPriorityRepositoryStub) Update(_ context.Context, priority *model.PriorityModel) error {
+	for index := range s.items {
+		if s.items[index].ID != priority.ID {
+			continue
+		}
+
+		s.items[index].Code = priority.Code
+		s.items[index].Name = priority.Name
+		s.items[index].Weight = priority.Weight
+		s.items[index].UpdatedAt = priority.UpdatedAt
+		return nil
+	}
+
+	return nil
+}
+
+func (s *budgetImportPriorityRepositoryStub) Delete(_ context.Context, priorityID int64) error {
+	filteredItems := make([]model.PriorityModel, 0, len(s.items))
+	for _, item := range s.items {
+		if item.ID == priorityID {
+			continue
+		}
+
+		filteredItems = append(filteredItems, item)
+	}
+
+	s.items = filteredItems
+	return nil
+}
+
 type budgetImportInstallerRepositoryStub struct {
 	items []model.InstallerModel
 }
