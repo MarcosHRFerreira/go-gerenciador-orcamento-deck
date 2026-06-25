@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getBudgetByIdRequest, updateBudgetRequest } from "../api/budgets";
 import { BudgetForm } from "../components/BudgetForm";
@@ -47,15 +48,37 @@ export function BudgetEditPage() {
         ? "Não foi possível carregar os dados do orçamento."
         : null;
 
-  const initialValues =
+  const initialValues = useMemo(
+    () =>
+      budgetQuery.data === undefined
+        ? createDefaultBudgetFormValues()
+        : mapBudgetDetailToFormValues(budgetQuery.data),
+    [budgetQuery.data],
+  );
+  const formInstanceKey =
     budgetQuery.data === undefined
-      ? createDefaultBudgetFormValues()
-      : mapBudgetDetailToFormValues(budgetQuery.data);
+      ? "budget-edit-loading"
+      : `budget-edit-${budgetQuery.data.id}-${budgetQuery.data.updatedAt}`;
 
   return (
     <BudgetForm
+      key={formInstanceKey}
+      currentContactId={budgetQuery.data?.contactId ?? null}
+      currentContactLabel={budgetQuery.data?.contactName ?? null}
+      currentEstimatorId={budgetQuery.data?.estimatorId ?? null}
+      currentEstimatorLabel={budgetQuery.data?.estimatorName ?? null}
+      currentInstallerId={budgetQuery.data?.installerId ?? null}
+      currentInstallerLabel={budgetQuery.data?.installerName ?? null}
+      currentLossReasonId={budgetQuery.data?.lossReasonId ?? null}
+      currentLossReasonLabel={budgetQuery.data?.lossReasonName ?? null}
+      currentProductLineId={budgetQuery.data?.productLineId ?? null}
+      currentProductLineLabel={budgetQuery.data?.productLineName ?? null}
       currentProjectId={budgetQuery.data?.projectId ?? null}
       currentProjectLabel={budgetQuery.data?.projectName ?? null}
+      currentSalespersonId={budgetQuery.data?.salespersonId ?? null}
+      currentSalespersonLabel={budgetQuery.data?.salespersonName ?? null}
+      currentSystemTypeId={budgetQuery.data?.systemTypeId ?? null}
+      currentSystemTypeLabel={budgetQuery.data?.systemTypeName ?? null}
       initialDataError={initialDataError}
       initialValues={initialValues}
       isInitialDataLoading={budgetQuery.isLoading}

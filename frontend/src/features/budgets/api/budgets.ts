@@ -575,6 +575,7 @@ export async function getBudgetManagementCatalogsRequest(): Promise<BudgetCatalo
     systemTypesResponse,
     salespeopleResponse,
     estimatorsResponse,
+    contactsResponse,
     lossReasonsResponse,
   ] = await Promise.all([
     api.get<NamedCatalogApiItem[]>("/budget-statuses"),
@@ -584,6 +585,7 @@ export async function getBudgetManagementCatalogsRequest(): Promise<BudgetCatalo
     api.get<NamedCatalogApiItem[]>("/system-types"),
     api.get<NamedCatalogApiItem[]>("/salespeople"),
     api.get<NamedCatalogApiItem[]>("/estimators"),
+    api.get<NamedCatalogApiItem[]>("/contacts"),
     api.get<NamedCatalogApiItem[]>("/loss-reasons"),
   ]);
 
@@ -596,7 +598,7 @@ export async function getBudgetManagementCatalogsRequest(): Promise<BudgetCatalo
     projects: [],
     salespeople: salespeopleResponse.data.map(mapNamedCatalogItem),
     estimators: estimatorsResponse.data.map(mapNamedCatalogItem),
-    contacts: [],
+    contacts: contactsResponse.data.map(mapNamedCatalogItem),
     lossReasons: lossReasonsResponse.data.map(mapNamedCatalogItem),
   };
 }

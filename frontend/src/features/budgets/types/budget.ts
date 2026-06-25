@@ -1,4 +1,4 @@
-﻿﻿﻿export type BudgetSortBy =
+﻿﻿﻿﻿﻿export type BudgetSortBy =
   | "sent_at"
   | "gross_value"
   | "created_at"

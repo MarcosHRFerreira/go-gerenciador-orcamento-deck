@@ -15,7 +15,7 @@ import { alpha } from "@mui/material/styles";
 import { useQuery } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
 import { useEffect, useMemo, useState } from "react";
-import { Controller, useForm, useWatch } from "react-hook-form";
+import { Controller, useForm, useWatch, type Path } from "react-hook-form";
 import { PageHeader } from "../../../components/common/PageHeader";
 import { SectionCard } from "../../../components/common/SectionCard";
 import { useAuth } from "../../auth/hooks/useAuth";
@@ -24,7 +24,7 @@ import {
   getBudgetListCatalogsRequest,
 } from "../api/budgets";
 import { listProjectsRequest } from "../../projects/api/projects";
-import type { BudgetCreatePayload } from "../types/budget";
+import type { BudgetCatalogItem, BudgetCreatePayload } from "../types/budget";
 import type { BudgetFormValues } from "./budgetFormValues";
 import {
   getBudgetStatusDisplayName,
@@ -244,11 +244,25 @@ const budgetFormSchema = schema.object({
 
 type BudgetFormProps = {
   backLabel?: string;
+  currentContactId?: number | null;
+  currentContactLabel?: string | null;
+  currentEstimatorId?: number | null;
+  currentEstimatorLabel?: string | null;
+  currentInstallerId?: number | null;
+  currentInstallerLabel?: string | null;
   initialDataError?: string | null;
   initialValues: BudgetFormValues;
   isInitialDataLoading?: boolean;
+  currentLossReasonId?: number | null;
+  currentLossReasonLabel?: string | null;
+  currentProductLineId?: number | null;
+  currentProductLineLabel?: string | null;
   currentProjectId?: number | null;
   currentProjectLabel?: string | null;
+  currentSalespersonId?: number | null;
+  currentSalespersonLabel?: string | null;
+  currentSystemTypeId?: number | null;
+  currentSystemTypeLabel?: string | null;
   lockedProjectId?: number | null;
   lockedProjectLabel?: string | null;
   mode: "create" | "edit";
@@ -263,6 +277,34 @@ type ProjectOption = {
   id: number;
   name: string;
 };
+
+function mergeCatalogItemsWithCurrentValue(
+  items: BudgetCatalogItem[],
+  currentId: number | null,
+  currentLabel: string | null,
+  fallbackPrefix: string,
+) {
+  const optionsMap = new Map<number, string>();
+
+  items.forEach((item) => {
+    optionsMap.set(item.id, item.name);
+  });
+
+  if (currentId !== null) {
+    const trimmedLabel = currentLabel?.trim() ?? "";
+    optionsMap.set(
+      currentId,
+      trimmedLabel.length > 0
+        ? trimmedLabel
+        : `${fallbackPrefix} #${currentId}`,
+    );
+  }
+
+  return Array.from(optionsMap.entries()).map(([id, name]) => ({
+    id,
+    name,
+  }));
+}
 
 function isValidPositiveInteger(value: string) {
   const parsedValue = Number(value);
@@ -388,8 +430,22 @@ function mapFormValuesToPayload(values: BudgetFormValues): BudgetCreatePayload {
 
 export function BudgetForm({
   backLabel = "Voltar",
+  currentContactId = null,
+  currentContactLabel = null,
+  currentEstimatorId = null,
+  currentEstimatorLabel = null,
+  currentInstallerId = null,
+  currentInstallerLabel = null,
   currentProjectId = null,
   currentProjectLabel = null,
+  currentLossReasonId = null,
+  currentLossReasonLabel = null,
+  currentProductLineId = null,
+  currentProductLineLabel = null,
+  currentSalespersonId = null,
+  currentSalespersonLabel = null,
+  currentSystemTypeId = null,
+  currentSystemTypeLabel = null,
   initialDataError = null,
   initialValues,
   isInitialDataLoading = false,
@@ -428,6 +484,7 @@ export function BudgetForm({
     register,
     reset,
     setValue,
+    watch,
   } = useForm<BudgetFormValues>({
     defaultValues: initialValues,
     resolver: zodResolver(budgetFormSchema),
@@ -444,6 +501,18 @@ export function BudgetForm({
     control,
     name: "grossValue",
   });
+
+  const getTextFieldBinding = (fieldName: Path<BudgetFormValues>) => {
+    const fieldRegistration = register(fieldName);
+
+    return {
+      inputRef: fieldRegistration.ref,
+      name: fieldRegistration.name,
+      onBlur: fieldRegistration.onBlur,
+      onChange: fieldRegistration.onChange,
+      value: watch(fieldName) ?? "",
+    };
+  };
 
   useEffect(() => {
     reset(initialValues);
@@ -521,6 +590,100 @@ export function BudgetForm({
     lockedProjectLabel,
     projectsQuery.data,
   ]);
+  const installerOptions = useMemo(
+    () =>
+      mergeCatalogItemsWithCurrentValue(
+        budgetCatalogsQuery.data?.installers ?? [],
+        currentInstallerId,
+        currentInstallerLabel,
+        "Instalador",
+      ),
+    [
+      budgetCatalogsQuery.data?.installers,
+      currentInstallerId,
+      currentInstallerLabel,
+    ],
+  );
+  const productLineOptions = useMemo(
+    () =>
+      mergeCatalogItemsWithCurrentValue(
+        budgetCatalogsQuery.data?.productLines ?? [],
+        currentProductLineId,
+        currentProductLineLabel,
+        "Linha de produtos",
+      ),
+    [
+      budgetCatalogsQuery.data?.productLines,
+      currentProductLineId,
+      currentProductLineLabel,
+    ],
+  );
+  const systemTypeOptions = useMemo(
+    () =>
+      mergeCatalogItemsWithCurrentValue(
+        budgetCatalogsQuery.data?.systemTypes ?? [],
+        currentSystemTypeId,
+        currentSystemTypeLabel,
+        "Tipo de Sistema",
+      ),
+    [
+      budgetCatalogsQuery.data?.systemTypes,
+      currentSystemTypeId,
+      currentSystemTypeLabel,
+    ],
+  );
+  const salespersonOptions = useMemo(
+    () =>
+      mergeCatalogItemsWithCurrentValue(
+        budgetCatalogsQuery.data?.salespeople ?? [],
+        currentSalespersonId,
+        currentSalespersonLabel,
+        "Vendedor",
+      ),
+    [
+      budgetCatalogsQuery.data?.salespeople,
+      currentSalespersonId,
+      currentSalespersonLabel,
+    ],
+  );
+  const estimatorOptions = useMemo(
+    () =>
+      mergeCatalogItemsWithCurrentValue(
+        budgetCatalogsQuery.data?.estimators ?? [],
+        currentEstimatorId,
+        currentEstimatorLabel,
+        "Orcamentista",
+      ),
+    [
+      budgetCatalogsQuery.data?.estimators,
+      currentEstimatorId,
+      currentEstimatorLabel,
+    ],
+  );
+  const contactOptions = useMemo(
+    () =>
+      mergeCatalogItemsWithCurrentValue(
+        budgetCatalogsQuery.data?.contacts ?? [],
+        currentContactId,
+        currentContactLabel,
+        "Contato",
+      ),
+    [budgetCatalogsQuery.data?.contacts, currentContactId, currentContactLabel],
+  );
+  const lossReasonOptions = useMemo(
+    () =>
+      mergeCatalogItemsWithCurrentValue(
+        budgetCatalogsQuery.data?.lossReasons ?? [],
+        currentLossReasonId,
+        currentLossReasonLabel,
+        "Motivo de perda",
+      ),
+    [
+      budgetCatalogsQuery.data?.lossReasons,
+      currentLossReasonId,
+      currentLossReasonLabel,
+    ],
+  );
 
   const handleFormSubmit = async (values: BudgetFormValues) => {
     try {
@@ -695,7 +858,7 @@ export function BudgetForm({
                       readOnly: mode === "edit",
                     },
                   }}
-                  {...register("budgetNumber")}
+                  {...getTextFieldBinding("budgetNumber")}
                 />
               </BudgetField>
               <BudgetField label="Ano">
@@ -703,7 +866,7 @@ export function BudgetForm({
                   error={Boolean(errors.yearBudget)}
                   helperText={errors.yearBudget?.message}
                   type="number"
-                  {...register("yearBudget")}
+                  {...getTextFieldBinding("yearBudget")}
                 />
               </BudgetField>
               <BudgetField label="Revisão">
@@ -711,7 +874,7 @@ export function BudgetForm({
                   error={Boolean(errors.revision)}
                   helperText={errors.revision?.message}
                   type="number"
-                  {...register("revision")}
+                  {...getTextFieldBinding("revision")}
                 />
               </BudgetField>
               <BudgetField label="Data de envio">
@@ -719,7 +882,7 @@ export function BudgetForm({
                   error={Boolean(errors.sentAt)}
                   helperText={errors.sentAt?.message}
                   type="datetime-local"
-                  {...register("sentAt")}
+                  {...getTextFieldBinding("sentAt")}
                 />
               </BudgetField>
               <BudgetField label="Empresa">
@@ -734,7 +897,7 @@ export function BudgetForm({
                       readOnly: true,
                     },
                   }}
-                  {...register("sourceCompany")}
+                  {...getTextFieldBinding("sourceCompany")}
                 />
               </BudgetField>
               <BudgetField label="Data de entrega">
@@ -747,7 +910,7 @@ export function BudgetForm({
                       : undefined)
                   }
                   type="date"
-                  {...register("deliveryDate")}
+                  {...getTextFieldBinding("deliveryDate")}
                 />
               </BudgetField>
               <BudgetField label="Status">
@@ -800,7 +963,7 @@ export function BudgetForm({
                   slotProps={{ htmlInput: { inputMode: "decimal" } }}
                   placeholder="0,00"
                   type="text"
-                  {...register("grossValue")}
+                  {...getTextFieldBinding("grossValue")}
                 />
               </BudgetField>
               <BudgetField label={getFactorFieldLabel()}>
@@ -810,7 +973,7 @@ export function BudgetForm({
                   slotProps={{ htmlInput: { inputMode: "decimal" } }}
                   placeholder="0,00"
                   type="text"
-                  {...register("commissionValue")}
+                  {...getTextFieldBinding("commissionValue")}
                 />
               </BudgetField>
               <BudgetField label="Construtora">
@@ -818,21 +981,21 @@ export function BudgetForm({
                   error={Boolean(errors.constructionCompany)}
                   helperText={errors.constructionCompany?.message}
                   placeholder="Nome da construtora"
-                  {...register("constructionCompany")}
+                  {...getTextFieldBinding("constructionCompany")}
                 />
               </BudgetField>
               <BudgetField label="Projetista">
                 <TextField
                   error={Boolean(errors.projetistaName)}
                   helperText={errors.projetistaName?.message}
-                  {...register("projetistaName")}
+                  {...getTextFieldBinding("projetistaName")}
                 />
               </BudgetField>
               <BudgetField label="Concorrente">
                 <TextField
                   error={Boolean(errors.competitorName)}
                   helperText={errors.competitorName?.message}
-                  {...register("competitorName")}
+                  {...getTextFieldBinding("competitorName")}
                 />
               </BudgetField>
               <BudgetField label="Preço concorrente">
@@ -842,7 +1005,7 @@ export function BudgetForm({
                   slotProps={{ htmlInput: { inputMode: "decimal" } }}
                   placeholder="0,00"
                   type="text"
-                  {...register("competitorPrice")}
+                  {...getTextFieldBinding("competitorPrice")}
                 />
               </BudgetField>
             </Box>
@@ -885,16 +1048,14 @@ export function BudgetForm({
                   error={Boolean(errors.installerId)}
                   helperText={errors.installerId?.message}
                   select
-                  {...register("installerId")}
+                  {...getTextFieldBinding("installerId")}
                 >
                   <MenuItem value="">Não informar</MenuItem>
-                  {(budgetCatalogsQuery.data?.installers ?? []).map(
-                    (installer) => (
-                      <MenuItem key={installer.id} value={String(installer.id)}>
-                        {installer.name}
-                      </MenuItem>
-                    ),
-                  )}
+                  {installerOptions.map((installer) => (
+                    <MenuItem key={installer.id} value={String(installer.id)}>
+                      {installer.name}
+                    </MenuItem>
+                  ))}
                 </TextField>
               </BudgetField>
               <BudgetField label="Linha de produtos">
@@ -902,19 +1063,17 @@ export function BudgetForm({
                   error={Boolean(errors.productLineId)}
                   helperText={errors.productLineId?.message}
                   select
-                  {...register("productLineId")}
+                  {...getTextFieldBinding("productLineId")}
                 >
                   <MenuItem value="">Não informar</MenuItem>
-                  {(budgetCatalogsQuery.data?.productLines ?? []).map(
-                    (productLine) => (
-                      <MenuItem
-                        key={productLine.id}
-                        value={String(productLine.id)}
-                      >
-                        {productLine.name}
-                      </MenuItem>
-                    ),
-                  )}
+                  {productLineOptions.map((productLine) => (
+                    <MenuItem
+                      key={productLine.id}
+                      value={String(productLine.id)}
+                    >
+                      {productLine.name}
+                    </MenuItem>
+                  ))}
                 </TextField>
               </BudgetField>
               <BudgetField label="Tipo de Sistema">
@@ -922,19 +1081,14 @@ export function BudgetForm({
                   error={Boolean(errors.systemTypeId)}
                   helperText={errors.systemTypeId?.message}
                   select
-                  {...register("systemTypeId")}
+                  {...getTextFieldBinding("systemTypeId")}
                 >
                   <MenuItem value="">Não informar</MenuItem>
-                  {(budgetCatalogsQuery.data?.systemTypes ?? []).map(
-                    (systemType) => (
-                      <MenuItem
-                        key={systemType.id}
-                        value={String(systemType.id)}
-                      >
-                        {systemType.name}
-                      </MenuItem>
-                    ),
-                  )}
+                  {systemTypeOptions.map((systemType) => (
+                    <MenuItem key={systemType.id} value={String(systemType.id)}>
+                      {systemType.name}
+                    </MenuItem>
+                  ))}
                 </TextField>
               </BudgetField>
               <BudgetField label="Obra">
@@ -988,19 +1142,17 @@ export function BudgetForm({
                     error={Boolean(errors.salespersonId)}
                     helperText={errors.salespersonId?.message}
                     select
-                    {...register("salespersonId")}
+                    {...getTextFieldBinding("salespersonId")}
                   >
                     <MenuItem value="">Não informar</MenuItem>
-                    {(budgetCatalogsQuery.data?.salespeople ?? []).map(
-                      (salesperson) => (
-                        <MenuItem
-                          key={salesperson.id}
-                          value={String(salesperson.id)}
-                        >
-                          {salesperson.name}
-                        </MenuItem>
-                      ),
-                    )}
+                    {salespersonOptions.map((salesperson) => (
+                      <MenuItem
+                        key={salesperson.id}
+                        value={String(salesperson.id)}
+                      >
+                        {salesperson.name}
+                      </MenuItem>
+                    ))}
                   </TextField>
                 </BudgetField>
               ) : null}
@@ -1010,19 +1162,14 @@ export function BudgetForm({
                     error={Boolean(errors.estimatorId)}
                     helperText={errors.estimatorId?.message}
                     select
-                    {...register("estimatorId")}
+                    {...getTextFieldBinding("estimatorId")}
                   >
                     <MenuItem value="">Não informar</MenuItem>
-                    {(budgetCatalogsQuery.data?.estimators ?? []).map(
-                      (estimator) => (
-                        <MenuItem
-                          key={estimator.id}
-                          value={String(estimator.id)}
-                        >
-                          {estimator.name}
-                        </MenuItem>
-                      ),
-                    )}
+                    {estimatorOptions.map((estimator) => (
+                      <MenuItem key={estimator.id} value={String(estimator.id)}>
+                        {estimator.name}
+                      </MenuItem>
+                    ))}
                   </TextField>
                 </BudgetField>
               ) : null}
@@ -1031,10 +1178,10 @@ export function BudgetForm({
                   error={Boolean(errors.contactId)}
                   helperText={errors.contactId?.message}
                   select
-                  {...register("contactId")}
+                  {...getTextFieldBinding("contactId")}
                 >
                   <MenuItem value="">Não informar</MenuItem>
-                  {(budgetCatalogsQuery.data?.contacts ?? []).map((contact) => (
+                  {contactOptions.map((contact) => (
                     <MenuItem key={contact.id} value={String(contact.id)}>
                       {contact.name}
                     </MenuItem>
@@ -1046,19 +1193,14 @@ export function BudgetForm({
                   error={Boolean(errors.lossReasonId)}
                   helperText={errors.lossReasonId?.message}
                   select
-                  {...register("lossReasonId")}
+                  {...getTextFieldBinding("lossReasonId")}
                 >
                   <MenuItem value="">Não informar</MenuItem>
-                  {(budgetCatalogsQuery.data?.lossReasons ?? []).map(
-                    (lossReason) => (
-                      <MenuItem
-                        key={lossReason.id}
-                        value={String(lossReason.id)}
-                      >
-                        {lossReason.name}
-                      </MenuItem>
-                    ),
-                  )}
+                  {lossReasonOptions.map((lossReason) => (
+                    <MenuItem key={lossReason.id} value={String(lossReason.id)}>
+                      {lossReason.name}
+                    </MenuItem>
+                  ))}
                 </TextField>
               </BudgetField>
             </Box>
@@ -1076,7 +1218,7 @@ export function BudgetForm({
                   helperText={errors.specificationDetails?.message}
                   minRows={4}
                   multiline
-                  {...register("specificationDetails")}
+                  {...getTextFieldBinding("specificationDetails")}
                 />
               </BudgetField>
               <BudgetField label="Follow-up atual">
@@ -1085,7 +1227,7 @@ export function BudgetForm({
                   helperText={errors.currentFollowUp?.message}
                   minRows={4}
                   multiline
-                  {...register("currentFollowUp")}
+                  {...getTextFieldBinding("currentFollowUp")}
                 />
               </BudgetField>
             </Box>
