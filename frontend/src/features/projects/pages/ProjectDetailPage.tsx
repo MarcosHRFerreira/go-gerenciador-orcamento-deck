@@ -1330,8 +1330,8 @@ export default function ProjectDetailPage() {
           <DialogContentText sx={{ color: "text.primary", lineHeight: 1.7 }}>
             {pendingWinnerBudget
               ? winnerBudget && winnerBudget.id !== pendingWinnerBudget.id
-                ? `Ao confirmar, o orçamento ${pendingWinnerBudget.budgetNumber} passará a ser o novo vencedor da obra. O vencedor atual será substituído e os demais orçamentos da obra ficarão como Cancelado.`
-                : `Ao confirmar, o orçamento ${pendingWinnerBudget.budgetNumber} será definido como ${getWonStatusSingularLabel()} e os demais orçamentos desta obra serão alterados para Cancelado.`
+                ? `Ao confirmar, o orçamento ${pendingWinnerBudget.budgetNumber} passará a ser o novo vencedor da obra. O vencedor atual será substituído e os orçamentos em aberto de outros instaladores desta obra poderão ser alterados para Cancelado. Orçamentos do mesmo instalador podem permanecer ativos quando representarem escopos complementares.`
+                : `Ao confirmar, o orçamento ${pendingWinnerBudget.budgetNumber} será definido como ${getWonStatusSingularLabel()} e os orçamentos em aberto de outros instaladores desta obra poderão ser alterados para Cancelado. Orçamentos do mesmo instalador podem permanecer ativos quando representarem escopos complementares.`
               : ""}
           </DialogContentText>
           <TextField

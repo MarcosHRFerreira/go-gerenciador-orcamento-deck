@@ -11,7 +11,8 @@ import (
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/httpresponse"
 )
 
-const automaticProjectCancellationNote = "Cancelado automaticamente porque outro orcamento da obra foi marcado como PEDIDO"
+const automaticProjectCancellationNote = "Cancelado automaticamente porque outro orcamento da obra foi marcado como Fechado"
+const automaticProjectRestorationNote = "Status restaurado automaticamente para permitir a troca do vencedor da obra"
 
 func TestBudgetFollowUpsShouldCreateListAndSyncCurrentFollowUp(t *testing.T) {
 	env := newIntegrationTestEnv(t)
@@ -245,14 +246,16 @@ func TestBudgetStatusHistoryShouldRejectSameStatus(t *testing.T) {
 	}
 }
 
-func TestBudgetStatusHistoryShouldCancelOtherProjectBudgetsWhenOneBecomesPedido(t *testing.T) {
+func TestBudgetStatusHistoryShouldNotCancelOtherProjectBudgetsWhenOneBecomesPedido(t *testing.T) {
 	env := newIntegrationTestEnv(t)
 	token := env.createAdminToken(t)
 	seed := env.seedBudgetData(t, uniqueSuffix())
+	otherInstallerSeed := env.seedBudgetData(t, uniqueSuffix())
 	orcamentoStatusID := insertNamedBudgetStatus(t, env, "ORCAMENTO", "ORCAMENTO", false, 1)
 	pedidoStatusID := insertNamedBudgetStatus(t, env, "PEDIDO", "PEDIDO", true, 2)
-	canceladoStatusID := insertNamedBudgetStatus(t, env, "CANCELADO", "CANCELADO", true, 3)
 	seed.statusID = orcamentoStatusID
+	otherInstallerSeed.statusID = orcamentoStatusID
+	otherInstallerSeed.projectID = seed.projectID
 
 	createFirstBudgetResponse := env.doJSONRequest(
 		t,
@@ -292,8 +295,28 @@ func TestBudgetStatusHistoryShouldCancelOtherProjectBudgetsWhenOneBecomesPedido(
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, createSecondBudgetResponse.Code)
 	}
 
+	createThirdBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/budgets",
+		token,
+		buildBudgetRequestBody(
+			"GRP-003",
+			2026,
+			time.Date(2026, time.July, 3, 10, 0, 0, 0, time.UTC),
+			3400,
+			otherInstallerSeed,
+			"Projetista Grupo 3",
+			"Concorrente Grupo 3",
+		),
+	)
+	if createThirdBudgetResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createThirdBudgetResponse.Code)
+	}
+
 	firstBudgetPayload := decodeJSONResponse[createResourceResponse](t, createFirstBudgetResponse.Body)
 	secondBudgetPayload := decodeJSONResponse[createResourceResponse](t, createSecondBudgetResponse.Body)
+	thirdBudgetPayload := decodeJSONResponse[createResourceResponse](t, createThirdBudgetResponse.Body)
 
 	changeStatusResponse := env.doJSONRequest(
 		t,
@@ -328,13 +351,28 @@ func TestBudgetStatusHistoryShouldCancelOtherProjectBudgetsWhenOneBecomesPedido(
 		t.Fatalf("expected status %d, got %d", http.StatusOK, getSecondBudgetResponse.Code)
 	}
 
+	getThirdBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		fmt.Sprintf("/budgets/%d", thirdBudgetPayload.ID),
+		token,
+		"",
+	)
+	if getThirdBudgetResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, getThirdBudgetResponse.Code)
+	}
+
 	firstBudget := decodeJSONResponse[dto.BudgetResponse](t, getFirstBudgetResponse.Body)
 	secondBudget := decodeJSONResponse[dto.BudgetResponse](t, getSecondBudgetResponse.Body)
+	thirdBudget := decodeJSONResponse[dto.BudgetResponse](t, getThirdBudgetResponse.Body)
 	if firstBudget.StatusID != pedidoStatusID {
 		t.Fatalf("expected first budget status id %d, got %d", pedidoStatusID, firstBudget.StatusID)
 	}
-	if secondBudget.StatusID != canceladoStatusID {
-		t.Fatalf("expected second budget status id %d, got %d", canceladoStatusID, secondBudget.StatusID)
+	if secondBudget.StatusID != orcamentoStatusID {
+		t.Fatalf("expected second budget status id %d, got %d", orcamentoStatusID, secondBudget.StatusID)
+	}
+	if thirdBudget.StatusID != orcamentoStatusID {
+		t.Fatalf("expected third budget status id %d, got %d", orcamentoStatusID, thirdBudget.StatusID)
 	}
 
 	firstHistoryResponse := env.doJSONRequest(
@@ -359,13 +397,28 @@ func TestBudgetStatusHistoryShouldCancelOtherProjectBudgetsWhenOneBecomesPedido(
 		t.Fatalf("expected status %d, got %d", http.StatusOK, secondHistoryResponse.Code)
 	}
 
+	thirdHistoryResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		fmt.Sprintf("/budgets/%d/status-history", thirdBudgetPayload.ID),
+		token,
+		"",
+	)
+	if thirdHistoryResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, thirdHistoryResponse.Code)
+	}
+
 	firstHistoryPayload := decodeJSONResponse[[]dto.BudgetStatusHistoryResponse](t, firstHistoryResponse.Body)
 	secondHistoryPayload := decodeJSONResponse[[]dto.BudgetStatusHistoryResponse](t, secondHistoryResponse.Body)
+	thirdHistoryPayload := decodeJSONResponse[[]dto.BudgetStatusHistoryResponse](t, thirdHistoryResponse.Body)
 	if len(firstHistoryPayload) != 1 {
 		t.Fatalf("expected 1 first history item, got %d", len(firstHistoryPayload))
 	}
-	if len(secondHistoryPayload) != 1 {
-		t.Fatalf("expected 1 second history item, got %d", len(secondHistoryPayload))
+	if len(secondHistoryPayload) != 0 {
+		t.Fatalf("expected 0 second history items for same installer budget, got %d", len(secondHistoryPayload))
+	}
+	if len(thirdHistoryPayload) != 0 {
+		t.Fatalf("expected 0 third history items for isolated status-history flow, got %d", len(thirdHistoryPayload))
 	}
 	if firstHistoryPayload[0].FromStatusID == nil || *firstHistoryPayload[0].FromStatusID != orcamentoStatusID {
 		t.Fatalf("expected first budget from_status_id %d, got %v", orcamentoStatusID, firstHistoryPayload[0].FromStatusID)
@@ -373,24 +426,19 @@ func TestBudgetStatusHistoryShouldCancelOtherProjectBudgetsWhenOneBecomesPedido(
 	if firstHistoryPayload[0].ToStatusID != pedidoStatusID {
 		t.Fatalf("expected first budget to_status_id %d, got %d", pedidoStatusID, firstHistoryPayload[0].ToStatusID)
 	}
-	if secondHistoryPayload[0].FromStatusID == nil || *secondHistoryPayload[0].FromStatusID != orcamentoStatusID {
-		t.Fatalf("expected second budget from_status_id %d, got %v", orcamentoStatusID, secondHistoryPayload[0].FromStatusID)
-	}
-	if secondHistoryPayload[0].ToStatusID != canceladoStatusID {
-		t.Fatalf("expected second budget to_status_id %d, got %d", canceladoStatusID, secondHistoryPayload[0].ToStatusID)
-	}
-	if secondHistoryPayload[0].Notes != automaticProjectCancellationNote {
-		t.Fatalf("expected automatic cancellation note, got %s", secondHistoryPayload[0].Notes)
-	}
 }
 
-func TestBudgetUpdateShouldNotCancelOtherProjectBudgetsWhenOneBecomesPedido(t *testing.T) {
+func TestBudgetUpdateShouldCancelOnlyOtherInstallerProjectBudgetsWhenOneBecomesPedido(t *testing.T) {
 	env := newIntegrationTestEnv(t)
 	token := env.createAdminToken(t)
 	seed := env.seedBudgetData(t, uniqueSuffix())
+	otherInstallerSeed := env.seedBudgetData(t, uniqueSuffix())
 	emNegociacaoStatusID := getBudgetStatusIDByName(t, env, "Em Negociacao")
+	canceladoStatusID := insertNamedBudgetStatus(t, env, "CANCELADO", "Cancelado "+uniqueSuffix(), true, 3)
 	pedidoStatusID := insertNamedBudgetStatus(t, env, "PEDIDO", "Pedido "+uniqueSuffix(), true, 2)
 	seed.statusID = emNegociacaoStatusID
+	otherInstallerSeed.statusID = emNegociacaoStatusID
+	otherInstallerSeed.projectID = seed.projectID
 
 	createFirstBudgetResponse := env.doJSONRequest(
 		t,
@@ -430,8 +478,28 @@ func TestBudgetUpdateShouldNotCancelOtherProjectBudgetsWhenOneBecomesPedido(t *t
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, createSecondBudgetResponse.Code)
 	}
 
+	createThirdBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/budgets",
+		token,
+		buildBudgetRequestBody(
+			"GRP-UPD-003",
+			2026,
+			time.Date(2026, time.September, 3, 10, 0, 0, 0, time.UTC),
+			4400,
+			otherInstallerSeed,
+			"Projetista Grupo Update 3",
+			"Concorrente Grupo Update 3",
+		),
+	)
+	if createThirdBudgetResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createThirdBudgetResponse.Code)
+	}
+
 	firstBudgetPayload := decodeJSONResponse[createResourceResponse](t, createFirstBudgetResponse.Body)
 	secondBudgetPayload := decodeJSONResponse[createResourceResponse](t, createSecondBudgetResponse.Body)
+	thirdBudgetPayload := decodeJSONResponse[createResourceResponse](t, createThirdBudgetResponse.Body)
 
 	updateFirstBudgetResponse := env.doJSONRequest(
 		t,
@@ -504,17 +572,287 @@ func TestBudgetUpdateShouldNotCancelOtherProjectBudgetsWhenOneBecomesPedido(t *t
 	if secondBudget.StatusID != emNegociacaoStatusID {
 		t.Fatalf("expected second budget status id %d, got %d", emNegociacaoStatusID, secondBudget.StatusID)
 	}
+
+	getThirdBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		fmt.Sprintf("/budgets/%d", thirdBudgetPayload.ID),
+		token,
+		"",
+	)
+	if getThirdBudgetResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, getThirdBudgetResponse.Code)
+	}
+
+	thirdBudget := decodeJSONResponse[dto.BudgetResponse](t, getThirdBudgetResponse.Body)
+	if thirdBudget.StatusID != canceladoStatusID {
+		t.Fatalf("expected third budget status id %d, got %d", canceladoStatusID, thirdBudget.StatusID)
+	}
+
+	secondHistoryResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		fmt.Sprintf("/budgets/%d/status-history", secondBudgetPayload.ID),
+		token,
+		"",
+	)
+	if secondHistoryResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, secondHistoryResponse.Code)
+	}
+
+	thirdHistoryResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		fmt.Sprintf("/budgets/%d/status-history", thirdBudgetPayload.ID),
+		token,
+		"",
+	)
+	if thirdHistoryResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, thirdHistoryResponse.Code)
+	}
+
+	secondHistoryPayload := decodeJSONResponse[[]dto.BudgetStatusHistoryResponse](t, secondHistoryResponse.Body)
+	thirdHistoryPayload := decodeJSONResponse[[]dto.BudgetStatusHistoryResponse](t, thirdHistoryResponse.Body)
+	if len(secondHistoryPayload) != 0 {
+		t.Fatalf("expected no automatic history for same installer budget, got %d", len(secondHistoryPayload))
+	}
+	if len(thirdHistoryPayload) != 1 {
+		t.Fatalf("expected 1 automatic cancellation history for other installer budget, got %d", len(thirdHistoryPayload))
+	}
+	if thirdHistoryPayload[0].Notes != automaticProjectCancellationNote {
+		t.Fatalf("expected automatic cancellation note, got %s", thirdHistoryPayload[0].Notes)
+	}
 }
 
-func TestBudgetElectWinnerShouldCancelOtherProjectBudgets(t *testing.T) {
+func TestBudgetUpdateShouldNotCancelOtherProjectBudgetsWithoutInstallerWhenOneBecomesPedido(t *testing.T) {
 	env := newIntegrationTestEnv(t)
 	token := env.createAdminToken(t)
 	seed := env.seedBudgetData(t, uniqueSuffix())
+	otherInstallerSeed := env.seedBudgetData(t, uniqueSuffix())
+	emNegociacaoStatusID := getBudgetStatusIDByName(t, env, "Em Negociacao")
+	pedidoStatusID := insertNamedBudgetStatus(t, env, "PEDIDO", "Pedido "+uniqueSuffix(), true, 2)
+	seed.statusID = emNegociacaoStatusID
+	otherInstallerSeed.statusID = emNegociacaoStatusID
+	otherInstallerSeed.projectID = seed.projectID
+
+	createFirstBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/budgets",
+		token,
+		buildBudgetRequestBody(
+			"GRP-UPD-NOINSTALLER-001",
+			2026,
+			time.Date(2026, time.September, 1, 10, 0, 0, 0, time.UTC),
+			4200,
+			seed,
+			"Projetista Grupo Update Sem Instalador 1",
+			"Concorrente Grupo Update Sem Instalador 1",
+		),
+	)
+	if createFirstBudgetResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createFirstBudgetResponse.Code)
+	}
+
+	createSecondBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/budgets",
+		token,
+		buildBudgetRequestBody(
+			"GRP-UPD-NOINSTALLER-002",
+			2026,
+			time.Date(2026, time.September, 2, 10, 0, 0, 0, time.UTC),
+			4300,
+			otherInstallerSeed,
+			"Projetista Grupo Update Sem Instalador 2",
+			"Concorrente Grupo Update Sem Instalador 2",
+		),
+	)
+	if createSecondBudgetResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createSecondBudgetResponse.Code)
+	}
+
+	firstBudgetPayload := decodeJSONResponse[createResourceResponse](t, createFirstBudgetResponse.Body)
+	secondBudgetPayload := decodeJSONResponse[createResourceResponse](t, createSecondBudgetResponse.Body)
+
+	updateFirstBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodPut,
+		fmt.Sprintf("/budgets/%d", firstBudgetPayload.ID),
+		token,
+		fmt.Sprintf(`{
+			"budget_number":"GRP-UPD-NOINSTALLER-001",
+			"year_budget":2026,
+			"revision":0,
+			"sent_at":"%s",
+			"gross_value":4200.00,
+			"commission_value":100.00,
+			"area_m2":35.00,
+			"status_id":%d,
+			"priority_id":%d,
+			"installer_id":null,
+			"project_id":%d,
+			"salesperson_id":%d,
+			"contact_id":null,
+			"loss_reason_id":%d,
+			"construction_company":"Construtora Teste",
+			"competitor_name":"Concorrente Grupo Update Sem Instalador 1",
+			"competitor_price":900.00,
+			"projetista_name":"Projetista Grupo Update Sem Instalador 1",
+			"specification_details":"Especificacao de teste",
+			"current_follow_up":"Follow up inicial"
+		}`,
+			time.Date(2026, time.September, 1, 10, 0, 0, 0, time.UTC).Format(time.RFC3339),
+			pedidoStatusID,
+			seed.priorityID,
+			seed.projectID,
+			seed.salespersonID,
+			seed.lossReasonID,
+		),
+	)
+	if updateFirstBudgetResponse.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d", http.StatusNoContent, updateFirstBudgetResponse.Code)
+	}
+
+	getSecondBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		fmt.Sprintf("/budgets/%d", secondBudgetPayload.ID),
+		token,
+		"",
+	)
+	if getSecondBudgetResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, getSecondBudgetResponse.Code)
+	}
+
+	secondBudget := decodeJSONResponse[dto.BudgetResponse](t, getSecondBudgetResponse.Body)
+	if secondBudget.StatusID != emNegociacaoStatusID {
+		t.Fatalf("expected second budget status id %d, got %d", emNegociacaoStatusID, secondBudget.StatusID)
+	}
+}
+
+func TestBudgetUpdateShouldNotCancelOtherProjectBudgetsWithoutProjectWhenOneBecomesPedido(t *testing.T) {
+	env := newIntegrationTestEnv(t)
+	token := env.createAdminToken(t)
+	seed := env.seedBudgetData(t, uniqueSuffix())
+	otherInstallerSeed := env.seedBudgetData(t, uniqueSuffix())
+	emNegociacaoStatusID := getBudgetStatusIDByName(t, env, "Em Negociacao")
+	pedidoStatusID := insertNamedBudgetStatus(t, env, "PEDIDO", "Pedido "+uniqueSuffix(), true, 2)
+	seed.statusID = emNegociacaoStatusID
+	otherInstallerSeed.statusID = emNegociacaoStatusID
+	otherInstallerSeed.projectID = seed.projectID
+
+	createFirstBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/budgets",
+		token,
+		buildBudgetRequestBody(
+			"GRP-UPD-NOPROJECT-001",
+			2026,
+			time.Date(2026, time.September, 1, 10, 0, 0, 0, time.UTC),
+			4200,
+			seed,
+			"Projetista Grupo Update Sem Obra 1",
+			"Concorrente Grupo Update Sem Obra 1",
+		),
+	)
+	if createFirstBudgetResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createFirstBudgetResponse.Code)
+	}
+
+	createSecondBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/budgets",
+		token,
+		buildBudgetRequestBody(
+			"GRP-UPD-NOPROJECT-002",
+			2026,
+			time.Date(2026, time.September, 2, 10, 0, 0, 0, time.UTC),
+			4300,
+			otherInstallerSeed,
+			"Projetista Grupo Update Sem Obra 2",
+			"Concorrente Grupo Update Sem Obra 2",
+		),
+	)
+	if createSecondBudgetResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createSecondBudgetResponse.Code)
+	}
+
+	firstBudgetPayload := decodeJSONResponse[createResourceResponse](t, createFirstBudgetResponse.Body)
+	secondBudgetPayload := decodeJSONResponse[createResourceResponse](t, createSecondBudgetResponse.Body)
+
+	updateFirstBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodPut,
+		fmt.Sprintf("/budgets/%d", firstBudgetPayload.ID),
+		token,
+		fmt.Sprintf(`{
+			"budget_number":"GRP-UPD-NOPROJECT-001",
+			"year_budget":2026,
+			"revision":0,
+			"sent_at":"%s",
+			"gross_value":4200.00,
+			"commission_value":100.00,
+			"area_m2":35.00,
+			"status_id":%d,
+			"priority_id":%d,
+			"installer_id":%d,
+			"project_id":null,
+			"salesperson_id":%d,
+			"contact_id":%d,
+			"loss_reason_id":%d,
+			"construction_company":"Construtora Teste",
+			"competitor_name":"Concorrente Grupo Update Sem Obra 1",
+			"competitor_price":900.00,
+			"projetista_name":"Projetista Grupo Update Sem Obra 1",
+			"specification_details":"Especificacao de teste",
+			"current_follow_up":"Follow up inicial"
+		}`,
+			time.Date(2026, time.September, 1, 10, 0, 0, 0, time.UTC).Format(time.RFC3339),
+			pedidoStatusID,
+			seed.priorityID,
+			seed.installerID,
+			seed.salespersonID,
+			seed.contactID,
+			seed.lossReasonID,
+		),
+	)
+	if updateFirstBudgetResponse.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d", http.StatusNoContent, updateFirstBudgetResponse.Code)
+	}
+
+	getSecondBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		fmt.Sprintf("/budgets/%d", secondBudgetPayload.ID),
+		token,
+		"",
+	)
+	if getSecondBudgetResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, getSecondBudgetResponse.Code)
+	}
+
+	secondBudget := decodeJSONResponse[dto.BudgetResponse](t, getSecondBudgetResponse.Body)
+	if secondBudget.StatusID != emNegociacaoStatusID {
+		t.Fatalf("expected second budget status id %d, got %d", emNegociacaoStatusID, secondBudget.StatusID)
+	}
+}
+
+func TestBudgetElectWinnerShouldCancelOnlyOtherInstallerProjectBudgets(t *testing.T) {
+	env := newIntegrationTestEnv(t)
+	token := env.createAdminToken(t)
+	seed := env.seedBudgetData(t, uniqueSuffix())
+	otherInstallerSeed := env.seedBudgetData(t, uniqueSuffix())
 	statusSuffix := uniqueSuffix()
 	emNegociacaoStatusID := getBudgetStatusIDByName(t, env, "Em Negociacao")
 	pedidoStatusID := insertNamedBudgetStatus(t, env, "PEDIDO", "Pedido "+statusSuffix, true, 2)
 	canceladoStatusID := insertNamedBudgetStatus(t, env, "CANCELADO", "Cancelado "+statusSuffix, true, 3)
 	seed.statusID = emNegociacaoStatusID
+	otherInstallerSeed.statusID = emNegociacaoStatusID
+	otherInstallerSeed.projectID = seed.projectID
 
 	createFirstBudgetResponse := env.doJSONRequest(
 		t,
@@ -554,8 +892,28 @@ func TestBudgetElectWinnerShouldCancelOtherProjectBudgets(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, createSecondBudgetResponse.Code)
 	}
 
+	createThirdBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/budgets",
+		token,
+		buildBudgetRequestBody(
+			"GRP-WIN-003",
+			2026,
+			time.Date(2026, time.September, 3, 10, 0, 0, 0, time.UTC),
+			4400,
+			otherInstallerSeed,
+			"Projetista Grupo Winner 3",
+			"Concorrente Grupo Winner 3",
+		),
+	)
+	if createThirdBudgetResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createThirdBudgetResponse.Code)
+	}
+
 	firstBudgetPayload := decodeJSONResponse[createResourceResponse](t, createFirstBudgetResponse.Body)
 	secondBudgetPayload := decodeJSONResponse[createResourceResponse](t, createSecondBudgetResponse.Body)
+	thirdBudgetPayload := decodeJSONResponse[createResourceResponse](t, createThirdBudgetResponse.Body)
 
 	electWinnerResponse := env.doJSONRequest(
 		t,
@@ -595,8 +953,24 @@ func TestBudgetElectWinnerShouldCancelOtherProjectBudgets(t *testing.T) {
 	if firstBudget.StatusID != pedidoStatusID {
 		t.Fatalf("expected first budget status id %d, got %d", pedidoStatusID, firstBudget.StatusID)
 	}
-	if secondBudget.StatusID != canceladoStatusID {
-		t.Fatalf("expected second budget status id %d, got %d", canceladoStatusID, secondBudget.StatusID)
+	if secondBudget.StatusID != emNegociacaoStatusID {
+		t.Fatalf("expected second budget status id %d, got %d", emNegociacaoStatusID, secondBudget.StatusID)
+	}
+
+	getThirdBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		fmt.Sprintf("/budgets/%d", thirdBudgetPayload.ID),
+		token,
+		"",
+	)
+	if getThirdBudgetResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, getThirdBudgetResponse.Code)
+	}
+
+	thirdBudget := decodeJSONResponse[dto.BudgetResponse](t, getThirdBudgetResponse.Body)
+	if thirdBudget.StatusID != canceladoStatusID {
+		t.Fatalf("expected third budget status id %d, got %d", canceladoStatusID, thirdBudget.StatusID)
 	}
 
 	secondHistoryResponse := env.doJSONRequest(
@@ -610,24 +984,42 @@ func TestBudgetElectWinnerShouldCancelOtherProjectBudgets(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, secondHistoryResponse.Code)
 	}
 
-	secondHistoryPayload := decodeJSONResponse[[]dto.BudgetStatusHistoryResponse](t, secondHistoryResponse.Body)
-	if len(secondHistoryPayload) != 1 {
-		t.Fatalf("expected 1 history item for automatic cancellation, got %d", len(secondHistoryPayload))
+	thirdHistoryResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		fmt.Sprintf("/budgets/%d/status-history", thirdBudgetPayload.ID),
+		token,
+		"",
+	)
+	if thirdHistoryResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, thirdHistoryResponse.Code)
 	}
-	if secondHistoryPayload[0].Notes != automaticProjectCancellationNote {
-		t.Fatalf("expected automatic cancellation note, got %s", secondHistoryPayload[0].Notes)
+
+	secondHistoryPayload := decodeJSONResponse[[]dto.BudgetStatusHistoryResponse](t, secondHistoryResponse.Body)
+	thirdHistoryPayload := decodeJSONResponse[[]dto.BudgetStatusHistoryResponse](t, thirdHistoryResponse.Body)
+	if len(secondHistoryPayload) != 0 {
+		t.Fatalf("expected no history item for same installer complementary budget, got %d", len(secondHistoryPayload))
+	}
+	if len(thirdHistoryPayload) != 1 {
+		t.Fatalf("expected 1 history item for other installer automatic cancellation, got %d", len(thirdHistoryPayload))
+	}
+	if thirdHistoryPayload[0].Notes != automaticProjectCancellationNote {
+		t.Fatalf("expected automatic cancellation note, got %s", thirdHistoryPayload[0].Notes)
 	}
 }
 
-func TestBudgetElectWinnerShouldReplacePreviousWinnerFromSameProject(t *testing.T) {
+func TestBudgetElectWinnerShouldReplacePreviousWinnerFromDifferentInstallerAndRestoreCurrentInstallerBudgets(t *testing.T) {
 	env := newIntegrationTestEnv(t)
 	token := env.createAdminToken(t)
 	seed := env.seedBudgetData(t, uniqueSuffix())
+	otherInstallerSeed := env.seedBudgetData(t, uniqueSuffix())
 	statusSuffix := uniqueSuffix()
 	emNegociacaoStatusID := getBudgetStatusIDByName(t, env, "Em Negociacao")
 	pedidoStatusID := insertNamedBudgetStatus(t, env, "PEDIDO", "Pedido "+statusSuffix, true, 2)
 	canceladoStatusID := insertNamedBudgetStatus(t, env, "CANCELADO", "Cancelado "+statusSuffix, true, 3)
 	seed.statusID = emNegociacaoStatusID
+	otherInstallerSeed.statusID = emNegociacaoStatusID
+	otherInstallerSeed.projectID = seed.projectID
 
 	createFirstBudgetResponse := env.doJSONRequest(
 		t,
@@ -658,7 +1050,7 @@ func TestBudgetElectWinnerShouldReplacePreviousWinnerFromSameProject(t *testing.
 			2026,
 			time.Date(2026, time.August, 2, 10, 0, 0, 0, time.UTC),
 			3500,
-			seed,
+			otherInstallerSeed,
 			"Projetista Grupo 4",
 			"Concorrente Grupo 4",
 		),
@@ -667,8 +1059,28 @@ func TestBudgetElectWinnerShouldReplacePreviousWinnerFromSameProject(t *testing.
 		t.Fatalf("expected status %d, got %d", http.StatusCreated, createSecondBudgetResponse.Code)
 	}
 
+	createThirdBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodPost,
+		"/budgets",
+		token,
+		buildBudgetRequestBody(
+			"GRP-005",
+			2026,
+			time.Date(2026, time.August, 3, 10, 0, 0, 0, time.UTC),
+			3600,
+			otherInstallerSeed,
+			"Projetista Grupo 5",
+			"Concorrente Grupo 5",
+		),
+	)
+	if createThirdBudgetResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createThirdBudgetResponse.Code)
+	}
+
 	firstBudgetPayload := decodeJSONResponse[createResourceResponse](t, createFirstBudgetResponse.Body)
 	secondBudgetPayload := decodeJSONResponse[createResourceResponse](t, createSecondBudgetResponse.Body)
+	thirdBudgetPayload := decodeJSONResponse[createResourceResponse](t, createThirdBudgetResponse.Body)
 
 	firstWinnerResponse := env.doJSONRequest(
 		t,
@@ -684,7 +1096,7 @@ func TestBudgetElectWinnerShouldReplacePreviousWinnerFromSameProject(t *testing.
 	secondWinnerResponse := env.doJSONRequest(
 		t,
 		http.MethodPost,
-		fmt.Sprintf("/budgets/%d/elect-winner", secondBudgetPayload.ID),
+		fmt.Sprintf("/budgets/%d/elect-winner", thirdBudgetPayload.ID),
 		token,
 		`{"notes":"Troca do vencedor da obra"}`,
 	)
@@ -714,13 +1126,28 @@ func TestBudgetElectWinnerShouldReplacePreviousWinnerFromSameProject(t *testing.
 		t.Fatalf("expected status %d, got %d", http.StatusOK, getSecondBudgetResponse.Code)
 	}
 
+	getThirdBudgetResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		fmt.Sprintf("/budgets/%d", thirdBudgetPayload.ID),
+		token,
+		"",
+	)
+	if getThirdBudgetResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, getThirdBudgetResponse.Code)
+	}
+
 	firstBudget := decodeJSONResponse[dto.BudgetResponse](t, getFirstBudgetResponse.Body)
 	secondBudget := decodeJSONResponse[dto.BudgetResponse](t, getSecondBudgetResponse.Body)
+	thirdBudget := decodeJSONResponse[dto.BudgetResponse](t, getThirdBudgetResponse.Body)
 	if firstBudget.StatusID != canceladoStatusID {
 		t.Fatalf("expected first budget status id %d, got %d", canceladoStatusID, firstBudget.StatusID)
 	}
-	if secondBudget.StatusID != pedidoStatusID {
-		t.Fatalf("expected second budget status id %d, got %d", pedidoStatusID, secondBudget.StatusID)
+	if secondBudget.StatusID != emNegociacaoStatusID {
+		t.Fatalf("expected second budget status id %d, got %d", emNegociacaoStatusID, secondBudget.StatusID)
+	}
+	if thirdBudget.StatusID != pedidoStatusID {
+		t.Fatalf("expected third budget status id %d, got %d", pedidoStatusID, thirdBudget.StatusID)
 	}
 
 	firstHistoryResponse := env.doJSONRequest(
@@ -745,19 +1172,37 @@ func TestBudgetElectWinnerShouldReplacePreviousWinnerFromSameProject(t *testing.
 		t.Fatalf("expected status %d, got %d", http.StatusOK, secondHistoryResponse.Code)
 	}
 
+	thirdHistoryResponse := env.doJSONRequest(
+		t,
+		http.MethodGet,
+		fmt.Sprintf("/budgets/%d/status-history", thirdBudgetPayload.ID),
+		token,
+		"",
+	)
+	if thirdHistoryResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, thirdHistoryResponse.Code)
+	}
+
 	firstHistoryPayload := decodeJSONResponse[[]dto.BudgetStatusHistoryResponse](t, firstHistoryResponse.Body)
 	secondHistoryPayload := decodeJSONResponse[[]dto.BudgetStatusHistoryResponse](t, secondHistoryResponse.Body)
+	thirdHistoryPayload := decodeJSONResponse[[]dto.BudgetStatusHistoryResponse](t, thirdHistoryResponse.Body)
 	if len(firstHistoryPayload) < 3 {
 		t.Fatalf("expected at least 3 history items for previous winner, got %d", len(firstHistoryPayload))
 	}
 	if len(secondHistoryPayload) < 2 {
-		t.Fatalf("expected at least 2 history items for new winner, got %d", len(secondHistoryPayload))
+		t.Fatalf("expected at least 2 history items for restored current installer budget, got %d", len(secondHistoryPayload))
 	}
-	if firstHistoryPayload[0].Notes != "Cancelado automaticamente porque outro orcamento da obra foi marcado como PEDIDO" {
+	if len(thirdHistoryPayload) < 2 {
+		t.Fatalf("expected at least 2 history items for new winner, got %d", len(thirdHistoryPayload))
+	}
+	if firstHistoryPayload[0].Notes != automaticProjectCancellationNote {
 		t.Fatalf("expected latest first budget history note to be automatic cancellation, got %s", firstHistoryPayload[0].Notes)
 	}
-	if secondHistoryPayload[0].ToStatusID != pedidoStatusID {
-		t.Fatalf("expected latest second budget to_status_id %d, got %d", pedidoStatusID, secondHistoryPayload[0].ToStatusID)
+	if secondHistoryPayload[0].Notes != automaticProjectRestorationNote {
+		t.Fatalf("expected latest second budget history note to be automatic restoration, got %s", secondHistoryPayload[0].Notes)
+	}
+	if thirdHistoryPayload[0].ToStatusID != pedidoStatusID {
+		t.Fatalf("expected latest third budget to_status_id %d, got %d", pedidoStatusID, thirdHistoryPayload[0].ToStatusID)
 	}
 }
 

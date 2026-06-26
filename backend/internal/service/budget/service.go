@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -11,10 +13,12 @@ import (
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/apperror"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/budgetpriority"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/dto"
+	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/logger"
 	"github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/model"
 	budgetrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budget"
 	budgetstatusrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/budgetstatus"
 	estimatorrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/estimator"
+	noticerepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/notice"
 	priorityrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/priority"
 	salespersonrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/salesperson"
 	userrepository "github.com/MarcosHRFerreira/go-gerenciador-orcamento-deck/internal/repository/user"
@@ -36,6 +40,7 @@ type service struct {
 	repo             budgetrepository.Repository
 	budgetStatusRepo budgetstatusrepository.Repository
 	priorityRepo     priorityrepository.Repository
+	noticeRepo       noticerepository.Repository
 	userRepo         userrepository.Repository
 	salespersonRepo  salespersonrepository.Repository
 	estimatorRepo    estimatorrepository.Repository
@@ -48,11 +53,18 @@ func NewService(
 	userRepo userrepository.Repository,
 	salespersonRepo salespersonrepository.Repository,
 	estimatorRepo estimatorrepository.Repository,
+	noticeRepos ...noticerepository.Repository,
 ) Service {
+	var noticeRepo noticerepository.Repository
+	if len(noticeRepos) > 0 {
+		noticeRepo = noticeRepos[0]
+	}
+
 	return &service{
 		repo:             repo,
 		budgetStatusRepo: budgetStatusRepo,
 		priorityRepo:     priorityRepo,
+		noticeRepo:       noticeRepo,
 		userRepo:         userRepo,
 		salespersonRepo:  salespersonRepo,
 		estimatorRepo:    estimatorRepo,
@@ -373,6 +385,25 @@ func (s *service) Update(ctx context.Context, budgetID int64, role model.UserRol
 		return mapBudgetPersistenceError("update", err)
 	}
 
+	if changeStatusParams.ApplyInstallerScopedRule {
+		noticeBudget := mergeBudgetClosingNoticeSnapshot(currentBudget, updateItem)
+		updatedBudget, getErr := s.repo.GetByIDScoped(ctx, budgetID, scope.RestrictedSalespersonID, scope.RestrictedEstimatorID)
+		if getErr != nil {
+			logBudgetWarn(
+				ctx,
+				"Falha ao recarregar orcamento apos fechamento para emissao de aviso automatico",
+				slog.Int64("budget_id", budgetID),
+				slog.Any("error", getErr),
+			)
+		} else if updatedBudget != nil {
+			noticeBudget = updatedBudget
+		}
+
+		if shouldCreateBudgetClosingNotice(noticeBudget) {
+			s.tryCreateBudgetClosingNotice(ctx, changeStatusParams.UserID, noticeBudget)
+		}
+	}
+
 	return nil
 }
 
@@ -453,6 +484,23 @@ func (s *service) ElectProjectWinner(
 		}
 
 		return apperror.Internal("failed to elect project winner", err)
+	}
+
+	noticeBudget := currentBudget
+	updatedBudget, getErr := s.repo.GetByIDScoped(ctx, budgetID, scope.RestrictedSalespersonID, scope.RestrictedEstimatorID)
+	if getErr != nil {
+		logBudgetWarn(
+			ctx,
+			"Falha ao recarregar orcamento apos definicao do vencedor para emissao de aviso automatico",
+			slog.Int64("budget_id", budgetID),
+			slog.Any("error", getErr),
+		)
+	} else if updatedBudget != nil {
+		noticeBudget = updatedBudget
+	}
+
+	if shouldCreateBudgetClosingNotice(noticeBudget) {
+		s.tryCreateBudgetClosingNotice(ctx, userID, noticeBudget)
 	}
 
 	return nil
@@ -871,6 +919,282 @@ func parseOptionalDeliveryDate(value *string) (sql.NullTime, error) {
 	}, nil
 }
 
+func mergeBudgetClosingNoticeSnapshot(currentBudget *model.BudgetModel, updateItem *model.BudgetModel) *model.BudgetModel {
+	if currentBudget == nil && updateItem == nil {
+		return nil
+	}
+	if currentBudget == nil {
+		budgetCopy := *updateItem
+		return &budgetCopy
+	}
+	if updateItem == nil {
+		budgetCopy := *currentBudget
+		return &budgetCopy
+	}
+
+	mergedBudget := *currentBudget
+	mergedBudget.BudgetNumber = updateItem.BudgetNumber
+	mergedBudget.YearBudget = updateItem.YearBudget
+	mergedBudget.StatusID = updateItem.StatusID
+	mergedBudget.InstallerID = updateItem.InstallerID
+	mergedBudget.ProjectID = updateItem.ProjectID
+	mergedBudget.SalespersonID = updateItem.SalespersonID
+	mergedBudget.ConstructionCompany = updateItem.ConstructionCompany
+
+	return &mergedBudget
+}
+
+func shouldCreateBudgetClosingNotice(budget *model.BudgetModel) bool {
+	if budget == nil {
+		return false
+	}
+
+	return budget.ProjectID.Valid && budget.InstallerID.Valid
+}
+
+func (s *service) tryCreateBudgetClosingNotice(ctx context.Context, actorUserID int64, budget *model.BudgetModel) {
+	if s.noticeRepo == nil || budget == nil {
+		return
+	}
+
+	senderUser, err := s.resolveBudgetClosingNoticeSenderUser(ctx, actorUserID)
+	if err != nil {
+		logBudgetWarn(
+			ctx,
+			"Envio de aviso automatico ignorado por falha ao resolver autor tecnico",
+			slog.Int64("budget_id", budget.ID),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	recipientUserIDs, err := s.resolveBudgetClosingNoticeRecipientUserIDs(ctx, budget)
+	if err != nil {
+		logBudgetWarn(
+			ctx,
+			"Envio de aviso automatico ignorado por falha ao resolver destinatarios",
+			slog.Int64("budget_id", budget.ID),
+			slog.Any("error", err),
+		)
+		return
+	}
+	if len(recipientUserIDs) == 0 {
+		logBudgetWarn(
+			ctx,
+			"Envio de aviso automatico ignorado por falta de destinatarios elegiveis",
+			slog.Int64("budget_id", budget.ID),
+		)
+		return
+	}
+
+	sentAt := time.Now()
+	if _, err := s.noticeRepo.Create(ctx, &model.NoticeModel{
+		Title:           buildBudgetClosingNoticeTitle(budget),
+		Body:            buildBudgetClosingNoticeBody(budget),
+		ScopeType:       model.NoticeScopeUsers,
+		Priority:        model.NoticePriorityInfo,
+		Pinned:          false,
+		ExpiresAt:       nil,
+		CreatedByUserID: senderUser.ID,
+		CreatedAt:       sentAt,
+		UpdatedAt:       sentAt,
+	}, recipientUserIDs); err != nil {
+		logBudgetWarn(
+			ctx,
+			"Falha ao criar aviso automatico de fechamento de orcamento",
+			slog.Int64("budget_id", budget.ID),
+			slog.Any("error", err),
+		)
+	}
+}
+
+func (s *service) resolveBudgetClosingNoticeSenderUser(ctx context.Context, actorUserID int64) (*model.UserModel, error) {
+	if actorUserID > 0 {
+		actorUser, err := s.userRepo.GetUserByID(ctx, actorUserID)
+		if err != nil {
+			return nil, fmt.Errorf("load actor user: %w", err)
+		}
+		if actorUser != nil && actorUser.Active && actorUser.Role == model.RoleAdmin {
+			return actorUser, nil
+		}
+	}
+
+	adminUsers, err := s.resolveActiveAdminUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(adminUsers) == 0 {
+		return nil, sql.ErrNoRows
+	}
+
+	return adminUsers[0], nil
+}
+
+func (s *service) resolveBudgetClosingNoticeRecipientUserIDs(ctx context.Context, budget *model.BudgetModel) ([]int64, error) {
+	adminUsers, err := s.resolveActiveAdminUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	recipientUserIDs := make([]int64, 0, len(adminUsers)+1)
+	recipientUserIDsSet := make(map[int64]struct{}, len(adminUsers)+1)
+	appendRecipient := func(userID int64) {
+		if userID <= 0 {
+			return
+		}
+		if _, exists := recipientUserIDsSet[userID]; exists {
+			return
+		}
+
+		recipientUserIDsSet[userID] = struct{}{}
+		recipientUserIDs = append(recipientUserIDs, userID)
+	}
+
+	if budget.SalespersonID.Valid {
+		salesperson, err := s.salespersonRepo.GetByID(ctx, budget.SalespersonID.Int64)
+		if err != nil {
+			return nil, fmt.Errorf("load salesperson: %w", err)
+		}
+		if salesperson != nil && salesperson.Active {
+			salespersonUser, err := s.resolveSalespersonUser(ctx, salesperson)
+			if err != nil {
+				return nil, err
+			}
+			if salespersonUser != nil && salespersonUser.Active {
+				appendRecipient(salespersonUser.ID)
+			}
+		}
+	}
+
+	for _, adminUser := range adminUsers {
+		appendRecipient(adminUser.ID)
+	}
+
+	return recipientUserIDs, nil
+}
+
+func (s *service) resolveActiveAdminUsers(ctx context.Context) ([]*model.UserModel, error) {
+	users, err := s.userRepo.ListActiveUsers(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list active users: %w", err)
+	}
+
+	adminUsers := make([]*model.UserModel, 0, len(users))
+	for _, user := range users {
+		if !user.Active || user.Role != model.RoleAdmin {
+			continue
+		}
+
+		userCopy := user
+		adminUsers = append(adminUsers, &userCopy)
+	}
+
+	return adminUsers, nil
+}
+
+func (s *service) resolveSalespersonUser(ctx context.Context, salesperson *model.SalespersonModel) (*model.UserModel, error) {
+	if salesperson == nil {
+		return nil, nil
+	}
+
+	email := strings.TrimSpace(salesperson.Email)
+	if email == "" {
+		return nil, nil
+	}
+
+	userByEmail, err := s.userRepo.GetUserByEmail(ctx, email)
+	if err != nil {
+		return nil, fmt.Errorf("load salesperson user by email: %w", err)
+	}
+	if userByEmail != nil && userByEmail.Active {
+		return userByEmail, nil
+	}
+
+	usernameCandidate := extractUsernameCandidateFromEmail(email)
+	if usernameCandidate == "" {
+		return nil, nil
+	}
+
+	userByUsername, err := s.userRepo.GetUserByUsername(ctx, usernameCandidate)
+	if err != nil {
+		return nil, fmt.Errorf("load salesperson user by username: %w", err)
+	}
+	if userByUsername != nil && userByUsername.Active {
+		return userByUsername, nil
+	}
+
+	return nil, nil
+}
+
+func extractUsernameCandidateFromEmail(email string) string {
+	normalizedEmail := strings.TrimSpace(email)
+	if normalizedEmail == "" {
+		return ""
+	}
+
+	localPart, _, found := strings.Cut(normalizedEmail, "@")
+	if !found {
+		return normalizedEmail
+	}
+
+	return strings.TrimSpace(localPart)
+}
+
+func buildBudgetClosingNoticeTitle(budget *model.BudgetModel) string {
+	if budget == nil {
+		return "Fechamento registrado no orcamento"
+	}
+
+	return fmt.Sprintf("Fechamento registrado no orcamento %s/%d", budget.BudgetNumber, budget.YearBudget)
+}
+
+func buildBudgetClosingNoticeBody(budget *model.BudgetModel) string {
+	projectLabel := buildBudgetClosingProjectLabel(budget)
+	installerLabel := buildBudgetClosingInstallerLabel(budget)
+
+	return fmt.Sprintf(
+		"Aviso automatico do sistema: o orcamento %s/%d da obra %s foi marcado como Fechado. Orcamentos em aberto de outros instaladores vinculados a esta obra foram cancelados automaticamente, enquanto outros escopos do mesmo instalador %s podem permanecer em aberto.",
+		budget.BudgetNumber,
+		budget.YearBudget,
+		projectLabel,
+		installerLabel,
+	)
+}
+
+func buildBudgetClosingProjectLabel(budget *model.BudgetModel) string {
+	if budget == nil {
+		return "obra nao informada"
+	}
+
+	switch {
+	case budget.ProjectCode.Valid && budget.ProjectName.Valid:
+		return fmt.Sprintf("%s - %s", budget.ProjectCode.String, budget.ProjectName.String)
+	case budget.ProjectName.Valid:
+		return budget.ProjectName.String
+	case budget.ProjectCode.Valid:
+		return budget.ProjectCode.String
+	default:
+		return "obra nao informada"
+	}
+}
+
+func buildBudgetClosingInstallerLabel(budget *model.BudgetModel) string {
+	if budget == nil {
+		return "nao informado"
+	}
+
+	installerName := strings.TrimSpace(budget.InstallerName.String)
+	if installerName == "" {
+		return "nao informado"
+	}
+
+	return installerName
+}
+
+func logBudgetWarn(ctx context.Context, message string, attrs ...slog.Attr) {
+	logger.FromContext(ctx).LogAttrs(ctx, slog.LevelWarn, message, attrs...)
+}
+
 func (s *service) resolveCreateAndUpdateAssignments(
 	ctx context.Context,
 	role model.UserRole,
@@ -941,7 +1265,38 @@ func (s *service) buildStatusChangeParams(
 		ChangedAt: changedAt,
 	}
 
+	if isWonBudgetStatus(status) {
+		cancelledStatus, err := s.ensureBudgetStatus(
+			ctx,
+			"CANCELADO",
+			"Cancelado",
+			"Orcamento encerrado automaticamente apos definicao do vencedor da obra",
+			true,
+			100,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		params.ApplyInstallerScopedRule = true
+		params.CancelledStatusID = cancelledStatus.ID
+	}
+
 	return params, nil
+}
+
+func isWonBudgetStatus(status *model.BudgetStatusModel) bool {
+	if status == nil {
+		return false
+	}
+
+	normalizedCode := strings.TrimSpace(strings.ToUpper(status.Code))
+	if normalizedCode == "PEDIDO" {
+		return true
+	}
+
+	normalizedName := strings.TrimSpace(strings.ToUpper(status.Name))
+	return normalizedName == "PEDIDO" || normalizedName == "FECHADO"
 }
 
 func (s *service) ensureBudgetStatus(

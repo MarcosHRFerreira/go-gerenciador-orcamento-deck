@@ -708,7 +708,7 @@ export function BudgetForm({
 
   const isPedidoStatus =
     selectedStatusName !== null && isWonStatusLabel(selectedStatusName);
-  const shouldShowDeliveryDateAlert =
+  const shouldShowWonStatusAlert =
     isPedidoStatus && initialDataError === null && !isInitialDataLoading;
 
   return (
@@ -815,18 +815,16 @@ export function BudgetForm({
             </Alert>
           ) : null}
 
-          {shouldShowDeliveryDateAlert ? (
+          {shouldShowWonStatusAlert ? (
             <Alert
-              severity={deliveryDateValue ? "info" : "warning"}
+              severity="warning"
               sx={{
                 "& .MuiAlert-message": {
                   fontWeight: 600,
                 },
               }}
             >
-              {deliveryDateValue
-                ? "A data de entrega ajuda o acompanhamento operacional deste fechado."
-                : "Este orçamento está com status Fechado e ainda não possui data de entrega. Sem essa informação, o sistema não conseguirá gerar aviso automático ao vendedor."}
+              {`Ao marcar este orçamento como Fechado, o sistema poderá cancelar automaticamente os orçamentos em aberto de outros instaladores da mesma obra. Orçamentos do mesmo instalador podem permanecer ativos por representarem escopos complementares. Um aviso informativo será enviado ao vendedor e aos administradores.${deliveryDateValue ? " A data de entrega segue recomendada para apoiar o acompanhamento operacional deste fechado." : " Se houver entrega prevista, informe a data para apoiar o acompanhamento operacional deste fechado."}`}
             </Alert>
           ) : null}
           <SectionCard
@@ -906,7 +904,7 @@ export function BudgetForm({
                   helperText={
                     errors.deliveryDate?.message ??
                     (isPedidoStatus
-                      ? "Recomendado para acompanhamento e aviso automático do fechado."
+                      ? "Recomendado para acompanhamento operacional do fechado."
                       : undefined)
                   }
                   type="date"

@@ -131,7 +131,7 @@ func NewRouter(validate *validator.Validate, deps Dependencies) *gin.Engine {
 
 	authService := authservice.NewService(userRepo, deps.Config)
 	userService := userservice.NewService(userRepo)
-	budgetService := budgetservice.NewService(budgetRepo, budgetStatusRepo, priorityRepo, userRepo, salespersonRepo, estimatorRepo)
+	budgetService := budgetservice.NewService(budgetRepo, budgetStatusRepo, priorityRepo, userRepo, salespersonRepo, estimatorRepo, noticeRepo)
 	budgetImportService := budgetimportservice.NewService(
 		budgetRepo,
 		budgetStatusRepo,

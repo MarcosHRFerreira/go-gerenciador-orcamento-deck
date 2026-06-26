@@ -25,6 +25,7 @@ type ChangeStatusParams struct {
 	Notes                    string
 	ChangedAt                time.Time
 	EnforceProjectWinnerRule bool
+	ApplyInstallerScopedRule bool
 	CancelledStatusID        int64
 }
 
@@ -1179,6 +1180,21 @@ func changeBudgetStatusExecutor(ctx context.Context, db executor, params *Change
 		}
 	}
 
+	if params.ApplyInstallerScopedRule && budgetSnapshot.ProjectID.Valid && budgetSnapshot.InstallerID.Valid {
+		if err := cancelOtherProjectBudgetsByDifferentInstaller(
+			ctx,
+			db,
+			budgetSnapshot.ProjectID.Int64,
+			budgetSnapshot.InstallerID.Int64,
+			params.BudgetID,
+			params.CancelledStatusID,
+			params.UserID,
+			params.ChangedAt,
+		); err != nil {
+			return 0, err
+		}
+	}
+
 	return historyID, nil
 }
 
@@ -1201,29 +1217,33 @@ func electProjectWinnerExecutor(ctx context.Context, db executor, params *ElectP
 		return errors.New("budget project id is required")
 	}
 
-	if err := restoreOtherProjectWinners(
-		ctx,
-		db,
-		budgetSnapshot.ProjectID.Int64,
-		params.BudgetID,
-		params.PedidoStatusID,
-		params.CancelledStatusID,
-		params.UserID,
-		params.ChangedAt,
-	); err != nil {
-		return err
-	}
+	if budgetSnapshot.InstallerID.Valid {
+		if err := restoreOtherProjectWinnersByDifferentInstaller(
+			ctx,
+			db,
+			budgetSnapshot.ProjectID.Int64,
+			budgetSnapshot.InstallerID.Int64,
+			params.BudgetID,
+			params.PedidoStatusID,
+			params.CancelledStatusID,
+			params.UserID,
+			params.ChangedAt,
+		); err != nil {
+			return err
+		}
 
-	if err := restoreAutomaticallyCancelledProjectBudgets(
-		ctx,
-		db,
-		budgetSnapshot.ProjectID.Int64,
-		params.BudgetID,
-		params.CancelledStatusID,
-		params.UserID,
-		params.ChangedAt,
-	); err != nil {
-		return err
+		if err := restoreAutomaticallyCancelledProjectBudgetsByInstaller(
+			ctx,
+			db,
+			budgetSnapshot.ProjectID.Int64,
+			budgetSnapshot.InstallerID.Int64,
+			params.BudgetID,
+			params.CancelledStatusID,
+			params.UserID,
+			params.ChangedAt,
+		); err != nil {
+			return err
+		}
 	}
 
 	if budgetSnapshot.StatusID != params.PedidoStatusID {
@@ -1245,16 +1265,171 @@ func electProjectWinnerExecutor(ctx context.Context, db executor, params *ElectP
 		}
 	}
 
-	if err := cancelOtherProjectBudgets(
-		ctx,
-		db,
-		budgetSnapshot.ProjectID.Int64,
-		params.BudgetID,
-		params.CancelledStatusID,
-		params.UserID,
-		params.ChangedAt,
-	); err != nil {
+	if budgetSnapshot.InstallerID.Valid {
+		if err := cancelOtherProjectBudgetsByDifferentInstaller(
+			ctx,
+			db,
+			budgetSnapshot.ProjectID.Int64,
+			budgetSnapshot.InstallerID.Int64,
+			params.BudgetID,
+			params.CancelledStatusID,
+			params.UserID,
+			params.ChangedAt,
+		); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func restoreOtherProjectWinnersByDifferentInstaller(
+	ctx context.Context,
+	db executor,
+	projectID int64,
+	currentInstallerID int64,
+	currentBudgetID int64,
+	pedidoStatusID int64,
+	cancelledStatusID int64,
+	userID int64,
+	changedAt time.Time,
+) error {
+	const query = `
+		SELECT id, status_id
+		FROM budgets
+		WHERE project_id = $1
+			AND id <> $2
+			AND status_id = $3
+			AND installer_id IS DISTINCT FROM $4
+		FOR UPDATE
+	`
+
+	rows, err := db.QueryContext(ctx, query, projectID, currentBudgetID, pedidoStatusID, currentInstallerID)
+	if err != nil {
 		return err
+	}
+	defer rows.Close()
+
+	winners := make([]budgetStatusChangeSnapshot, 0)
+	for rows.Next() {
+		var item budgetStatusChangeSnapshot
+		if err := rows.Scan(&item.ID, &item.FromStatus); err != nil {
+			return err
+		}
+
+		winners = append(winners, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, winner := range winners {
+		restoreStatusID := cancelledStatusID
+		latestHistory, err := getLatestStatusHistoryForCurrentStatus(ctx, db, winner.ID, pedidoStatusID)
+		if err != nil {
+			return err
+		}
+		if latestHistory != nil && latestHistory.FromStatusID.Valid && latestHistory.FromStatusID.Int64 > 0 {
+			restoreStatusID = latestHistory.FromStatusID.Int64
+		}
+
+		if _, err := insertStatusHistory(ctx, db, &model.BudgetStatusHistoryModel{
+			BudgetID:        winner.ID,
+			FromStatusID:    sql.NullInt64{Int64: pedidoStatusID, Valid: true},
+			ToStatusID:      restoreStatusID,
+			ChangedByUserID: userID,
+			Notes:           automaticProjectWinnerReplacementNote,
+			ChangedAt:       changedAt,
+			CreatedAt:       changedAt,
+			UpdatedAt:       changedAt,
+		}); err != nil {
+			return err
+		}
+
+		if err := updateBudgetStatusExecutor(ctx, db, winner.ID, restoreStatusID, changedAt); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func restoreAutomaticallyCancelledProjectBudgetsByInstaller(
+	ctx context.Context,
+	db executor,
+	projectID int64,
+	currentInstallerID int64,
+	currentBudgetID int64,
+	cancelledStatusID int64,
+	userID int64,
+	changedAt time.Time,
+) error {
+	const query = `
+		SELECT b.id, h.from_status_id
+		FROM budgets b
+		JOIN LATERAL (
+			SELECT id, from_status_id, to_status_id, notes
+			FROM budget_status_history
+			WHERE budget_id = b.id
+			ORDER BY changed_at DESC, id DESC
+			LIMIT 1
+		) h ON TRUE
+		WHERE b.project_id = $1
+			AND b.id <> $2
+			AND b.installer_id = $3
+			AND b.status_id = $4
+			AND h.to_status_id = $4
+			AND h.notes = $5
+			AND h.from_status_id IS NOT NULL
+		FOR UPDATE OF b
+	`
+
+	rows, err := db.QueryContext(
+		ctx,
+		query,
+		projectID,
+		currentBudgetID,
+		currentInstallerID,
+		cancelledStatusID,
+		automaticProjectCancellationNote,
+	)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	candidateBudgets := make([]budgetStatusChangeSnapshot, 0)
+	for rows.Next() {
+		var item budgetStatusChangeSnapshot
+		if err := rows.Scan(&item.ID, &item.FromStatus); err != nil {
+			return err
+		}
+
+		candidateBudgets = append(candidateBudgets, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, candidateBudget := range candidateBudgets {
+		if _, err := insertStatusHistory(ctx, db, &model.BudgetStatusHistoryModel{
+			BudgetID:        candidateBudget.ID,
+			FromStatusID:    sql.NullInt64{Int64: cancelledStatusID, Valid: true},
+			ToStatusID:      candidateBudget.FromStatus,
+			ChangedByUserID: userID,
+			Notes:           automaticProjectRestorationNote,
+			ChangedAt:       changedAt,
+			CreatedAt:       changedAt,
+			UpdatedAt:       changedAt,
+		}); err != nil {
+			return err
+		}
+
+		if err := updateBudgetStatusExecutor(ctx, db, candidateBudget.ID, candidateBudget.FromStatus, changedAt); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -1408,9 +1583,10 @@ func restoreAutomaticallyCancelledProjectBudgets(
 }
 
 type budgetStatusSnapshot struct {
-	ID        int64
-	StatusID  int64
-	ProjectID sql.NullInt64
+	ID          int64
+	StatusID    int64
+	ProjectID   sql.NullInt64
+	InstallerID sql.NullInt64
 }
 
 type budgetStatusChangeSnapshot struct {
@@ -1434,7 +1610,7 @@ type executor interface {
 
 func getBudgetStatusSnapshotForUpdate(ctx context.Context, db executor, budgetID int64) (*budgetStatusSnapshot, error) {
 	const query = `
-		SELECT id, status_id, project_id
+		SELECT id, status_id, project_id, installer_id
 		FROM budgets
 		WHERE id = $1
 		FOR UPDATE
@@ -1443,7 +1619,7 @@ func getBudgetStatusSnapshotForUpdate(ctx context.Context, db executor, budgetID
 	row := db.QueryRowContext(ctx, query, budgetID)
 
 	var item budgetStatusSnapshot
-	err := row.Scan(&item.ID, &item.StatusID, &item.ProjectID)
+	err := row.Scan(&item.ID, &item.StatusID, &item.ProjectID, &item.InstallerID)
 	if err != nil {
 		return nil, err
 	}
@@ -1468,6 +1644,71 @@ func projectHasOtherBudgetWithStatus(ctx context.Context, db executor, projectID
 	}
 
 	return exists, nil
+}
+
+func cancelOtherProjectBudgetsByDifferentInstaller(
+	ctx context.Context,
+	db executor,
+	projectID int64,
+	currentInstallerID int64,
+	currentBudgetID int64,
+	cancelledStatusID int64,
+	userID int64,
+	changedAt time.Time,
+) error {
+	const query = `
+		SELECT b.id, b.status_id
+		FROM budgets b
+		INNER JOIN budget_statuses bs ON bs.id = b.status_id
+		WHERE b.project_id = $1
+			AND b.id <> $2
+			AND b.installer_id IS DISTINCT FROM $3
+			AND bs.is_final = FALSE
+		FOR UPDATE OF b
+	`
+
+	rows, err := db.QueryContext(ctx, query, projectID, currentBudgetID, currentInstallerID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	candidateBudgets := make([]budgetStatusChangeSnapshot, 0)
+	for rows.Next() {
+		var item budgetStatusChangeSnapshot
+		if err := rows.Scan(&item.ID, &item.FromStatus); err != nil {
+			return err
+		}
+
+		candidateBudgets = append(candidateBudgets, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, candidateBudget := range candidateBudgets {
+		if _, err := insertStatusHistory(ctx, db, &model.BudgetStatusHistoryModel{
+			BudgetID:        candidateBudget.ID,
+			FromStatusID:    sql.NullInt64{Int64: candidateBudget.FromStatus, Valid: true},
+			ToStatusID:      cancelledStatusID,
+			ChangedByUserID: userID,
+			Notes:           automaticProjectCancellationNote,
+			ChangedAt:       changedAt,
+			CreatedAt:       changedAt,
+			UpdatedAt:       changedAt,
+		}); err != nil {
+			return err
+		}
+	}
+
+	for _, candidateBudget := range candidateBudgets {
+		if err := updateBudgetStatusExecutor(ctx, db, candidateBudget.ID, cancelledStatusID, changedAt); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func cancelOtherProjectBudgets(ctx context.Context, db executor, projectID int64, currentBudgetID int64, cancelledStatusID int64, userID int64, changedAt time.Time) error {

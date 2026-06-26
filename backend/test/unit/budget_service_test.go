@@ -3,6 +3,7 @@ package unit
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
@@ -48,6 +49,8 @@ type budgetRepositoryStub struct {
 type salespersonRepositoryStub struct {
 	getByUsernameItem *model.SalespersonModel
 	getByUsernameErr  error
+	getByIDItem       *model.SalespersonModel
+	getByIDErr        error
 }
 
 func (s *salespersonRepositoryStub) Create(_ context.Context, _ *model.SalespersonModel) (int64, error) {
@@ -67,7 +70,7 @@ func (s *salespersonRepositoryStub) GetByUsername(_ context.Context, _ string) (
 }
 
 func (s *salespersonRepositoryStub) GetByID(_ context.Context, _ int64) (*model.SalespersonModel, error) {
-	return nil, nil
+	return s.getByIDItem, s.getByIDErr
 }
 
 func (s *salespersonRepositoryStub) Update(_ context.Context, _ *model.SalespersonModel) error {
@@ -565,26 +568,274 @@ func TestBudgetServiceUpdateShouldUseStatusWorkflowWithoutProjectWinnerRule(t *t
 	}
 }
 
-func TestBudgetServiceElectProjectWinnerShouldEnsureStatusesAndCallRepository(t *testing.T) {
+func TestBudgetServiceUpdateShouldCreateClosingNoticeForSalespersonAndAdmins(t *testing.T) {
 	projectID := int64(77)
+	salespersonID := int64(71)
+	noticeRepo := &noticeRepositoryStub{}
+	repo := &budgetRepositoryStub{
+		getByIDItem: &model.BudgetModel{
+			ID:            5,
+			BudgetNumber:  "ORC-100",
+			YearBudget:    2026,
+			StatusID:      1,
+			ProjectID:     sql.NullInt64{Int64: projectID, Valid: true},
+			SalespersonID: sql.NullInt64{Int64: salespersonID, Valid: true},
+			ProjectCode:   sql.NullString{String: "OBR-77", Valid: true},
+			ProjectName:   sql.NullString{String: "Edificio Central", Valid: true},
+			InstallerName: sql.NullString{String: "Instalador Vencedor", Valid: true},
+		},
+	}
+	service := budgetservice.NewService(
+		repo,
+		&budgetStatusRepositoryStub{
+			getByIDItem: &model.BudgetStatusModel{ID: 2, Code: "PEDIDO", Name: "Pedido"},
+		},
+		&budgetImportPriorityRepositoryStub{},
+		&userRepositoryStub{
+			getUserByUsernameItem: &model.UserModel{ID: 40, Active: true, Role: model.RoleAdmin},
+			getUserByIDItem:       &model.UserModel{ID: 40, Active: true, Role: model.RoleAdmin},
+			getUserByEmailItem:    &model.UserModel{ID: 91, Active: true, Role: model.RoleUser},
+			listActiveUsersItems: []model.UserModel{
+				{ID: 40, Active: true, Role: model.RoleAdmin},
+				{ID: 92, Active: true, Role: model.RoleAdmin},
+				{ID: 91, Active: true, Role: model.RoleUser},
+			},
+		},
+		&salespersonRepositoryStub{
+			getByIDItem: &model.SalespersonModel{
+				ID:     salespersonID,
+				Email:  "sales.notice@local.dev",
+				Active: true,
+			},
+		},
+		&estimatorRepositoryStub{},
+		noticeRepo,
+	)
+
+	err := service.Update(context.Background(), 5, model.RoleAdmin, "admin.master", &dto.UpdateBudgetRequest{
+		BudgetNumber:  "ORC-100",
+		YearBudget:    2026,
+		SentAt:        time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
+		GrossValue:    1000,
+		StatusID:      2,
+		ProjectID:     &projectID,
+		SalespersonID: &salespersonID,
+	})
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if noticeRepo.capturedNotice == nil {
+		t.Fatal("expected closing notice to be created")
+	}
+	if noticeRepo.capturedNotice.CreatedByUserID != 40 {
+		t.Fatalf("expected admin sender id 40, got %d", noticeRepo.capturedNotice.CreatedByUserID)
+	}
+	if noticeRepo.capturedNotice.ScopeType != model.NoticeScopeUsers {
+		t.Fatalf("expected directed notice scope, got %s", noticeRepo.capturedNotice.ScopeType)
+	}
+	if len(noticeRepo.capturedRecipientUserIDs) != 3 {
+		t.Fatalf("expected 3 recipients, got %d", len(noticeRepo.capturedRecipientUserIDs))
+	}
+	if noticeRepo.capturedRecipientUserIDs[0] != 91 || noticeRepo.capturedRecipientUserIDs[1] != 40 || noticeRepo.capturedRecipientUserIDs[2] != 92 {
+		t.Fatalf("unexpected notice recipients: %#v", noticeRepo.capturedRecipientUserIDs)
+	}
+}
+
+func TestBudgetServiceUpdateShouldDeduplicateClosingNoticeRecipients(t *testing.T) {
+	projectID := int64(77)
+	salespersonID := int64(71)
+	noticeRepo := &noticeRepositoryStub{}
+	repo := &budgetRepositoryStub{
+		getByIDItem: &model.BudgetModel{
+			ID:            5,
+			BudgetNumber:  "ORC-100",
+			YearBudget:    2026,
+			StatusID:      1,
+			ProjectID:     sql.NullInt64{Int64: projectID, Valid: true},
+			SalespersonID: sql.NullInt64{Int64: salespersonID, Valid: true},
+		},
+	}
+	service := budgetservice.NewService(
+		repo,
+		&budgetStatusRepositoryStub{
+			getByIDItem: &model.BudgetStatusModel{ID: 2, Code: "PEDIDO", Name: "Pedido"},
+		},
+		&budgetImportPriorityRepositoryStub{},
+		&userRepositoryStub{
+			getUserByUsernameItem: &model.UserModel{ID: 40, Active: true, Role: model.RoleAdmin},
+			getUserByIDItem:       &model.UserModel{ID: 40, Active: true, Role: model.RoleAdmin},
+			getUserByEmailItem:    &model.UserModel{ID: 40, Active: true, Role: model.RoleAdmin},
+			listActiveUsersItems: []model.UserModel{
+				{ID: 40, Active: true, Role: model.RoleAdmin},
+				{ID: 92, Active: true, Role: model.RoleAdmin},
+			},
+		},
+		&salespersonRepositoryStub{
+			getByIDItem: &model.SalespersonModel{
+				ID:     salespersonID,
+				Email:  "sales.notice@local.dev",
+				Active: true,
+			},
+		},
+		&estimatorRepositoryStub{},
+		noticeRepo,
+	)
+
+	err := service.Update(context.Background(), 5, model.RoleAdmin, "admin.master", &dto.UpdateBudgetRequest{
+		BudgetNumber:  "ORC-100",
+		YearBudget:    2026,
+		SentAt:        time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
+		GrossValue:    1000,
+		StatusID:      2,
+		ProjectID:     &projectID,
+		SalespersonID: &salespersonID,
+	})
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(noticeRepo.capturedRecipientUserIDs) != 2 {
+		t.Fatalf("expected deduplicated recipients, got %#v", noticeRepo.capturedRecipientUserIDs)
+	}
+	if noticeRepo.capturedRecipientUserIDs[0] != 40 || noticeRepo.capturedRecipientUserIDs[1] != 92 {
+		t.Fatalf("unexpected deduplicated recipients: %#v", noticeRepo.capturedRecipientUserIDs)
+	}
+}
+
+func TestBudgetServiceUpdateShouldNotRollbackWhenClosingNoticeCreationFails(t *testing.T) {
+	projectID := int64(77)
+	salespersonID := int64(71)
+	noticeRepo := &noticeRepositoryStub{
+		createErr: errors.New("notice unavailable"),
+	}
+	repo := &budgetRepositoryStub{
+		getByIDItem: &model.BudgetModel{
+			ID:            5,
+			BudgetNumber:  "ORC-100",
+			YearBudget:    2026,
+			StatusID:      1,
+			ProjectID:     sql.NullInt64{Int64: projectID, Valid: true},
+			SalespersonID: sql.NullInt64{Int64: salespersonID, Valid: true},
+		},
+	}
+	service := budgetservice.NewService(
+		repo,
+		&budgetStatusRepositoryStub{
+			getByIDItem: &model.BudgetStatusModel{ID: 2, Code: "PEDIDO", Name: "Pedido"},
+		},
+		&budgetImportPriorityRepositoryStub{},
+		&userRepositoryStub{
+			getUserByUsernameItem: &model.UserModel{ID: 40, Active: true, Role: model.RoleAdmin},
+			getUserByIDItem:       &model.UserModel{ID: 40, Active: true, Role: model.RoleAdmin},
+			getUserByEmailItem:    &model.UserModel{ID: 91, Active: true, Role: model.RoleUser},
+			listActiveUsersItems: []model.UserModel{
+				{ID: 40, Active: true, Role: model.RoleAdmin},
+			},
+		},
+		&salespersonRepositoryStub{
+			getByIDItem: &model.SalespersonModel{
+				ID:     salespersonID,
+				Email:  "sales.notice@local.dev",
+				Active: true,
+			},
+		},
+		&estimatorRepositoryStub{},
+		noticeRepo,
+	)
+
+	err := service.Update(context.Background(), 5, model.RoleAdmin, "admin.master", &dto.UpdateBudgetRequest{
+		BudgetNumber:  "ORC-100",
+		YearBudget:    2026,
+		SentAt:        time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
+		GrossValue:    1000,
+		StatusID:      2,
+		ProjectID:     &projectID,
+		SalespersonID: &salespersonID,
+	})
+
+	if err != nil {
+		t.Fatalf("expected no error despite notice failure, got %v", err)
+	}
+	if repo.capturedUpdateAndChangeStatusParams == nil {
+		t.Fatal("expected main status workflow to be executed")
+	}
+}
+
+func TestBudgetServiceUpdateShouldNotCreateClosingNoticeWithoutRealStatusTransition(t *testing.T) {
+	noticeRepo := &noticeRepositoryStub{}
 	repo := &budgetRepositoryStub{
 		getByIDItem: &model.BudgetModel{
 			ID:        5,
-			StatusID:  1,
-			ProjectID: sql.NullInt64{Int64: projectID, Valid: true},
+			StatusID:  2,
+			ProjectID: sql.NullInt64{Int64: 77, Valid: true},
+			InstallerID: sql.NullInt64{
+				Int64: 11,
+				Valid: true,
+			},
+		},
+	}
+	service := budgetservice.NewService(
+		repo,
+		&budgetStatusRepositoryStub{},
+		&budgetImportPriorityRepositoryStub{},
+		&userRepositoryStub{},
+		&salespersonRepositoryStub{},
+		&estimatorRepositoryStub{},
+		noticeRepo,
+	)
+
+	err := service.Update(context.Background(), 5, model.RoleAdmin, "admin.master", &dto.UpdateBudgetRequest{
+		BudgetNumber: "ORC-100",
+		YearBudget:   2026,
+		SentAt:       time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
+		GrossValue:   1000,
+		StatusID:     2,
+	})
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if noticeRepo.capturedNotice != nil {
+		t.Fatal("expected no closing notice when status does not change")
+	}
+}
+
+func TestBudgetServiceElectProjectWinnerShouldEnsureStatusesAndCallRepository(t *testing.T) {
+	projectID := int64(77)
+	salespersonID := int64(19)
+	repo := &budgetRepositoryStub{
+		getByIDItem: &model.BudgetModel{
+			ID:            5,
+			StatusID:      1,
+			ProjectID:     sql.NullInt64{Int64: projectID, Valid: true},
+			InstallerID:   sql.NullInt64{Int64: 13, Valid: true},
+			SalespersonID: sql.NullInt64{Int64: salespersonID, Valid: true},
+			BudgetNumber:  "ORC-200",
+			YearBudget:    2026,
 		},
 	}
 	statusRepo := &budgetStatusRepositoryStub{
 		createID:            91,
 		getByCodeOrNameItem: nil,
 	}
+	noticeRepo := &noticeRepositoryStub{}
 	service := budgetservice.NewService(
 		repo,
 		statusRepo,
 		&budgetImportPriorityRepositoryStub{},
-		&userRepositoryStub{},
-		&salespersonRepositoryStub{},
+		&userRepositoryStub{
+			getUserByIDItem:    &model.UserModel{ID: 40, Active: true, Role: model.RoleAdmin},
+			getUserByEmailItem: &model.UserModel{ID: 91, Active: true, Role: model.RoleUser},
+			listActiveUsersItems: []model.UserModel{
+				{ID: 40, Active: true, Role: model.RoleAdmin},
+			},
+		},
+		&salespersonRepositoryStub{
+			getByIDItem: &model.SalespersonModel{ID: salespersonID, Email: "sales.notice@local.dev", Active: true},
+		},
 		&estimatorRepositoryStub{},
+		noticeRepo,
 	)
 
 	err := service.ElectProjectWinner(context.Background(), 5, 40, model.RoleAdmin, "admin.master", &dto.ElectBudgetWinnerRequest{
@@ -614,6 +865,9 @@ func TestBudgetServiceElectProjectWinnerShouldEnsureStatusesAndCallRepository(t 
 	}
 	if statusRepo.createCalls != 2 {
 		t.Fatalf("expected 2 required statuses to be created, got %d", statusRepo.createCalls)
+	}
+	if noticeRepo.capturedNotice == nil {
+		t.Fatal("expected elect winner to create automatic closing notice")
 	}
 }
 
